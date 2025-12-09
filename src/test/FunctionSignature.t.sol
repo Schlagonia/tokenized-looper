@@ -2,7 +2,8 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Setup} from "./utils/Setup.sol";
 
 contract FunctionSignatureTest is Setup {
     function setUp() public virtual override {

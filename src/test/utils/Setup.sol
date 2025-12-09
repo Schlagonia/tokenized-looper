@@ -4,9 +4,12 @@ pragma solidity ^0.8.18;
 import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
 
-import {Strategy, ERC20} from "../../Strategy.sol";
-import {StrategyFactory} from "../../StrategyFactory.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+import {MorphoLooperFactory} from "../../MorphoLooperFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
+import {Id} from "../../interfaces/morpho/IMorpho.sol";
+import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
 
 // Inherit the events so they can be checked if desired.
 import {IEvents} from "@tokenized-strategy/interfaces/IEvents.sol";
@@ -24,9 +27,19 @@ contract Setup is Test, IEvents {
     ERC20 public asset;
     IStrategyInterface public strategy;
 
-    StrategyFactory public strategyFactory;
+    MorphoLooperFactory public strategyFactory;
 
     mapping(string => address) public tokenAddrs;
+    // Mainnet addresses
+    address public constant MORPHO = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
+    Id public constant MARKET_ID =
+        Id.wrap(
+            0xbbf7ce1b40d32d3e3048f5cf27eeaa6de8cb27b80194690aab191a63381d8c99
+        );
+    address public constant GATEWAY =
+        0x3f04b65Ddbd87f9CE0A2e7Eb24d80e7fb87625b5;
+    address public constant IUSD = 0x48f9e38f3070AD8945DFEae3FA70987722E3D89c;
+    address public constant SIUSD = 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB;
 
     // Addresses for different roles we will use repeatedly.
     address public user = address(10);
@@ -43,22 +56,26 @@ contract Setup is Test, IEvents {
     uint256 public MAX_BPS = 10_000;
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
-    uint256 public maxFuzzAmount = 1e30;
-    uint256 public minFuzzAmount = 10_000;
+    uint256 public maxFuzzAmount = 1e12; // up to 1,000,000 USDC
+    uint256 public minFuzzAmount = 1e6; // 1 USDC (6 decimals)
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
 
     function setUp() public virtual {
+        vm.createSelectFork(vm.envString("ETH_RPC_URL"));
         _setTokenAddrs();
 
-        // Set asset
-        asset = ERC20(tokenAddrs["DAI"]);
-
-        // Set decimals
+        // Set asset to USDC
+        asset = ERC20(tokenAddrs["USDC"]);
         decimals = asset.decimals();
 
-        strategyFactory = new StrategyFactory(
+        strategyFactory = new MorphoLooperFactory(
+            MORPHO,
+            MARKET_ID,
+            GATEWAY,
+            IUSD,
+            SIUSD,
             management,
             performanceFeeRecipient,
             keeper,
@@ -80,18 +97,18 @@ contract Setup is Test, IEvents {
     }
 
     function setUpStrategy() public returns (address) {
-        // we save the strategy as a IStrategyInterface to give it the needed interface
         IStrategyInterface _strategy = IStrategyInterface(
-            address(
-                strategyFactory.newStrategy(
-                    address(asset),
-                    "Tokenized Strategy"
-                )
-            )
+            strategyFactory.newStrategy(address(asset), "Morpho Looper")
         );
 
         vm.prank(management);
         _strategy.acceptManagement();
+
+        // Allow first reports without tripping health check.
+        vm.startPrank(management);
+        _strategy.setAllowed(user, true);
+
+        vm.stopPrank();
 
         return address(_strategy);
     }
@@ -141,6 +158,13 @@ contract Setup is Test, IEvents {
         deal(address(_asset), _to, balanceBefore + _amount);
     }
 
+    function accrueYield() public virtual {
+        skip(1 days);
+        deal(address(asset), address(this), 1e6);
+        asset.approve(address(GATEWAY), 1e6);
+        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), 1e6);
+    }
+
     function setFees(uint16 _protocolFee, uint16 _performanceFee) public {
         address gov = IFactory(factory).governance();
 
@@ -156,12 +180,20 @@ contract Setup is Test, IEvents {
     }
 
     function _setTokenAddrs() internal {
-        tokenAddrs["WBTC"] = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
-        tokenAddrs["YFI"] = 0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e;
-        tokenAddrs["WETH"] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        tokenAddrs["LINK"] = 0x514910771AF9Ca656af840dff83E8264EcF986CA;
-        tokenAddrs["USDT"] = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-        tokenAddrs["DAI"] = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
         tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    }
+
+    function logStrategyStatus(string memory label) public view {
+        console2.log("=== Strategy Status:", label, "===");
+        console2.log("Total Assets:", strategy.totalAssets());
+        (uint256 collateralValue, uint256 debt, uint256 currentLTV) = strategy
+            .position();
+        console2.log("Collateral:", collateralValue);
+        console2.log("Debt:", strategy.balanceOfDebt());
+        console2.log("Loose Asset:", strategy.balanceOfAsset());
+        console2.log("Current LTV:", strategy.getCurrentLTV());
+        console2.log("Current Leverage:", strategy.getCurrentLeverageRatio());
+        console2.log("Max Flashloan:", strategy.maxFlashloan());
+        console2.log("==============================");
     }
 }

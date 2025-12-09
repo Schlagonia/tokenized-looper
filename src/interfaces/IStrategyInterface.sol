@@ -2,7 +2,6 @@
 pragma solidity ^0.8.18;
 
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
+import {IBaseMorphoLooper} from "./IBaseMorphoLooper.sol";
 
-interface IStrategyInterface is IStrategy {
-    //TODO: Add your specific implementation interface in here.
-}
+interface IStrategyInterface is IStrategy, IBaseMorphoLooper {}
