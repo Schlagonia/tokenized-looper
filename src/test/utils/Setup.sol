@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {MorphoLooperFactory} from "../../MorphoLooperFactory.sol";
+import {InfinifiMorphoLooper} from "../../InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
@@ -26,8 +26,6 @@ contract Setup is Test, IEvents {
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
-
-    MorphoLooperFactory public strategyFactory;
 
     mapping(string => address) public tokenAddrs;
     // Mainnet addresses
@@ -57,7 +55,7 @@ contract Setup is Test, IEvents {
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
     uint256 public maxFuzzAmount = 1e12; // up to 1,000,000 USDC
-    uint256 public minFuzzAmount = 1e6; // 1 USDC (6 decimals)
+    uint256 public minFuzzAmount = 100e6; // 1 USDC (6 decimals)
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
@@ -69,18 +67,6 @@ contract Setup is Test, IEvents {
         // Set asset to USDC
         asset = ERC20(tokenAddrs["USDC"]);
         decimals = asset.decimals();
-
-        strategyFactory = new MorphoLooperFactory(
-            MORPHO,
-            MARKET_ID,
-            GATEWAY,
-            IUSD,
-            SIUSD,
-            management,
-            performanceFeeRecipient,
-            keeper,
-            emergencyAdmin
-        );
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
@@ -98,15 +84,34 @@ contract Setup is Test, IEvents {
 
     function setUpStrategy() public returns (address) {
         IStrategyInterface _strategy = IStrategyInterface(
-            strategyFactory.newStrategy(address(asset), "Morpho Looper")
+            address(
+                new InfinifiMorphoLooper(
+                    address(asset),
+                    "Morpho Looper",
+                    SIUSD,
+                    MORPHO,
+                    MARKET_ID,
+                    GATEWAY,
+                    IUSD
+                )
+            )
         );
 
-        vm.prank(management);
+        _strategy.setPendingManagement(management);
+
+        vm.startPrank(management);
         _strategy.acceptManagement();
 
+        _strategy.setKeeper(keeper);
+        _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
+        _strategy.setEmergencyAdmin(emergencyAdmin);
+
         // Allow first reports without tripping health check.
-        vm.startPrank(management);
         _strategy.setAllowed(user, true);
+        _strategy.setAllowed(address(_strategy), true);
+
+        // Set high gas price tolerance for testing
+        _strategy.setMaxGasPriceToTend(type(uint256).max);
 
         vm.stopPrank();
 

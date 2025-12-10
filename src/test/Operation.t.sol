@@ -29,6 +29,10 @@ contract OperationTest is Setup {
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // Deploy funds via tend (since _deployFunds is empty to prevent sandwich attacks)
+        vm.prank(keeper);
+        strategy.tend();
+
         logStrategyStatus("After deposit");
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
@@ -58,6 +62,10 @@ contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
         skip(1 days);
 
         // simulate profit by airdropping USDC
@@ -82,9 +90,17 @@ contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // After deposit with idle funds, tend should be triggered
         (trigger, ) = strategy.tendTrigger();
-        // Allow either state; ensure no revert
-        assertTrue(trigger || !trigger);
+        assertTrue(trigger, "tend should be triggered after deposit");
+
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
+        // After tend, should no longer need to tend (within buffer)
+        (trigger, ) = strategy.tendTrigger();
+        assertTrue(!trigger, "tend should not be triggered after tending");
     }
 
     function test_leverageRatio(uint256 _amount) public {
@@ -96,7 +112,19 @@ contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        // After deposit with flashloan, should be near target leverage
+        // After deposit but before tend, leverage should still be 1x (funds idle)
+        uint256 leverageAfterDeposit = strategy.getCurrentLeverageRatio();
+        assertEq(
+            leverageAfterDeposit,
+            1e18,
+            "!leverage after deposit should be 1x"
+        );
+
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
+        // After tend, should be near target leverage
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
         uint256 targetLeverage = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
@@ -133,11 +161,11 @@ contract OperationTest is Setup {
         // LLTV is ~91.5% which corresponds to max leverage of ~11.76x
         // Setting target + buffer above that should fail
         vm.expectRevert("exceeds LLTV");
-        strategy.setLeverageParams(3e18, 1e18, 11e18); // 11x + 1x = 12x would exceed LLTV
+        strategy.setLeverageParams(3e18, 1e18, 15e18); // 11x + 1x = 12x would exceed LLTV
 
         // Test bounds validation - max leverage < target + buffer
         vm.expectRevert("max leverage < target + buffer");
-        strategy.setLeverageParams(2e18, 0.001e18, 1e18);
+        strategy.setLeverageParams(2e18, 0.1e18, 1e18);
 
         vm.stopPrank();
     }
@@ -147,7 +175,16 @@ contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
+        assertGt(
+            strategy.balanceOfCollateral(),
+            0,
+            "!collateral should be > 0 before unwind"
+        );
 
         // Full unwind via flashloan
         vm.prank(management);

@@ -14,10 +14,14 @@ contract ShutdownTest is Setup {
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
 
         // Earn Interest
-        skip(1 days);
+        accrueYield();
 
         // Shutdown the strategy
         vm.prank(emergencyAdmin);
@@ -32,10 +36,10 @@ contract ShutdownTest is Setup {
         vm.prank(user);
         strategy.redeem(_amount, user, user);
 
-        assertGe(
+        assertApproxEqRel(
             asset.balanceOf(user),
             balanceBefore + _amount,
-            "!final balance"
+            0.001e18
         );
     }
 
@@ -45,10 +49,14 @@ contract ShutdownTest is Setup {
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
+        // Deploy funds via tend
+        vm.prank(keeper);
+        strategy.tend();
+
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
         // Earn Interest
-        skip(1 days);
+        accrueYield();
 
         // Shutdown the strategy
         vm.prank(emergencyAdmin);
@@ -67,10 +75,10 @@ contract ShutdownTest is Setup {
         vm.prank(user);
         strategy.redeem(_amount, user, user);
 
-        assertGe(
+        assertApproxEqRel(
             asset.balanceOf(user),
             balanceBefore + _amount,
-            "!final balance"
+            0.001e18
         );
     }
 

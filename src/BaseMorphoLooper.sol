@@ -13,6 +13,8 @@ import {MarketParamsLib} from "./libraries/morpho/MarketParamsLib.sol";
 import {MorphoBalancesLib} from "./libraries/morpho/periphery/MorphoBalancesLib.sol";
 import {MorphoLib} from "./libraries/morpho/periphery/MorphoLib.sol";
 import {SharesMathLib} from "./libraries/morpho/SharesMathLib.sol";
+import {IMerklDistributor} from "./interfaces/IMerkleDistributor.sol";
+import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
  * @title BaseMorphoLooper
@@ -20,13 +22,21 @@ import {SharesMathLib} from "./libraries/morpho/SharesMathLib.sol";
  *         Implements the flashloan callback and protocol-specific operations.
  *         All generic flashloan logic and calculations live in BaseLooper.
  */
-abstract contract BaseMorphoLooper is BaseLooper, IMorphoFlashLoanCallback {
+abstract contract BaseMorphoLooper is
+    BaseLooper,
+    IMorphoFlashLoanCallback,
+    AuctionSwapper
+{
     using SafeERC20 for ERC20;
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
     using MorphoLib for IMorpho;
 
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
+
+    /// @notice The Merkl Distributor contract for claiming rewards
+    IMerklDistributor public constant MERKL_DISTRIBUTOR =
+        IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
 
     IMorpho public immutable morpho;
     Id public immutable marketId;
@@ -53,6 +63,10 @@ abstract contract BaseMorphoLooper is BaseLooper, IMorphoFlashLoanCallback {
 
         ERC20(_asset).forceApprove(_morpho, type(uint256).max);
         ERC20(_collateralToken).forceApprove(_morpho, type(uint256).max);
+    }
+
+    function _accrueInterest() internal virtual override {
+        morpho.accrueInterest(marketParams);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -220,5 +234,39 @@ abstract contract BaseMorphoLooper is BaseLooper, IMorphoFlashLoanCallback {
 
     function balanceOfDebt() public view virtual override returns (uint256) {
         return morpho.expectedBorrowAssets(marketParams, address(this));
+    }
+
+    ////////////////////////////////////////////////////////////////
+    //                     REWARDS
+    ////////////////////////////////////////////////////////////////
+
+    /**
+     * @notice Claims rewards from Merkl distributor
+     * @param users Recipients of tokens
+     * @param tokens ERC20 tokens being claimed
+     * @param amounts Amounts of tokens that will be sent to the corresponding users
+     * @param proofs Array of Merkle proofs verifying the claims
+     */
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external {
+        MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
+    }
+
+    function setAuction(address _auction) external onlyManagement {
+        _setAuction(_auction);
+    }
+
+    function setUseAuction(bool _useAuction) external onlyManagement {
+        _setUseAuction(_useAuction);
+    }
+
+    function kickAuction(
+        address _token
+    ) external override onlyManagement returns (uint256) {
+        return _kickAuction(_token);
     }
 }

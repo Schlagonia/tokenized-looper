@@ -17,6 +17,12 @@ import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthChe
 abstract contract BaseLooper is BaseHealthCheck {
     using SafeERC20 for ERC20;
 
+    /// @notice Accrue interest before state changing functions
+    modifier accrue() {
+        _accrueInterest();
+        _;
+    }
+
     uint256 internal constant WAD = 1e18;
 
     /// @notice Flashloan operation types
@@ -138,11 +144,9 @@ abstract contract BaseLooper is BaseHealthCheck {
                 NEEDED TO BE OVERRIDDEN BY STRATEGIST
     //////////////////////////////////////////////////////////////*/
 
-    function _deployFunds(uint256 _amount) internal virtual override {
-        _lever(_amount);
-    }
+    function _deployFunds(uint256 _amount) internal virtual override accrue {}
 
-    function _freeFunds(uint256 _amount) internal virtual override {
+    function _freeFunds(uint256 _amount) internal virtual override accrue {
         _delever(_amount);
     }
 
@@ -150,6 +154,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         internal
         virtual
         override
+        accrue
         returns (uint256 _totalAssets)
     {
         _claimAndSellRewards();
@@ -180,17 +185,32 @@ abstract contract BaseLooper is BaseHealthCheck {
             ? depositLimit - totalAssets
             : 0;
 
-        // TODO: maxCollateral is in collateral not asset
-        uint256 maxDeposit = Math.min(_maxCollateralDeposit(), limit);
-        uint256 maxBorrow = _maxBorrowAmount();
-
-        if (maxBorrow == 0) return 0;
-
-        // Calculate max deposit based on leverage ratio
         uint256 targetLTV = _getTargetLTV();
         if (targetLTV == 0) return 0;
 
-        return Math.min(maxDeposit, (maxBorrow * WAD) / targetLTV);
+        uint256 maxDepositFromCollateral = _maxCollateralDeposit();
+        if (maxDepositFromCollateral == 0) return 0;
+
+        // Max collateral capacity converted to deposit amount
+        // Total collateral = deposit * L, so deposit = collateral / L = collateral * (1 - targetLTV)
+        maxDepositFromCollateral = maxDepositFromCollateral == type(uint256).max
+            ? maxDepositFromCollateral
+            : (_collateralToAsset(maxDepositFromCollateral) *
+                (WAD - targetLTV)) / WAD;
+
+        // Max deposit based on borrow capacity
+        // Debt = deposit * (L - 1), so deposit = debt / (L - 1) = debt * (1 - targetLTV) / targetLTV
+        uint256 maxBorrow = _maxBorrowAmount();
+        if (maxBorrow == 0) return 0;
+
+        uint256 maxDepositFromBorrow = (maxBorrow * (WAD - targetLTV)) /
+            targetLTV;
+
+        return
+            Math.min(
+                limit,
+                Math.min(maxDepositFromCollateral, maxDepositFromBorrow)
+            );
     }
 
     function availableWithdrawLimit(
@@ -199,7 +219,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         return type(uint256).max;
     }
 
-    function _tend(uint256 _totalIdle) internal virtual override {
+    function _tend(uint256 _totalIdle) internal virtual override accrue {
         _adjustPosition(
             Math.min(_totalIdle, availableDepositLimit(address(this)))
         );
@@ -214,6 +234,12 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (currentLeverage > maxLeverageRatio) {
             return true;
+        }
+
+        uint256 looseAsset = balanceOfAsset();
+
+        if (looseAsset > minAmountToBorrow) {
+            return _isBaseFeeAcceptable();
         }
 
         // Check if outside buffer zone
@@ -291,6 +317,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             );
             _withdrawCollateral(toWithdraw);
             _convertCollateralToAsset(toWithdraw);
+            return;
         }
 
         uint256 equity = valueOfCollateral - currentDebt;
@@ -431,6 +458,11 @@ abstract contract BaseLooper is BaseHealthCheck {
     /*//////////////////////////////////////////////////////////////
                     ABSTRACT - PROTOCOL SPECIFIC
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Accrue interest before state changing functions
+    function _accrueInterest() internal virtual {
+        // No-op by default
+    }
 
     /// @notice Execute a flashloan through the protocol
     function _executeFlashloan(
