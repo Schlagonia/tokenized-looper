@@ -32,8 +32,6 @@ abstract contract BaseMorphoLooper is
     using MorphoBalancesLib for IMorpho;
     using MorphoLib for IMorpho;
 
-    uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
-
     /// @notice The Merkl Distributor contract for claiming rewards
     IMerklDistributor public constant MERKL_DISTRIBUTOR =
         IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
@@ -107,7 +105,8 @@ abstract contract BaseMorphoLooper is
                         ORACLE IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get oracle price (collateral per borrow token, 1e36 scale)
+    /// @notice Get oracle price (loan token value per 1 collateral token, 1e36 scale)
+    /// @dev Returns raw oracle price to preserve precision. Callers must divide by ORACLE_PRICE_SCALE.
     function _getCollateralPrice()
         internal
         view
@@ -115,7 +114,7 @@ abstract contract BaseMorphoLooper is
         override
         returns (uint256)
     {
-        return IOracle(marketParams.oracle).price() / ORACLE_PRICE_SCALE;
+        return IOracle(marketParams.oracle).price();
     }
 
     /*//////////////////////////////////////////////////////////////

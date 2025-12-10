@@ -24,6 +24,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     uint256 internal constant WAD = 1e18;
+    uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
 
     /// @notice Flashloan operation types
     enum FlashLoanOperation {
@@ -73,14 +74,16 @@ abstract contract BaseLooper is BaseHealthCheck {
         collateralToken = _collateralToken;
 
         depositLimit = type(uint256).max;
+        // Allow self so we can use availableDepositLimit() to get the max deposit amount.
+        allowed[address(this)] = true;
 
-        // Leverage ratio defaults: 5x target, 0.5x buffer
+        // Leverage ratio defaults: 3x target, 0.5x buffer
         targetLeverageRatio = 3e18;
         leverageBuffer = 0.5e18;
         maxLeverageRatio = 5e18;
 
         maxGasPriceToTend = 200 * 1e9;
-        slippage = 500;
+        slippage = 50;
 
         _setLossLimitRatio(10);
         _setProfitLimitRatio(1_000);
@@ -101,14 +104,20 @@ abstract contract BaseLooper is BaseHealthCheck {
         allowed[_address] = _allowed;
     }
 
+    // TODO: HOW do we set it to unwind, or just hold collataeral? Is 0 target possible?
     function setLeverageParams(
         uint256 _targetLeverageRatio,
         uint256 _leverageBuffer,
         uint256 _maxLeverageRatio
     ) external onlyManagement {
-        require(_targetLeverageRatio >= WAD, "leverage < 1x");
-        require(_leverageBuffer >= 0.01e18, "buffer too small");
-        require(_targetLeverageRatio > _leverageBuffer, "target < buffer");
+        if (_targetLeverageRatio == 0) {
+            require(_leverageBuffer == 0, "buffer must be 0 if target is 0");
+        } else {
+            require(_targetLeverageRatio >= WAD, "leverage < 1x");
+            require(_leverageBuffer >= 0.01e18, "buffer too small");
+            require(_targetLeverageRatio > _leverageBuffer, "target < buffer");
+        }
+        
         require(
             _maxLeverageRatio >= _targetLeverageRatio + _leverageBuffer,
             "max leverage < target + buffer"
@@ -159,7 +168,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     {
         _claimAndSellRewards();
 
-        _adjustPosition(
+        _lever(
             Math.min(balanceOfAsset(), availableDepositLimit(address(this)))
         );
 
@@ -220,9 +229,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function _tend(uint256 _totalIdle) internal virtual override accrue {
-        _adjustPosition(
-            Math.min(_totalIdle, availableDepositLimit(address(this)))
-        );
+        _lever(_totalIdle);
     }
 
     function _tendTrigger() internal view virtual override returns (bool) {
@@ -236,15 +243,18 @@ abstract contract BaseLooper is BaseHealthCheck {
             return true;
         }
 
-        uint256 looseAsset = balanceOfAsset();
+        uint256 _targetLeverageRatio = targetLeverageRatio;
+        if (_targetLeverageRatio == 0) {
+            return currentLeverage > 0 && _isBaseFeeAcceptable();
+        }
 
-        if (looseAsset > minAmountToBorrow) {
+        if (balanceOfAsset() > minAmountToBorrow) {
             return _isBaseFeeAcceptable();
         }
 
         // Check if outside buffer zone
-        uint256 upperBound = targetLeverageRatio + leverageBuffer;
-        uint256 lowerBound = targetLeverageRatio - leverageBuffer;
+        uint256 upperBound = _targetLeverageRatio + leverageBuffer;
+        uint256 lowerBound = _targetLeverageRatio - leverageBuffer;
 
         if (currentLeverage < lowerBound || currentLeverage > upperBound) {
             return _isBaseFeeAcceptable();
@@ -257,52 +267,63 @@ abstract contract BaseLooper is BaseHealthCheck {
                         FLASHLOAN OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Adjust position to target leverage
-    function _adjustPosition(uint256 _amount) internal virtual {
-        uint256 currentLeverage = getCurrentLeverageRatio();
-
-        // If above max pay down any debt and recalculate leverage.
-        if (currentLeverage > maxLeverageRatio) {
-            _repay(Math.min(balanceOfDebt(), balanceOfAsset()));
-            currentLeverage = getCurrentLeverageRatio();
-        }
-
-        if (currentLeverage < targetLeverageRatio - leverageBuffer) {
-            _lever(_amount);
-        } else if (currentLeverage > targetLeverageRatio + leverageBuffer) {
-            _delever(0);
-        }
-    }
-
-    /// @notice Leverage position using flashloan
+    /// @notice Adjust position to target leverage ratio
+    /// @dev Handles three cases: lever up, delever, or just deploy _amount
     function _lever(uint256 _amount) internal virtual {
-        // Calculate target position
         (uint256 currentCollateralValue, uint256 currentDebt, ) = position();
-
         uint256 currentEquity = currentCollateralValue - currentDebt + _amount;
-
         (, uint256 targetDebt) = getTargetPosition(currentEquity);
 
-        // Amount to flashloan
-        uint256 flashloanAmount = targetDebt > currentDebt
-            ? targetDebt - currentDebt
-            : 0;
+        if (targetDebt > currentDebt) {
+            // CASE 1: Need MORE debt → leverage up via flashloan
+            uint256 flashloanAmount = targetDebt - currentDebt;
 
-        if (flashloanAmount <= minAmountToBorrow) {
-            // Just repay the debt directly without leverage
-            _repay(Math.min(_amount, currentDebt));
-            return;
+            if (flashloanAmount <= minAmountToBorrow) {
+                // Too small for flashloan, just repay debt with available assets
+                _repay(Math.min(_amount, balanceOfDebt()));
+                return;
+            }
+
+            bytes memory data = abi.encode(
+                FlashLoanData({
+                    operation: FlashLoanOperation.LEVERAGE,
+                    targetAmount: _amount
+                })
+            );
+            _executeFlashloan(address(asset), flashloanAmount, data);
+        } else if (currentDebt > targetDebt) {
+            // CASE 2: Need LESS debt → deleverage
+            uint256 debtToRepay = currentDebt - targetDebt;
+
+            if (_amount >= debtToRepay) {
+                // _amount covers the debt repayment, just repay and supply the rest
+                _repay(debtToRepay);
+                uint256 remainder = _amount - debtToRepay;
+                if (remainder > 0) {
+                    _supplyCollateral(_convertAssetToCollateral(remainder));
+                }
+                return;
+            }
+
+            // First repay what is loose.
+            _repay(_amount);
+
+            // Flashloan to repay debt, withdraw collateral to cover
+            uint256 collateralToWithdraw = (_assetToCollateral(
+                debtToRepay - _amount
+            ) * (MAX_BPS + slippage)) / MAX_BPS;
+
+            bytes memory data = abi.encode(
+                FlashLoanData({
+                    operation: FlashLoanOperation.DELEVERAGE,
+                    targetAmount: collateralToWithdraw
+                })
+            );
+            _executeFlashloan(address(asset), debtToRepay - _amount, data);
+        } else {
+            // CASE 3: At target debt → just deploy _amount if any
+            _repay(Math.min(_amount, balanceOfDebt()));
         }
-
-        bytes memory data = abi.encode(
-            FlashLoanData({
-                operation: FlashLoanOperation.LEVERAGE,
-                targetAmount: _amount
-            })
-        );
-
-        // Execute flashloan - callback will handle the leverage
-        _executeFlashloan(address(asset), flashloanAmount, data);
     }
 
     /// @notice Deleverage position using flashloan
@@ -328,8 +349,10 @@ abstract contract BaseLooper is BaseHealthCheck {
         (, uint256 targetDebt) = getTargetPosition(targetEquity);
 
         uint256 debtToRepay = currentDebt > targetDebt
-            ? currentDebt - targetDebt
+            ? // Add slippage to account for swap back.
+            ((currentDebt - targetDebt) * (MAX_BPS + slippage)) / MAX_BPS
             : 0;
+
         uint256 collateralToWithdraw = _assetToCollateral(
             debtToRepay + _amountNeeded
         );
@@ -474,7 +497,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Max available flashloan from protocol
     function maxFlashloan() public view virtual returns (uint256);
 
-    /// @notice Get oracle price (collateral value per borrow token, 1e36 scale)
+    /// @notice Get oracle price (loan token value per 1 collateral token, ORACLE_PRICE_SCALE)
+    /// @dev Must return raw oracle price in 1e36 scale for precision in conversions
     function _getCollateralPrice() internal view virtual returns (uint256);
 
     /// @notice Supply collateral (with asset->collateral conversion)
@@ -530,26 +554,28 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     /// @notice Get collateral value in asset terms
+    /// @dev price is in ORACLE_PRICE_SCALE (1e36), so we divide by 1e36
     function _collateralToAsset(
         uint256 collateralAmount
     ) internal view virtual returns (uint256) {
         if (collateralAmount == 0) return 0;
-        return (collateralAmount * _getCollateralPrice()) / WAD;
+        return (collateralAmount * _getCollateralPrice()) / ORACLE_PRICE_SCALE;
     }
 
     /// @notice Get collateral amount for asset value
+    /// @dev price is in ORACLE_PRICE_SCALE (1e36), so we multiply by 1e36
     function _assetToCollateral(
         uint256 assetAmount
     ) internal view virtual returns (uint256) {
         if (assetAmount == 0) return 0;
         uint256 price = _getCollateralPrice();
-        return (assetAmount * WAD) / price;
+        return (assetAmount * ORACLE_PRICE_SCALE) / price;
     }
 
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() public view virtual returns (uint256) {
         (uint256 collateralValue, uint256 debt, ) = position();
-        if (collateralValue == 0) return WAD;
+        if (collateralValue == 0) return 0;
         if (debt >= collateralValue) return type(uint256).max;
         return (collateralValue * WAD) / (collateralValue - debt);
     }
@@ -576,7 +602,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 _equity
     ) public view virtual returns (uint256 collateral, uint256 debt) {
         uint256 targetCollateral = (_equity * targetLeverageRatio) / WAD;
-        uint256 targetDebt = targetCollateral - _equity;
+        uint256 targetDebt = targetCollateral > _equity ? targetCollateral - _equity : 0;
         return (targetCollateral, targetDebt);
     }
 
@@ -584,13 +610,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _getTargetLTV() internal view virtual returns (uint256) {
         if (targetLeverageRatio <= WAD) return 0;
         return WAD - (WAD * WAD) / targetLeverageRatio;
-    }
-
-    /// @notice Get warning LTV (upper bound)
-    function _getWarningLTV() internal view virtual returns (uint256) {
-        uint256 warningLeverage = targetLeverageRatio + leverageBuffer;
-        if (warningLeverage <= WAD) return 0;
-        return WAD - (WAD * WAD) / warningLeverage;
     }
 
     /// @notice Get amount out with slippage

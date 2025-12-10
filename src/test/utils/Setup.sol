@@ -82,7 +82,7 @@ contract Setup is Test, IEvents {
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
     }
 
-    function setUpStrategy() public returns (address) {
+    function setUpStrategy() public virtual returns (address) {
         IStrategyInterface _strategy = IStrategyInterface(
             address(
                 new InfinifiMorphoLooper(
@@ -108,7 +108,6 @@ contract Setup is Test, IEvents {
 
         // Allow first reports without tripping health check.
         _strategy.setAllowed(user, true);
-        _strategy.setAllowed(address(_strategy), true);
 
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
