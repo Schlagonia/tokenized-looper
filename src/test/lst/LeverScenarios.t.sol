@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.18;
 
-import {Setup} from "./utils/Setup.sol";
-import {LeverScenariosTest} from "./LeverScenarios.t.sol";
-import {SetupLST} from "./utils/SetupLST.sol";
+import {Setup} from "../base/Setup.sol";
+import {LeverScenariosTest} from "../base/LeverScenarios.t.sol";
+import {SetupLST} from "./Setup.sol";
 
 /// @notice LST Lever Scenarios tests - inherits all tests from LeverScenariosTest, uses LST setup
 contract LSTLeverScenariosTest is SetupLST, LeverScenariosTest {

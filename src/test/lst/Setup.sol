@@ -5,7 +5,7 @@ import "forge-std/console2.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {Setup} from "./Setup.sol";
+import {Setup} from "../base/Setup.sol";
 import {LSTMorphoLooper} from "../../LSTMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../interfaces/morpho/IMorpho.sol";

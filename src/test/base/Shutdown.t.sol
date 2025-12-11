@@ -1,9 +1,9 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup} from "./utils/Setup.sol";
+import {Setup} from "./Setup.sol";
 
-contract ShutdownTest is Setup {
+abstract contract ShutdownTest is Setup {
     function setUp() public virtual override {
         super.setUp();
     }
@@ -150,7 +150,10 @@ contract ShutdownTest is Setup {
         // - getCurrentLeverageRatio() returns 0 when no position
         // - Idle mode check: currentLeverage > 0 → false → no tend needed
         (bool trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "!tendTrigger should be false after full unwind in idle mode");
+        assertFalse(
+            trigger,
+            "!tendTrigger should be false after full unwind in idle mode"
+        );
     }
 
     function test_idleMode_tendTriggerTrueWithDebt(uint256 _amount) public {
@@ -194,7 +197,11 @@ contract ShutdownTest is Setup {
         // In idle mode, availableDepositLimit() returns 0 because targetLTV is 0
         // This prevents new deposits from being accepted
         uint256 depositLimitInIdleMode = strategy.availableDepositLimit(user);
-        assertEq(depositLimitInIdleMode, 0, "!deposit limit should be 0 in idle mode");
+        assertEq(
+            depositLimitInIdleMode,
+            0,
+            "!deposit limit should be 0 in idle mode"
+        );
 
         // Verify the existing assets stay idle (not deployed) by calling tend
         // Even though tendTrigger returns true (due to implementation), tend() should not
@@ -204,7 +211,11 @@ contract ShutdownTest is Setup {
 
         // Verify still idle (no new position)
         assertEq(strategy.balanceOfDebt(), 0, "!debt should still be 0");
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should still be 0");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            0,
+            "!collateral should still be 0"
+        );
 
         // Verify assets are idle
         assertGt(strategy.balanceOfAsset(), 0, "!assets should be idle");
@@ -237,7 +248,11 @@ contract ShutdownTest is Setup {
         strategy.tend();
 
         // Verify position is rebuilt
-        assertGt(strategy.balanceOfCollateral(), 0, "!collateral should be > 0");
+        assertGt(
+            strategy.balanceOfCollateral(),
+            0,
+            "!collateral should be > 0"
+        );
         assertGt(strategy.balanceOfDebt(), 0, "!debt should be > 0");
 
         // Verify leverage is near target

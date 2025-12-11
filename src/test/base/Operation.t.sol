@@ -2,9 +2,9 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup} from "./utils/Setup.sol";
+import {Setup} from "./Setup.sol";
 
-contract OperationTest is Setup {
+abstract contract OperationTest is Setup {
     function setUp() public virtual override {
         super.setUp();
     }

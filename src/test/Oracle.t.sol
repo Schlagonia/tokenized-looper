@@ -1,7 +1,7 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup} from "./utils/Setup.sol";
+import {Setup} from "./base/Setup.sol";
 
 import {StrategyAprOracle} from "../periphery/StrategyAprOracle.sol";
 

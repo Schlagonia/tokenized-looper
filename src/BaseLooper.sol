@@ -117,7 +117,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             require(_leverageBuffer >= 0.01e18, "buffer too small");
             require(_targetLeverageRatio > _leverageBuffer, "target < buffer");
         }
-        
+
         require(
             _maxLeverageRatio >= _targetLeverageRatio + _leverageBuffer,
             "max leverage < target + buffer"
@@ -348,9 +348,8 @@ abstract contract BaseLooper is BaseHealthCheck {
             : 0;
         (, uint256 targetDebt) = getTargetPosition(targetEquity);
 
-        uint256 debtToRepay = currentDebt > targetDebt
-            ? // Add slippage to account for swap back.
-            ((currentDebt - targetDebt) * (MAX_BPS + slippage)) / MAX_BPS
+        uint256 debtToRepay = currentDebt > targetDebt // Add slippage to account for swap back.
+            ? ((currentDebt - targetDebt) * (MAX_BPS + slippage)) / MAX_BPS
             : 0;
 
         uint256 collateralToWithdraw = _assetToCollateral(
@@ -602,7 +601,9 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 _equity
     ) public view virtual returns (uint256 collateral, uint256 debt) {
         uint256 targetCollateral = (_equity * targetLeverageRatio) / WAD;
-        uint256 targetDebt = targetCollateral > _equity ? targetCollateral - _equity : 0;
+        uint256 targetDebt = targetCollateral > _equity
+            ? targetCollateral - _equity
+            : 0;
         return (targetCollateral, targetDebt);
     }
 

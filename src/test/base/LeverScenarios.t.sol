@@ -2,13 +2,13 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup} from "./utils/Setup.sol";
+import {Setup} from "./Setup.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title LeverScenariosTest
 /// @notice Comprehensive tests for the _lever function in BaseLooper.sol
 /// @dev Tests all scenarios: leveraging up, deleveraging, at-target, above-max, and edge cases
-contract LeverScenariosTest is Setup {
+abstract contract LeverScenariosTest is Setup {
     uint256 internal constant WAD = 1e18;
 
     function setUp() public virtual override {
