@@ -8,7 +8,7 @@ abstract contract ShutdownTest is Setup {
         super.setUp();
     }
 
-    function test_shutdownCanWithdraw(uint256 _amount) public {
+    function test_shutdownCanWithdraw(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy
@@ -43,7 +43,7 @@ abstract contract ShutdownTest is Setup {
         );
     }
 
-    function test_emergencyWithdraw_maxUint(uint256 _amount) public {
+    function test_emergencyWithdraw_maxUint(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy

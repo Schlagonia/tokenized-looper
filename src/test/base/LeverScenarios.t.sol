@@ -63,8 +63,19 @@ abstract contract LeverScenariosTest is Setup {
             // 3. Repay debt
             uint256 repayAmount = currentDebt - desiredDebt;
 
-            // Withdraw collateral, convert to asset (will give us the asset to repay)
-            uint256 collateralToWithdraw = strategy.balanceOfCollateral() / 4; // withdraw 25%
+            // Calculate collateral needed based on repayAmount + slippage (like actual code)
+            // position() returns collateral VALUE in asset terms, balanceOfCollateral() returns token units
+            uint256 collateralTokens = strategy.balanceOfCollateral();
+
+            // Convert repayAmount (asset terms) to collateral token units:
+            // collateralTokens / currentCollateral = tokens per asset value
+            // repayAmount * collateralTokens / currentCollateral = tokens needed
+            // Add slippage buffer
+            uint256 repayWithSlippage = (repayAmount *
+                (10_000 + strategy.slippage())) / 10_000;
+            uint256 collateralToWithdraw = (repayWithSlippage *
+                collateralTokens) / currentCollateral;
+
             strategy.manualWithdrawCollateral(collateralToWithdraw);
             strategy.convertCollateralToAsset(type(uint256).max);
 
@@ -74,11 +85,8 @@ abstract contract LeverScenariosTest is Setup {
                 looseAsset > repayAmount ? repayAmount : looseAsset
             );
 
-            // If we still have loose asset, supply it back as collateral
-            if (strategy.balanceOfAsset() > 0) {
-                strategy.convertAssetToCollateral(type(uint256).max);
-                strategy.manualSupplyCollateral(type(uint256).max);
-            }
+            // Leave any leftover as loose asset to avoid slippage errors during conversion
+            // The position will be slightly under-leveraged which is fine for test setup
         }
         vm.stopPrank();
     }
@@ -997,7 +1005,7 @@ abstract contract LeverScenariosTest is Setup {
     function test_lever_respectsMinAmountToBorrow() public {
         // 1. Set a high minimum borrow threshold
         vm.prank(management);
-        strategy.setMinAmountToBorrow(10000e6); // 10k USDC
+        strategy.setMinAmountToBorrow(1000000e6); // 1M USDC
 
         // 2. Create a position that would need a small flashloan to reach target
         // We'll create an under-leveraged position with equity that results in

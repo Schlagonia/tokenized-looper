@@ -6,44 +6,50 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../base/Setup.sol";
-import {PTMorphoLooper} from "../../PTMorphoLooper.sol";
+import {sUSDaiPTLooper} from "../../sUSDaiPTLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../interfaces/morpho/IMorpho.sol";
 
-/// @notice Setup for PT (Pendle PT/USDC) Morpho Looper tests
-/// @dev Inherits from Setup and overrides strategy deployment and token config
-contract SetupPT is Setup {
-    // PT-siUSD/USDC market
+/// @notice Setup for sUSDai PT Morpho Looper tests on Arbitrum
+/// @dev Inherits from Setup and overrides for Arbitrum network
+contract SetupPTArb is Setup {
+    // Arbitrum Morpho
+    address public constant ARB_MORPHO =
+        0x6c247b1F6182318877311737BaC0844bAa518F5e;
+
+    // Market config
     Id public constant PT_MARKET_ID =
         Id.wrap(
-            //0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789 // cUSD market
-            0x32b4a75db50a20f7435dfdcf54593a2e96fc97901321d3ab07268941dee93edb // siUSD market
+            0x7717f1e04510390518811b3133ea47c298094ddd1d806ed8f8867d88c727bad7
         );
 
     // PT token (collateral)
     address public constant PT_TOKEN =
-        //0x545A490f9ab534AdF409A2E682bc4098f49952e3; // cUSD token
-        0x5510B080449d5E3Bf345b6635eD40A35B36b081f; // siUSD token
+        0x1BF1311FCF914A69Dd5805C9B06b72F80539cB3f;
 
     // Pendle market for PT swaps
     address public constant PENDLE_MARKET =
-        //0x307c15f808914Df5a5DbE17E5608f84953fFa023; //  cUSD market
-        0x126b8f10B8a6f3D3Dbe5dc991cEB14ABa6345E04; // siUSD market
+        0x2092Fa5d02276B3136A50F3C2C3a6Ed45413183E;
 
-    address public PENDLE_TOKEN;
+    // Pendle token (sUSDai) - intermediate for USDC <-> PT conversion
+    address public constant PENDLE_TOKEN =
+        0x0B2b2B2076d95dda7817e785989fE353fe955ef9;
+
+    // Arbitrum USDC
+    address public constant ARB_USDC =
+        0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
 
     function setUp() public virtual override {
-        vm.createSelectFork(vm.envString("ETH_RPC_URL"));
-        _setTokenAddrs();
+        vm.createSelectFork(vm.envString("ARB_RPC_URL"));
 
-        // Set asset to USDC (same as base Setup)
-        asset = ERC20(tokenAddrs["USDC"]);
-        PENDLE_TOKEN = address(asset);
+        // Set asset to Arbitrum USDC
+        asset = ERC20(ARB_USDC);
         decimals = asset.decimals();
 
         // Fuzz amounts for 6 decimal token (USDC)
-        maxFuzzAmount = 100_000e6; // up to 100,000,000 USDC
-        minFuzzAmount = 10e6; // 100 USDC
+        // Keep smaller amounts due to limited liquidity in Arbitrum pool
+        maxFuzzAmount = 10_000e6; // 10K USDC max
+        minFuzzAmount = 10e6;
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
@@ -58,20 +64,21 @@ contract SetupPT is Setup {
         vm.label(address(strategy), "strategy");
         vm.label(PT_TOKEN, "PT_TOKEN");
         vm.label(PENDLE_MARKET, "PENDLE_MARKET");
+        vm.label(PENDLE_TOKEN, "PENDLE_TOKEN");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
     }
 
     function setUpStrategy() public virtual override returns (address) {
         IStrategyInterface _strategy = IStrategyInterface(
             address(
-                new PTMorphoLooper(
+                new sUSDaiPTLooper(
                     address(asset), // USDC
-                    "PT Morpho Looper",
+                    "sUSDai PT Morpho Looper",
                     PT_TOKEN, // PT as collateral
-                    MORPHO,
+                    ARB_MORPHO,
                     PT_MARKET_ID,
                     PENDLE_MARKET,
-                    PENDLE_TOKEN // pendleToken = USDC
+                    PENDLE_TOKEN // sUSDai
                 )
             )
         );
@@ -85,7 +92,6 @@ contract SetupPT is Setup {
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);
 
-        // Allow first reports without tripping health check.
         _strategy.setAllowed(user, true);
 
         // Set high gas price tolerance for testing
@@ -97,10 +103,8 @@ contract SetupPT is Setup {
     }
 
     /// @notice Override accrueYield - airdrop profit instead of skipping time
-    /// @dev The cUSD oracle becomes stale after time skip, so we simulate yield via airdrop
+    /// @dev Oracle may have staleness checks that will revert after time skip
     function accrueYield() public virtual override {
-        // Don't skip time - the cUSD oracle has staleness checks that will revert
-        // Instead, simulate yield by airdropping some profit
         airdrop(asset, address(strategy), 1e6);
     }
 }

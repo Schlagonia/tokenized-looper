@@ -27,7 +27,7 @@ abstract contract OperationTest is Setup {
         assertEq(strategy.leverageBuffer(), 0.5e18, "!leverageBuffer");
     }
 
-    function test_operation(uint256 _amount) public {
+    function test_operation(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -60,7 +60,7 @@ abstract contract OperationTest is Setup {
         assertGe(asset.balanceOf(user), balanceBefore, "!final balance");
     }
 
-    function test_profitableReport(uint256 _amount) public {
+    function test_profitableReport(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);

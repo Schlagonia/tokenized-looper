@@ -1,26 +1,28 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
 import {Setup} from "../base/Setup.sol";
 import {OperationTest} from "../base/Operation.t.sol";
-import {SetupPT} from "./Setup.sol";
+import {SetupPTArb} from "./Setup.sol";
 
-/// @notice PT Operation tests - inherits all tests from OperationTest, uses PT setup
-contract PTOperationTest is SetupPT, OperationTest {
-    function setUp() public override(SetupPT, OperationTest) {
-        SetupPT.setUp();
+contract PTArbOperationTest is SetupPTArb, OperationTest {
+    function setUp() public override(SetupPTArb, OperationTest) {
+        SetupPTArb.setUp();
     }
 
-    function setUpStrategy() public override(SetupPT, Setup) returns (address) {
-        return SetupPT.setUpStrategy();
+    function setUpStrategy()
+        public
+        override(SetupPTArb, Setup)
+        returns (address)
+    {
+        return SetupPTArb.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupPT, Setup) {
-        SetupPT.accrueYield();
-        //airdrop(asset, address(strategy), minFuzzAmount / 10);
+    function accrueYield() public override(SetupPTArb, Setup) {
+        SetupPTArb.accrueYield();
     }
 
-    /// @notice Override to check PT-specific leverage params (5x instead of 3x)
+    /// @notice Override to check 5x leverage instead of 3x
     function test_setupStrategyOK() public override {
         assertTrue(address(0) != address(strategy));
         assertEq(strategy.asset(), address(asset));
