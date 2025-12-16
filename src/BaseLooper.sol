@@ -38,12 +38,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 targetAmount; // Amount to deploy or free (in asset terms)
     }
 
-    /// The token posted as collateral in the loop.
-    address public immutable collateralToken;
+    /// @notice Slippage tolerance (in basis points) for swaps.
+    uint64 public slippage;
 
-    /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
-    /// @dev leverage = collateralValue / (collateralValue - debtValue) = 1 / (1 - LTV)
-    uint256 public targetLeverageRatio;
+    /// @notice The maximum amount of asset that can be deposited
+    uint256 public depositLimit;
 
     /// @notice Buffer tolerance in WAD (e.g., 0.5e18 = +/- 0.5x triggers tend)
     /// @dev Bounds are [targetLeverageRatio - buffer, targetLeverageRatio + buffer]
@@ -53,8 +52,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// Will trigger a tend if the current leverage ratio exceeds this value.
     uint256 public maxLeverageRatio;
 
-    /// @notice Slippage tolerance (in basis points) for swaps.
-    uint64 public slippage;
+    /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
+    /// @dev leverage = collateralValue / (collateralValue - debtValue) = 1 / (1 - LTV)
+    uint256 public targetLeverageRatio;
 
     /// The max the base fee (in gwei) will be for a tend.
     uint256 public maxGasPriceToTend;
@@ -62,7 +62,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// Lower limit on flashloan size.
     uint256 public minAmountToBorrow;
 
-    uint256 public depositLimit;
+    /// The token posted as collateral in the loop.
+    address public immutable collateralToken;
 
     mapping(address => bool) public allowed;
 
@@ -79,8 +80,8 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // Leverage ratio defaults: 3x target, 0.5x buffer
         targetLeverageRatio = 3e18;
-        leverageBuffer = 0.5e18;
-        maxLeverageRatio = 5e18;
+        leverageBuffer = 0.25e18;
+        maxLeverageRatio = 4e18;
 
         maxGasPriceToTend = 200 * 1e9;
         slippage = 50;
@@ -172,7 +173,11 @@ abstract contract BaseLooper is BaseHealthCheck {
             Math.min(balanceOfAsset(), availableDepositLimit(address(this)))
         );
 
-        _totalAssets =
+        _totalAssets = estimatedTotalAssets();
+    }
+
+    function estimatedTotalAssets() public view virtual returns (uint256) {
+        return
             balanceOfAsset() +
             _collateralToAsset(balanceOfCollateral()) -
             balanceOfDebt();
@@ -300,18 +305,18 @@ abstract contract BaseLooper is BaseHealthCheck {
                 _repay(debtToRepay);
                 uint256 remainder = _amount - debtToRepay;
                 if (remainder > 0) {
-                    _supplyCollateral(_convertAssetToCollateral(remainder));
+                    _supplyCollateral(_convertAssetAndCheckSlippage(remainder));
                 }
                 return;
             }
 
             // First repay what is loose.
             _repay(_amount);
+            debtToRepay -= _amount;
 
             // Flashloan to repay debt, withdraw collateral to cover
-            uint256 collateralToWithdraw = (_assetToCollateral(
-                debtToRepay - _amount
-            ) * (MAX_BPS + slippage)) / MAX_BPS;
+            uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
+                (MAX_BPS + slippage)) / MAX_BPS;
 
             bytes memory data = abi.encode(
                 FlashLoanData({
@@ -319,7 +324,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                     targetAmount: collateralToWithdraw
                 })
             );
-            _executeFlashloan(address(asset), debtToRepay - _amount, data);
+            _executeFlashloan(address(asset), debtToRepay, data);
         } else {
             // CASE 3: At target debt → just deploy _amount if any
             _repay(Math.min(_amount, balanceOfDebt()));
@@ -337,7 +342,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                 balanceOfCollateral()
             );
             _withdrawCollateral(toWithdraw);
-            _convertCollateralToAsset(toWithdraw);
+            _convertCollateralAndCheckSlippage(toWithdraw);
             return;
         }
 
@@ -359,7 +364,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         if (debtToRepay == 0 && collateralToWithdraw != 0) {
             // No debt to repay, just withdraw collateral
             _withdrawCollateral(collateralToWithdraw);
-            _convertCollateralToAsset(collateralToWithdraw);
+            _convertCollateralAndCheckSlippage(collateralToWithdraw);
             return;
         }
 
@@ -397,10 +402,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 totalToConvert = params.targetAmount + flashloanAmount;
 
         // Convert all asset to collateral
-        uint256 collateralReceived = _convertAssetToCollateral(totalToConvert);
-        require(
-            collateralReceived >= _getAmountOut(totalToConvert, true),
-            "slippage: collateral"
+        uint256 collateralReceived = _convertAssetAndCheckSlippage(
+            totalToConvert
         );
 
         // Supply collateral
@@ -425,11 +428,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         _withdrawCollateral(collateralToWithdraw);
 
         // Convert collateral back to asset
-        uint256 assetReceived = _convertCollateralToAsset(collateralToWithdraw);
-        require(
-            assetReceived >= _getAmountOut(collateralToWithdraw, false),
-            "slippage: asset"
-        );
+        _convertCollateralAndCheckSlippage(collateralToWithdraw);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -441,14 +440,14 @@ abstract contract BaseLooper is BaseHealthCheck {
         _delever(TokenizedStrategy.totalAssets());
     }
 
-    /// @notice Manual: supply collateral (converts asset to collateral first)
+    /// @notice Manual: supply collateral
     function manualSupplyCollateral(
         uint256 amount
     ) external onlyEmergencyAuthorized {
         _supplyCollateral(Math.min(amount, balanceOfCollateralToken()));
     }
 
-    /// @notice Manual: withdraw collateral (converts to asset)
+    /// @notice Manual: withdraw collateral
     function manualWithdrawCollateral(
         uint256 amount
     ) external onlyEmergencyAuthorized {
@@ -468,13 +467,34 @@ abstract contract BaseLooper is BaseHealthCheck {
     function convertCollateralToAsset(
         uint256 amount
     ) external onlyEmergencyAuthorized {
-        _convertCollateralToAsset(Math.min(amount, balanceOfCollateralToken()));
+        _convertCollateralAndCheckSlippage(
+            Math.min(amount, balanceOfCollateralToken())
+        );
     }
 
     function convertAssetToCollateral(
         uint256 amount
     ) external onlyEmergencyAuthorized {
-        _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
+        _convertAssetAndCheckSlippage(Math.min(amount, balanceOfAsset()));
+    }
+
+    function _convertCollateralAndCheckSlippage(
+        uint256 amount
+    ) internal returns (uint256) {
+        uint256 converted = _convertCollateralToAsset(amount);
+        require(converted >= _getAmountOut(amount, false), "slippage: asset");
+        return converted;
+    }
+
+    function _convertAssetAndCheckSlippage(
+        uint256 amount
+    ) internal returns (uint256) {
+        uint256 converted = _convertAssetToCollateral(amount);
+        require(
+            converted >= _getAmountOut(amount, true),
+            "slippage: collateral"
+        );
+        return converted;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -647,7 +667,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         } else if (_amount > 0) {
             _amount = Math.min(_amount, balanceOfCollateral());
             _withdrawCollateral(_amount);
-            _convertCollateralToAsset(_amount);
+            _convertCollateralAndCheckSlippage(_amount);
         }
     }
 }

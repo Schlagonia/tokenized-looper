@@ -36,11 +36,13 @@ abstract contract BaseMorphoLooper is
     IMerklDistributor public constant MERKL_DISTRIBUTOR =
         IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
 
-    IMorpho public immutable morpho;
     Id public immutable marketId;
-    MarketParams public marketParams;
 
-    bool public isFlashloanActive;
+    IMorpho public immutable morpho;
+
+    MarketParams internal marketParams;
+
+    bool internal isFlashloanActive;
 
     constructor(
         address _asset,
@@ -63,9 +65,7 @@ abstract contract BaseMorphoLooper is
         ERC20(_collateralToken).forceApprove(_morpho, type(uint256).max);
     }
 
-    function _accrueInterest() internal virtual override {
-        morpho.accrueInterest(marketParams);
-    }
+    function _accrueInterest() internal virtual override {}
 
     /*//////////////////////////////////////////////////////////////
                         FLASHLOAN IMPLEMENTATION
@@ -265,7 +265,7 @@ abstract contract BaseMorphoLooper is
 
     function kickAuction(
         address _token
-    ) external override onlyManagement returns (uint256) {
+    ) external override onlyKeepers returns (uint256) {
         return _kickAuction(_token);
     }
 }

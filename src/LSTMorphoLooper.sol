@@ -9,11 +9,9 @@ import {Id} from "./interfaces/morpho/IMorpho.sol";
 import {UniswapV3Swapper} from "@periphery/swappers/UniswapV3Swapper.sol";
 
 /**
- * @notice Infinifi/Morpho looper using sIUSD (staked iUSD) as collateral and USDC as borrow token.
- *         Uses flashloan-based leverage for atomic position management.
- *         - Deposits USDC -> mints iUSD -> stakes to sIUSD via GatewayV1.
- *         - Withdraws sIUSD -> redeems to iUSD -> redeems to USDC.
- *         - Uses the provided Morpho Blue marketId (collateral = sIUSD, borrow = USDC).
+ * @notice LSTMorphoLooper is a looper that is built to use any token as collateral to
+ *         leveragae loop against its underlying asset.
+ *         It uses Uniswap V3 to swap the collateral to the underlying asset and back.
  */
 contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
     using SafeERC20 for ERC20;
@@ -23,9 +21,11 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
         string memory _name,
         address _collateralToken,
         address _morpho,
-        Id _marketId
+        Id _marketId,
+        address _router
     ) BaseMorphoLooper(_asset, _name, _collateralToken, _morpho, _marketId) {
         _setUniFees(address(asset), address(collateralToken), 100);
+        router = _router;
     }
 
     function setUniFees(
@@ -34,6 +34,10 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
         uint24 _fee
     ) external onlyManagement {
         _setUniFees(_token0, _token1, _fee);
+    }
+
+    function setBase(address _base) external onlyManagement {
+        base = _base;
     }
 
     /*//////////////////////////////////////////////////////////////

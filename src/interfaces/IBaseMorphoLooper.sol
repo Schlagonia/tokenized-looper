@@ -8,6 +8,4 @@ interface IBaseMorphoLooper is IBaseLooper {
     function morpho() external view returns (address);
 
     function marketId() external view returns (Id);
-
-    function marketParams() external view returns (MarketParams memory);
 }

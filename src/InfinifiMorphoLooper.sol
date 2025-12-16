@@ -19,11 +19,11 @@ import {IInfiniFiGatewayV1} from "./interfaces/infinifi/IInfiniFiGatewayV1.sol";
 contract InfinifiMorphoLooper is BaseMorphoLooper {
     using SafeERC20 for ERC20;
 
-    /// @notice Infinifi gateway V1 (proxy address on mainnet).
-    address public immutable gateway;
-
     /// @notice iUSD receipt token (12 decimals).
     address public immutable iusd;
+
+    /// @notice Infinifi gateway V1 (proxy address on mainnet).
+    address public immutable gateway;
 
     constructor(
         address _asset, // USDC

@@ -36,6 +36,6 @@ contract PTArbOperationTest is SetupPTArb, OperationTest {
 
         // PT uses 5x leverage instead of 3x
         assertEq(strategy.targetLeverageRatio(), 5e18, "!targetLeverageRatio");
-        assertEq(strategy.leverageBuffer(), 0.5e18, "!leverageBuffer");
+        assertEq(strategy.leverageBuffer(), 0.25e18, "!leverageBuffer");
     }
 }

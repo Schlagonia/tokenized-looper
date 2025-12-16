@@ -35,14 +35,26 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         address _pendleToken
     ) BaseMorphoLooper(_asset, _name, _collateralToken, _morpho, _marketId) {
         targetLeverageRatio = 5e18;
-        leverageBuffer = 0.5e18;
-        maxLeverageRatio = 7e18;
+        leverageBuffer = 0.25e18;
+        maxLeverageRatio = 6e18;
 
         pendleMarket = _pendleMarket;
         pendleToken = _pendleToken;
 
         // Register PT with its Pendle market
         _setMarket(_collateralToken, _pendleMarket);
+
+        uint256 ptDecimals = ERC20(_collateralToken).decimals();
+        uint256 pendleTokenDecimals = ERC20(_pendleToken).decimals();
+
+        guessMaxMultiplier =
+            2 *
+            (10 **
+                (
+                    pendleTokenDecimals > ptDecimals
+                        ? pendleTokenDecimals - ptDecimals
+                        : 1
+                ));
 
         // Approve tokens for Pendle router
         ERC20(_pendleToken).forceApprove(pendleRouter, type(uint256).max);

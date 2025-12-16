@@ -37,6 +37,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setMinAmountToBorrow(uint256 _minAmountToBorrow) external;
 
+    function estimatedTotalAssets() external view returns (uint256);
+
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() external view returns (uint256);
 

@@ -24,7 +24,7 @@ abstract contract OperationTest is Setup {
 
         // Check leverage params
         assertEq(strategy.targetLeverageRatio(), 3e18, "!targetLeverageRatio");
-        assertEq(strategy.leverageBuffer(), 0.5e18, "!leverageBuffer");
+        assertEq(strategy.leverageBuffer(), 0.25e18, "!leverageBuffer");
     }
 
     function test_operation(uint256 _amount) public virtual {
