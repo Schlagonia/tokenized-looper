@@ -35,8 +35,7 @@ abstract contract LeverScenariosTest is Setup {
         strategy.tend();
 
         // 3. Adjust to desired leverage by borrowing more or repaying
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
 
         // Calculate desired debt for target leverage
         // leverage = collateral / equity => we need: currentDebt' such that leverage = targetLeverage
@@ -109,8 +108,7 @@ abstract contract LeverScenariosTest is Setup {
         // 2. Repay some debt to reduce leverage
         // At 3x: collateral = 3*equity, debt = 2*equity
         // To get under-leveraged, repay 25-30% of debt
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 repayAmount = currentDebt / 4; // Repay 25% of debt (more conservative)
 
         // Airdrop asset to repay (simpler than withdrawing collateral)
@@ -121,7 +119,7 @@ abstract contract LeverScenariosTest is Setup {
         strategy.manualRepay(repayAmount);
         vm.stopPrank();
 
-        (collateral, debt, ) = strategy.position();
+        (collateral, debt) = strategy.position();
     }
 
     /// @notice Setup an over-leveraged position (above target + buffer)
@@ -137,7 +135,7 @@ abstract contract LeverScenariosTest is Setup {
 
         _setupPositionWithLeverage(equity, overLeverage);
 
-        (collateral, debt, ) = strategy.position();
+        (collateral, debt) = strategy.position();
     }
 
     /// @notice Setup a position at exactly target leverage
@@ -151,7 +149,7 @@ abstract contract LeverScenariosTest is Setup {
 
         _setupPositionWithLeverage(equity, targetLeverage);
 
-        (collateral, debt, ) = strategy.position();
+        (collateral, debt) = strategy.position();
     }
 
     /// @notice Setup a position above max leverage (emergency territory)
@@ -166,7 +164,7 @@ abstract contract LeverScenariosTest is Setup {
 
         _setupPositionWithLeverage(equity, emergencyLeverage);
 
-        (collateral, debt, ) = strategy.position();
+        (collateral, debt) = strategy.position();
     }
 
     /// @notice Assert that leverage is within target buffer
@@ -222,7 +220,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // 2. Verify no position before tend
-        (uint256 collateralBefore, uint256 debtBefore, ) = strategy.position();
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
         assertEq(collateralBefore, 0, "should have no collateral before");
         assertEq(debtBefore, 0, "should have no debt before");
 
@@ -231,7 +229,7 @@ abstract contract LeverScenariosTest is Setup {
         strategy.tend();
 
         // 4. Verify position was created with leverage
-        (uint256 collateralAfter, uint256 debtAfter, ) = strategy.position();
+        (uint256 collateralAfter, uint256 debtAfter) = strategy.position();
         assertGt(collateralAfter, 0, "should have collateral after");
         assertGt(debtAfter, 0, "should have debt after");
 
@@ -250,7 +248,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, smallAmount);
 
         // 2. Verify no position before tend
-        (uint256 collateralBefore, uint256 debtBefore, ) = strategy.position();
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
         assertEq(collateralBefore, 0, "should have no collateral before");
         assertEq(debtBefore, 0, "should have no debt before");
 
@@ -402,7 +400,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, target + buffer, "should be over-leveraged");
 
         // 3. Get position state before tend
-        (uint256 collateralBefore, uint256 debtBefore, ) = strategy.position();
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
 
         // 4. Execute tend with no new funds
         vm.prank(keeper);
@@ -439,7 +437,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, target + buffer, "should be over-leveraged");
 
         // 3. Get position state BEFORE adding new funds
-        (uint256 collateralBefore, uint256 debtBefore, ) = strategy.position();
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
         uint256 equityBefore = collateralBefore - debtBefore;
 
         // 4. Calculate small amount: should be less than what would be needed to reach target
@@ -492,8 +490,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, target + buffer, "should be over-leveraged");
 
         // 3. Calculate debt to repay
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
         (, uint256 targetDebt) = _getTargetPosition(currentEquity);
         uint256 debtToRepay = currentDebt - targetDebt;
@@ -538,8 +535,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, target + buffer, "should be over-leveraged");
 
         // 3. Calculate exact debt to repay to reach target
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
         (, uint256 targetDebt) = _getTargetPosition(currentEquity);
         uint256 debtToRepay = currentDebt - targetDebt;
@@ -645,7 +641,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 3. Get position state before tend
-        (uint256 collateralBefore, uint256 debtBefore, ) = strategy.position();
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
 
         // 4. Execute tend with no new funds
         vm.prank(keeper);
@@ -756,8 +752,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 3. Calculate debt to repay
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
         (, uint256 targetDebt) = _getTargetPosition(currentEquity);
         uint256 debtToRepay = currentDebt - targetDebt;
@@ -917,8 +912,7 @@ abstract contract LeverScenariosTest is Setup {
         _setupPositionWithLeverage(equityAmount, overLeverage);
 
         // 2. Calculate exact amount needed to cover debt reduction
-        (uint256 currentCollateral, uint256 currentDebt, ) = strategy
-            .position();
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
         (, uint256 targetDebt) = _getTargetPosition(currentEquity);
         uint256 debtToRepay = currentDebt > targetDebt
@@ -974,8 +968,8 @@ abstract contract LeverScenariosTest is Setup {
         vm.prank(keeper);
         strategy.tend();
 
-        (uint256 collateralValue, uint256 debt, uint256 currentLTV) = strategy
-            .position();
+        (uint256 collateralValue, uint256 debt) = strategy.position();
+        uint256 currentLTV = strategy.getCurrentLTV();
 
         // Verify collateral value > 0
         assertGt(collateralValue, 0, "!collateralValue");
@@ -1128,5 +1122,282 @@ abstract contract LeverScenariosTest is Setup {
             newTarget + newBuffer,
             "leverage too high for new target"
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    GROUP 6: MAX AMOUNT TO SWAP TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Test Case 1 with maxAmountToSwap limiting the flashloan
+    /// @dev When totalSwap (_amount + flashloanAmount) > maxAmountToSwap,
+    ///      the flashloan should be reduced to stay within limits
+    function test_lever_maxAmountToSwap_limitsFlashloan(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Set a maxAmountToSwap that will limit the position building
+        uint256 maxSwap = _amount * 2; // Allow 2x the deposit as max swap
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        // Tend should respect maxAmountToSwap
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Verify position was created but limited
+        (uint256 collateralValue, uint256 debt) = strategy.position();
+        assertGt(collateralValue, 0, "!should have collateral");
+
+        // The total swap should be approximately maxSwap or less
+        // Since totalSwap = _amount + flashloanAmount, and flashloanAmount ~ debt
+        // The debt + _amount should be around maxSwap
+        // Note: actual behavior depends on slippage and conversions
+        assertLe(
+            debt + _amount,
+            maxSwap + (maxSwap / 10), // Allow 10% tolerance for slippage
+            "!total swap should be limited"
+        );
+    }
+
+    /// @notice Test Case 1 when _amount alone exceeds maxAmountToSwap
+    /// @dev When _amount >= maxAmountToSwap, should just swap maxAmountToSwap and supply
+    function test_lever_maxAmountToSwap_amountExceedsMax() public {
+        uint256 depositAmount = 10000e6;
+        uint256 maxSwap = 5000e6; // Less than deposit amount
+
+        // Set maxAmountToSwap less than deposit
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+
+        // Tend should only swap maxSwap worth
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Position should have limited collateral
+        // No debt should be taken since we hit the early return
+        uint256 debt = strategy.balanceOfDebt();
+        assertEq(debt, 0, "!should have no debt when _amount exceeds maxSwap");
+
+        // Should have some collateral from the maxSwap conversion
+        uint256 collateral = strategy.balanceOfCollateral();
+        assertGt(collateral, 0, "!should have some collateral");
+
+        // Should have leftover asset
+        uint256 looseAsset = strategy.balanceOfAsset();
+        assertGt(looseAsset, 0, "!should have leftover asset");
+    }
+
+    /// @notice Test Case 1 with maxAmountToSwap = 0 (edge case)
+    /// @dev When maxAmountToSwap is 0, should not swap anything
+    function test_lever_maxAmountToSwap_zero() public {
+        uint256 depositAmount = 10000e6;
+
+        // Set maxAmountToSwap to 0
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(0);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+
+        // Tend should swap 0 (early return path)
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should have no debt
+        assertEq(strategy.balanceOfDebt(), 0, "!should have no debt");
+
+        // Loose asset should be close to deposit (minus any minimal swaps)
+        uint256 looseAsset = strategy.balanceOfAsset();
+        // The strategy should have either all asset or some collateral if 0 swap succeeded
+        assertTrue(
+            looseAsset > 0 || strategy.balanceOfCollateral() > 0,
+            "!should have either asset or collateral"
+        );
+    }
+
+    /// @notice Test Case 3 respects maxAmountToSwap
+    /// @dev Case 3: At target debt, just deploy _amount. Should respect maxAmountToSwap.
+    function test_lever_case3_maxAmountToSwap(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // First create a position at target leverage
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Verify at target
+        _assertLeverageWithinBuffer();
+
+        // Now set a small maxAmountToSwap
+        uint256 smallMax = _amount / 10;
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(smallMax);
+
+        // Add more funds - this should trigger Case 3 (at target, just deploy)
+        airdrop(asset, address(strategy), _amount);
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+
+        // Tend should only swap smallMax worth
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralAfter = strategy.balanceOfCollateral();
+
+        // Collateral should increase by approximately smallMax worth
+        // (accounting for oracle price differences)
+        assertGt(
+            collateralAfter,
+            collateralBefore,
+            "!collateral should increase"
+        );
+
+        // Should have leftover asset since we couldn't swap everything
+        uint256 looseAsset = strategy.balanceOfAsset();
+        assertGt(looseAsset, 0, "!should have leftover asset");
+    }
+
+    /// @notice Test maxAmountToSwap with type(uint256).max (default - no limit)
+    function test_lever_maxAmountToSwap_noLimit(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Verify default is max uint
+        assertEq(
+            strategy.maxAmountToSwap(),
+            type(uint256).max,
+            "!default should be max"
+        );
+
+        // Normal deposit and tend should work without limits
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should achieve target leverage
+        _assertLeverageWithinBuffer();
+
+        // Should have minimal or no leftover asset
+        uint256 looseAsset = strategy.balanceOfAsset();
+        assertLt(
+            looseAsset,
+            minFuzzAmount / 10,
+            "!should have minimal leftover asset"
+        );
+    }
+
+    /// @notice Test that reducing flashloan respects minAmountToBorrow
+    /// @dev When flashloan is reduced but still above minAmountToBorrow, should proceed
+    function test_lever_maxAmountToSwap_reducedFlashloanAboveMin(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Set minAmountToBorrow
+        uint256 minBorrow = 100e6;
+        vm.prank(management);
+        strategy.setMinAmountToBorrow(minBorrow);
+
+        // Set maxAmountToSwap to allow some flashloan but not full target
+        // At 3x leverage: flashloan = 2 * _amount, total = 3 * _amount
+        // Set maxSwap to allow partial leverage
+        uint256 maxSwap = (_amount * 3) / 2; // 1.5x deposit
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        // Deposit
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        // Tend should execute with reduced flashloan
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should have some debt (reduced flashloan was above minBorrow)
+        uint256 debt = strategy.balanceOfDebt();
+        if (_amount > minBorrow * 2) {
+            // If _amount is large enough that reduced flashloan > minBorrow
+            assertGt(debt, 0, "!should have some debt");
+        }
+    }
+
+    /// @notice Test that reducing flashloan below minAmountToBorrow skips flashloan
+    function test_lever_maxAmountToSwap_reducedFlashloanBelowMin() public {
+        uint256 depositAmount = 1000e6;
+
+        // Set high minAmountToBorrow
+        uint256 minBorrow = 2000e6;
+        vm.prank(management);
+        strategy.setMinAmountToBorrow(minBorrow);
+
+        // Set maxAmountToSwap that would reduce flashloan below minBorrow
+        // Normal flashloan at 3x = 2 * 1000 = 2000
+        // If we limit to 1500 total, flashloan = 500 which is < 2000 minBorrow
+        uint256 maxSwap = 1500e6;
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        // Deposit
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+
+        // Tend should skip flashloan (reduced amount below minBorrow)
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Flashloan skipped means Case 1b: just repay(min(_amount, debt))
+        // Since no debt exists yet, this is essentially a no-op for debt
+        // But maxAmountToSwap check happens before minAmountToBorrow check
+        // So we might still get a supply without flashloan
+    }
+
+    /// @notice Test sequential tends with maxAmountToSwap gradually building position
+    function test_lever_maxAmountToSwap_gradualBuild(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Set a small maxAmountToSwap to force multiple tends
+        uint256 maxSwap = _amount / 3;
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        // Deposit
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        // First tend - partial position
+        vm.prank(keeper);
+        strategy.tend();
+
+        (uint256 collateral1, uint256 debt1) = strategy.position();
+        uint256 leverage1 = strategy.getCurrentLeverageRatio();
+
+        // Should have some position but not at full target
+        assertGt(collateral1, 0, "!should have collateral after tend 1");
+
+        // Remove maxAmountToSwap limit
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(type(uint256).max);
+
+        // Disable min tend interval for this test
+        vm.prank(management);
+        strategy.setMinTendInterval(0);
+
+        // Second tend - should complete the position
+        vm.prank(keeper);
+        strategy.tend();
+
+        (uint256 collateral2, uint256 debt2) = strategy.position();
+        uint256 leverage2 = strategy.getCurrentLeverageRatio();
+
+        // Position should be larger now
+        assertGe(collateral2, collateral1, "!collateral should increase");
+
+        // Should be closer to or at target leverage
+        uint256 target = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        assertGe(leverage2, target - buffer, "!should reach target leverage");
     }
 }

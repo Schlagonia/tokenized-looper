@@ -190,10 +190,9 @@ contract Setup is Test, IEvents {
     function logStrategyStatus(string memory label) public view {
         console2.log("=== Strategy Status:", label, "===");
         console2.log("Total Assets:", strategy.totalAssets());
-        (uint256 collateralValue, uint256 debt, uint256 currentLTV) = strategy
-            .position();
+        (uint256 collateralValue, uint256 debt) = strategy.position();
         console2.log("Collateral:", collateralValue);
-        console2.log("Debt:", strategy.balanceOfDebt());
+        console2.log("Debt:", debt);
         console2.log("Loose Asset:", strategy.balanceOfAsset());
         console2.log("Current LTV:", strategy.getCurrentLTV());
         console2.log("Current Leverage:", strategy.getCurrentLeverageRatio());

@@ -65,8 +65,6 @@ abstract contract BaseMorphoLooper is
         ERC20(_collateralToken).forceApprove(_morpho, type(uint256).max);
     }
 
-    function _accrueInterest() internal virtual override {}
-
     /*//////////////////////////////////////////////////////////////
                         FLASHLOAN IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/

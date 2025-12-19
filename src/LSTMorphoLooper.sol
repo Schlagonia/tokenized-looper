@@ -45,19 +45,33 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
     //////////////////////////////////////////////////////////////*/
 
     function _convertAssetToCollateral(
-        uint256 amount
+        uint256 amount,
+        uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Gateway mints iUSD and stakes directly to sIUSD for this contract.
-        return _swapFrom(address(asset), address(collateralToken), amount, 0);
+        return
+            _swapFrom(
+                address(asset),
+                address(collateralToken),
+                amount,
+                amountOutMin
+            );
     }
 
     function _convertCollateralToAsset(
-        uint256 amount
+        uint256 amount,
+        uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Add slippage to the amount in to make sure we get enough for the flash loan repayment.
-        return _swapFrom(address(collateralToken), address(asset), amount, 0);
+        return
+            _swapFrom(
+                address(collateralToken),
+                address(asset),
+                amount,
+                amountOutMin
+            );
     }
 
     /*//////////////////////////////////////////////////////////////

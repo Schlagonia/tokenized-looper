@@ -51,7 +51,8 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
     //////////////////////////////////////////////////////////////*/
 
     function _convertAssetToCollateral(
-        uint256 amount
+        uint256 amount,
+        uint256
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Gateway mints iUSD and stakes directly to sIUSD for this contract.
@@ -61,7 +62,8 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
     }
 
     function _convertCollateralToAsset(
-        uint256 amount
+        uint256 amount,
+        uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         uint256 iusdBalance = IInfiniFiGatewayV1(gateway).unstake(
@@ -70,7 +72,11 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
         );
         // Gateway handles unstake + redemption back to USDC.
         return
-            IInfiniFiGatewayV1(gateway).redeem(address(this), iusdBalance, 0);
+            IInfiniFiGatewayV1(gateway).redeem(
+                address(this),
+                iusdBalance,
+                amountOutMin
+            );
     }
 
     /// @notice Get oracle price in ORACLE_PRICE_SCALE (1e36)

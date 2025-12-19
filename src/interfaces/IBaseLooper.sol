@@ -17,6 +17,10 @@ interface IBaseLooper is IBaseHealthCheck {
     /// Will trigger a tend if the current leverage ratio exceeds this value.
     function maxLeverageRatio() external view returns (uint256);
 
+    function lastTend() external view returns (uint256);
+
+    function minTendInterval() external view returns (uint256);
+
     function slippage() external view returns (uint64);
 
     function depositLimit() external view returns (uint256);
@@ -27,6 +31,9 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function minAmountToBorrow() external view returns (uint256);
 
+    /// @notice Maximum amount of asset to swap in a single tend (0 = no limit)
+    function maxAmountToSwap() external view returns (uint256);
+
     function setAllowed(address _address, bool _allowed) external;
 
     function setDepositLimit(uint256 _depositLimit) external;
@@ -36,6 +43,10 @@ interface IBaseLooper is IBaseHealthCheck {
     function setSlippage(uint256 _slippage) external;
 
     function setMinAmountToBorrow(uint256 _minAmountToBorrow) external;
+
+    function setMinTendInterval(uint256 _minTendInterval) external;
+
+    function setMaxAmountToSwap(uint256 _maxAmountToSwap) external;
 
     function estimatedTotalAssets() external view returns (uint256);
 
@@ -94,5 +105,5 @@ interface IBaseLooper is IBaseHealthCheck {
     function position()
         external
         view
-        returns (uint256 collateralValue, uint256 debt, uint256 currentLTV);
+        returns (uint256 collateralValue, uint256 debt);
 }

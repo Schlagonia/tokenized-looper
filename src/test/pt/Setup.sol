@@ -101,6 +101,6 @@ contract SetupPT is Setup {
     function accrueYield() public virtual override {
         // Don't skip time - the cUSD oracle has staleness checks that will revert
         // Instead, simulate yield by airdropping some profit
-        airdrop(asset, address(strategy), 1e6);
+        airdrop(asset, address(strategy), 5e6);
     }
 }

@@ -47,13 +47,15 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         uint256 ptDecimals = ERC20(_collateralToken).decimals();
         uint256 pendleTokenDecimals = ERC20(_pendleToken).decimals();
 
+        // Start max guess max multiplier at 2x since we should only
+        // be using like assets, but account for decimals.
         guessMaxMultiplier =
             2 *
             (10 **
                 (
                     pendleTokenDecimals > ptDecimals
                         ? pendleTokenDecimals - ptDecimals
-                        : 1
+                        : ptDecimals - pendleTokenDecimals
                 ));
 
         // Approve tokens for Pendle router
@@ -61,31 +63,31 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         ERC20(_collateralToken).forceApprove(pendleRouter, type(uint256).max);
     }
 
-    /// @notice Update the Pendle market for the PT token
-    function setMarket(address _pt, address _market) external onlyManagement {
-        _setMarket(_pt, _market);
-    }
-
     /*//////////////////////////////////////////////////////////////
                             CONVERSIONS
     //////////////////////////////////////////////////////////////*/
 
     function _convertAssetToCollateral(
-        uint256 amount
+        uint256 amount,
+        uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Convert asset to pendleToken if different, then buy PT
         amount = _convertAssetToPendleToken(amount);
-        return _pendleSwapFrom(pendleToken, collateralToken, amount, 0);
+        return
+            _pendleSwapFrom(pendleToken, collateralToken, amount, amountOutMin);
     }
 
     function _convertCollateralToAsset(
-        uint256 amount
+        uint256 amount,
+        uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Sell PT for pendleToken, then convert to asset if different
         amount = _pendleSwapFrom(collateralToken, pendleToken, amount, 0);
-        return _convertPendleTokenToAsset(amount);
+        uint256 converted = _convertPendleTokenToAsset(amount);
+        require(converted >= amountOutMin, "slippage");
+        return converted;
     }
 
     /// @notice Convert asset to pendle token (override if different)
