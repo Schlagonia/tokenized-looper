@@ -8,6 +8,7 @@ import {InfinifiMorphoLooper} from "../src/InfinifiMorphoLooper.sol";
 import {LSTMorphoLooper} from "../src/LSTMorphoLooper.sol";
 import {PTMorphoLooper} from "../src/PTMorphoLooper.sol";
 import {sUSDaiPTLooper} from "../src/sUSDaiPTLooper.sol";
+import {VaultMorphoLooper} from "../src/VaultMorphoLooper.sol";
 
 /// @title Deploy Script for Morpho Loopers
 /// @notice Generic deployment script - change DEPLOY_CONFIG to select strategy
@@ -17,8 +18,8 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string constant DEPLOY_CONFIG = "LST_KATANA";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB
+    string constant DEPLOY_CONFIG = "VAULT_KATANA";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, LST_KATANA, VAULT_KATANA, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB
     /// @dev =============================================================
 
     /*//////////////////////////////////////////////////////////////
@@ -102,6 +103,20 @@ contract Deploy is Script {
         });
     }
 
+    // ===== VAULT KATANA =====
+    function getVaultKatana() internal pure returns (LSTConfig memory) {
+        return LSTConfig({
+            base: BaseConfig({
+                asset: 0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36,
+                name: "yvUSDT/USDC Morpho Looper",
+                collateralToken: 0x9A6bd7B6Fd5C4F87eb66356441502fc7dCdd185B,
+                morpho: MORPHO_KATANA,
+                marketId: 0xcdaf57d98c2f75bffb8f0d3f7aa79bbacda4a479c47e316aab14af1ca6d85ffc
+            }),
+            router: 0x4e1d81A3E627b9294532e990109e4c21d217376C
+        });
+    }
+
     // ===== PT cUSD MAINNET =====
     function getPTcUSDMainnet() internal pure returns (PTConfig memory) {
         return PTConfig({
@@ -175,6 +190,8 @@ contract Deploy is Script {
             deployed = deploysUSDaiPT(getPTsUSDaiArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_KATANA")) {
             deployed = deployLST(getLSTKatana());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("VAULT_KATANA")) {
+            deployed = deployVault(getVaultKatana());
         } else {
             revert("Unknown config");
         }
@@ -199,6 +216,17 @@ contract Deploy is Script {
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
         return address(new LSTMorphoLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.morpho,
+            Id.wrap(cfg.base.marketId),
+            cfg.router
+        ));
+    }
+
+    function deployVault(LSTConfig memory cfg) internal returns (address) {
+        return address(new VaultMorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
