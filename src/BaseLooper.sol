@@ -681,12 +681,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         return (targetCollateral, targetDebt);
     }
 
-    /// @notice Get target LTV derived from leverage ratio
-    function _getTargetLTV() internal view virtual returns (uint256) {
-        if (targetLeverageRatio <= WAD) return 0;
-        return WAD - (WAD * WAD) / targetLeverageRatio;
-    }
-
     /// @notice Get amount out with slippage
     function _getAmountOut(
         uint256 amount,
