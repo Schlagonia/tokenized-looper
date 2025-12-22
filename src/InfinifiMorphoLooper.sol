@@ -43,7 +43,7 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
         ERC20(_collateralToken).forceApprove(_gateway, type(uint256).max);
 
         minAmountToBorrow = 0; // allow small loops; Morpho caps still apply.
-        slippage = 1; // no slippage
+        slippage = 1; // just rounding losses
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -79,13 +79,6 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
             );
     }
 
-    /// @notice Get oracle price in ORACLE_PRICE_SCALE (1e36)
-    /// @dev sIUSD (18 decimals) -> USDC (6 decimals)
-    ///      convertToAssets(1e18) returns USDC value of 1 sIUSD in 18 decimals
-    ///      We need: price * collateralAmount / 1e36 = assetAmount
-    ///      So price = assetAmount * 1e36 / collateralAmount
-    ///      For 1 sIUSD (1e18): price = convertToAssets(1e18) * 1e36 / 1e18 / 1e12
-    ///      Simplified: convertToAssets(1e18) * 1e24 / 1e12 = convertToAssets(1e18) * 1e6
     function _getCollateralPrice() internal view override returns (uint256) {
         return IERC4626(collateralToken).convertToAssets(1e18) * 1e6;
     }

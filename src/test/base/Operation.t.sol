@@ -43,6 +43,9 @@ abstract contract OperationTest is Setup {
         // Earn Interest
         accrueYield();
 
+        vm.prank(management);
+        strategy.setLossLimitRatio(100);
+
         // Report profit
         vm.prank(keeper);
         strategy.report();

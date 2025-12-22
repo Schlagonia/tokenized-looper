@@ -116,7 +116,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         allowed[_address] = _allowed;
     }
 
-    // TODO: HOW do we set it to unwind, or just hold collataeral? Is 0 target possible?
     function setLeverageParams(
         uint256 _targetLeverageRatio,
         uint256 _leverageBuffer,
@@ -135,7 +134,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             "max leverage < target + buffer"
         );
 
-        // Ensure max leverage doesn't exceed LLT
+        // Ensure max leverage doesn't exceed LLTV
         uint256 maxLTV = WAD - (WAD * WAD) / _maxLeverageRatio;
         require(maxLTV < getLiquidateCollateralFactor(), "exceeds LLTV");
 
@@ -202,7 +201,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function estimatedTotalAssets() public view virtual returns (uint256) {
         return
             balanceOfAsset() +
-            _collateralToAsset(balanceOfCollateral()) -
+            _collateralToAsset(
+                balanceOfCollateral() + balanceOfCollateralToken()
+            ) -
             balanceOfDebt();
     }
 
@@ -493,51 +494,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         _convertCollateralToAsset(collateralToWithdraw);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                        MANAGEMENT FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Emergency full position close via flashloan
-    function manualFullUnwind() external onlyEmergencyAuthorized {
-        _delever(TokenizedStrategy.totalAssets());
-    }
-
-    /// @notice Manual: supply collateral
-    function manualSupplyCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _supplyCollateral(Math.min(amount, balanceOfCollateralToken()));
-    }
-
-    /// @notice Manual: withdraw collateral
-    function manualWithdrawCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _withdrawCollateral(Math.min(amount, balanceOfCollateral()));
-    }
-
-    /// @notice Manual: borrow from protocol
-    function manualBorrow(uint256 amount) external onlyEmergencyAuthorized {
-        _borrow(amount);
-    }
-
-    /// @notice Manual: repay debt
-    function manualRepay(uint256 amount) external onlyEmergencyAuthorized {
-        _repay(Math.min(amount, balanceOfAsset()));
-    }
-
-    function convertCollateralToAsset(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _convertCollateralToAsset(Math.min(amount, balanceOfCollateralToken()));
-    }
-
-    function convertAssetToCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
-    }
-
     function _convertCollateralToAsset(
         uint256 amount
     ) internal returns (uint256) {
@@ -614,6 +570,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount,
         uint256 amountOutMin
     ) internal virtual returns (uint256);
+
+    function _claimAndSellRewards() internal virtual;
 
     /*//////////////////////////////////////////////////////////////
                             VIEW FUNCTIONS
@@ -698,10 +656,49 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        HARVEST / TOKEN CONVERSIONS
+                        MANAGEMENT FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _claimAndSellRewards() internal virtual;
+    /// @notice Emergency full position close via flashloan
+    function manualFullUnwind() external onlyEmergencyAuthorized {
+        _delever(TokenizedStrategy.totalAssets());
+    }
+
+    /// @notice Manual: supply collateral
+    function manualSupplyCollateral(
+        uint256 amount
+    ) external onlyEmergencyAuthorized {
+        _supplyCollateral(Math.min(amount, balanceOfCollateralToken()));
+    }
+
+    /// @notice Manual: withdraw collateral
+    function manualWithdrawCollateral(
+        uint256 amount
+    ) external onlyEmergencyAuthorized {
+        _withdrawCollateral(Math.min(amount, balanceOfCollateral()));
+    }
+
+    /// @notice Manual: borrow from protocol
+    function manualBorrow(uint256 amount) external onlyEmergencyAuthorized {
+        _borrow(amount);
+    }
+
+    /// @notice Manual: repay debt
+    function manualRepay(uint256 amount) external onlyEmergencyAuthorized {
+        _repay(Math.min(amount, balanceOfAsset()));
+    }
+
+    function convertCollateralToAsset(
+        uint256 amount
+    ) external onlyEmergencyAuthorized {
+        _convertCollateralToAsset(Math.min(amount, balanceOfCollateralToken()));
+    }
+
+    function convertAssetToCollateral(
+        uint256 amount
+    ) external onlyEmergencyAuthorized {
+        _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
+    }
 
     /*//////////////////////////////////////////////////////////////
                             EMERGENCY

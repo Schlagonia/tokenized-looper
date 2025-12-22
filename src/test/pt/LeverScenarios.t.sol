@@ -9,6 +9,7 @@ import {SetupPT} from "./Setup.sol";
 contract PTLeverScenariosTest is SetupPT, LeverScenariosTest {
     function setUp() public override(SetupPT, LeverScenariosTest) {
         SetupPT.setUp();
+        maxFuzzAmount = 50_000e6;
     }
 
     function setUpStrategy() public override(SetupPT, Setup) returns (address) {
