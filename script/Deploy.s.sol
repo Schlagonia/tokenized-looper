@@ -4,10 +4,10 @@ pragma solidity ^0.8.18;
 import "forge-std/Script.sol";
 
 import {Id} from "../src/interfaces/morpho/IMorpho.sol";
-import {InfinifiMorphoLooper} from "../src/InfinifiMorphoLooper.sol";
-import {LSTMorphoLooper} from "../src/LSTMorphoLooper.sol";
-import {PTMorphoLooper} from "../src/PTMorphoLooper.sol";
-import {sUSDaiPTLooper} from "../src/sUSDaiPTLooper.sol";
+import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
+import {LSTMorphoLooper} from "../src/morpho/LSTMorphoLooper.sol";
+import {PTMorphoLooper} from "../src/morpho/PTMorphoLooper.sol";
+import {sUSDaiPTLooper} from "../src/morpho/sUSDaiPTLooper.sol";
 
 /// @title Deploy Script for Morpho Loopers
 /// @notice Generic deployment script - change DEPLOY_CONFIG to select strategy

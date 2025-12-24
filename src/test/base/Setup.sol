@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {InfinifiMorphoLooper} from "../../InfinifiMorphoLooper.sol";
+import {InfinifiMorphoLooper} from "../../morpho/InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
