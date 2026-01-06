@@ -79,8 +79,9 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
             );
     }
 
-    function _getCollateralPrice() internal view override returns (uint256) {
-        return IERC4626(collateralToken).convertToAssets(1e18) * 1e6;
+    // @notice In case any redemtion ever gets enqueued, we can claim it here.
+    function claimRedemption() external onlyKeepers {
+        IInfiniFiGatewayV1(gateway).claimRedemption();
     }
 
     /*//////////////////////////////////////////////////////////////

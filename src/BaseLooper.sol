@@ -233,8 +233,12 @@ abstract contract BaseLooper is BaseHealthCheck {
         // Total collateral = deposit * L, so deposit = collateral / L
         maxDepositFromCollateral = maxDepositFromCollateral == type(uint256).max
             ? maxDepositFromCollateral
-            : (_collateralToAsset(maxDepositFromCollateral) * WAD) /
-                _targetLeverageRatio;
+            : // Add slippage to account for swap values.
+            (_collateralToAsset(maxDepositFromCollateral) *
+                WAD *
+                (MAX_BPS + slippage)) /
+                _targetLeverageRatio /
+                MAX_BPS;
 
         // Max deposit based on borrow capacity
         // Debt = deposit * (L - 1), so deposit = debt / (L - 1)
@@ -274,7 +278,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function _tend(uint256 _totalIdle) internal virtual override accrue {
-        _lever(_totalIdle);
+        _lever(Math.min(_totalIdle, availableDepositLimit(address(this))));
         lastTend = block.timestamp;
     }
 
@@ -298,16 +302,32 @@ abstract contract BaseLooper is BaseHealthCheck {
             return currentLeverage > 0 && _isBaseFeeAcceptable();
         }
 
-        if (balanceOfAsset() > minAmountToBorrow) {
-            return _isBaseFeeAcceptable();
+        uint256 maxWithdraw = availableWithdrawLimit(address(this));
+
+        // Check buffer zone FIRST (before idle assets check)
+        uint256 upperBound = _targetLeverageRatio + leverageBuffer;
+
+        if (currentLeverage > upperBound) {
+            // Over-leveraged: can repay with idle assets OR delever via flashloan
+            if (balanceOfAsset() > 0 || maxWithdraw > 0) {
+                return _isBaseFeeAcceptable();
+            }
+            return false;
         }
 
-        // Check if outside buffer zone
-        uint256 upperBound = _targetLeverageRatio + leverageBuffer;
+        uint256 maxDeposit = availableDepositLimit(address(this));
         uint256 lowerBound = _targetLeverageRatio - leverageBuffer;
 
-        if (currentLeverage < lowerBound || currentLeverage > upperBound) {
-            return _isBaseFeeAcceptable();
+        if (
+            (balanceOfAsset() * (_targetLeverageRatio - WAD)) / WAD >
+            minAmountToBorrow ||
+            currentLeverage < lowerBound
+        ) {
+            // Have idle assets, not over-leveraged: need deposit capacity to supply
+            return
+                (maxDeposit * (_targetLeverageRatio - WAD)) / WAD >
+                minAmountToBorrow &&
+                _isBaseFeeAcceptable();
         }
 
         return false;
@@ -474,6 +494,12 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // Borrow to repay flashloan
         _borrow(flashloanAmount);
+
+        // Sanity check
+        require(
+            getCurrentLeverageRatio() < maxLeverageRatio,
+            "leverage too high"
+        );
     }
 
     function _executeDeleverageCallback(
@@ -492,6 +518,12 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // Convert collateral back to asset
         _convertCollateralToAsset(collateralToWithdraw);
+
+        // Sanity check
+        require(
+            getCurrentLeverageRatio() < maxLeverageRatio,
+            "leverage too low"
+        );
     }
 
     function _convertCollateralToAsset(

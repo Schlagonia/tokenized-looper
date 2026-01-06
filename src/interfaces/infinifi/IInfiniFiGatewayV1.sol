@@ -22,4 +22,6 @@ interface IInfiniFiGatewayV1 {
     function withdraw(uint256 _unwindingTimestamp) external;
 
     function getAddress(string memory _name) external view returns (address);
+
+    function claimRedemption() external;
 }

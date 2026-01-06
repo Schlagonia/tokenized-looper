@@ -63,6 +63,12 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         ERC20(_collateralToken).forceApprove(pendleRouter, type(uint256).max);
     }
 
+    function setGuessMaxMultiplier(
+        uint256 _multiplier
+    ) external onlyManagement {
+        _setGuessMaxMultiplier(_multiplier);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             CONVERSIONS
     //////////////////////////////////////////////////////////////*/
