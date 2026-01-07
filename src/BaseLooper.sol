@@ -232,9 +232,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         // Max collateral capacity converted to deposit amount
         // Total collateral = deposit * L, so deposit = collateral / L
         maxDepositFromCollateral = maxDepositFromCollateral == type(uint256).max
-            ? maxDepositFromCollateral
-            : // Add slippage to account for swap values.
-            (_collateralToAsset(maxDepositFromCollateral) *
+            ? maxDepositFromCollateral // Add slippage to account for swap values.
+            : (_collateralToAsset(maxDepositFromCollateral) *
                 WAD *
                 (MAX_BPS + slippage)) /
                 _targetLeverageRatio /
@@ -278,7 +277,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function _tend(uint256 _totalIdle) internal virtual override accrue {
-        _lever(Math.min(_totalIdle, availableDepositLimit(address(this))));
+        _lever(_totalIdle);
         lastTend = block.timestamp;
     }
 
@@ -346,12 +345,24 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (targetDebt > currentDebt) {
             // CASE 1: Need MORE debt → leverage up via flashloan
-            uint256 flashloanAmount = targetDebt - currentDebt;
+            uint256 flashloanAmount = Math.min(
+                targetDebt - currentDebt,
+                maxFlashloan()
+            );
 
-            // Cap total swap if maxAmountToSwap is set
-            uint256 _maxAmountToSwap = maxAmountToSwap;
+            // Cap total swap if maxAmountToSwap is set or collateral capacity is reached
+            uint256 maxCollateralInAsset = _collateralToAsset(
+                _maxCollateralDeposit()
+            );
+            uint256 _maxAmountToSwap = maxCollateralInAsset == type(uint256).max
+                ? maxAmountToSwap
+                : Math.min(
+                    maxAmountToSwap,
+                    (maxCollateralInAsset * (MAX_BPS - slippage)) / MAX_BPS
+                );
             if (_maxAmountToSwap != type(uint256).max) {
                 uint256 totalSwap = _amount + flashloanAmount;
+
                 if (totalSwap > _maxAmountToSwap) {
                     if (_amount >= _maxAmountToSwap) {
                         // _amount alone exceeds max, just swap max and supply
@@ -388,7 +399,13 @@ abstract contract BaseLooper is BaseHealthCheck {
                 _repay(debtToRepay);
                 uint256 remainder = _amount - debtToRepay;
                 if (remainder > 0) {
-                    _supplyCollateral(_convertAssetToCollateral(remainder));
+                    // Cap remainder by collateral capacity
+                    uint256 collateralRemainder = _convertAssetToCollateral(
+                        remainder
+                    );
+                    _supplyCollateral(
+                        Math.min(collateralRemainder, _maxCollateralDeposit())
+                    );
                 }
                 return;
             }
@@ -396,6 +413,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             // First repay what is loose.
             _repay(_amount);
             debtToRepay -= _amount;
+
+            // Cap flashloan by available liquidity
+            debtToRepay = Math.min(debtToRepay, maxFlashloan());
 
             // Flashloan to repay debt, withdraw collateral to cover
             uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
@@ -411,7 +431,12 @@ abstract contract BaseLooper is BaseHealthCheck {
         } else {
             // CASE 3: At target debt → just deploy _amount if any
             _supplyCollateral(
-                _convertAssetToCollateral(Math.min(_amount, maxAmountToSwap))
+                Math.min(
+                    _convertAssetToCollateral(
+                        Math.min(_amount, maxAmountToSwap)
+                    ),
+                    _maxCollateralDeposit()
+                )
             );
         }
     }
@@ -442,6 +467,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             ? ((currentDebt - targetDebt) * (MAX_BPS + slippage)) / MAX_BPS
             : 0;
 
+        // Cap flashloan by available liquidity
+        debtToRepay = Math.min(debtToRepay, maxFlashloan());
+
         uint256 collateralToWithdraw = _assetToCollateral(
             debtToRepay + _amountNeeded
         );
@@ -452,6 +480,8 @@ abstract contract BaseLooper is BaseHealthCheck {
             _convertCollateralToAsset(collateralToWithdraw);
             return;
         }
+
+        if (debtToRepay == 0) return;
 
         bytes memory data = abi.encode(
             FlashLoanData({
@@ -622,7 +652,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _collateralToAsset(
         uint256 collateralAmount
     ) internal view virtual returns (uint256) {
-        if (collateralAmount == 0) return 0;
+        if (collateralAmount == 0 || collateralAmount == type(uint256).max)
+            return collateralAmount;
         return (collateralAmount * _getCollateralPrice()) / ORACLE_PRICE_SCALE;
     }
 
@@ -631,7 +662,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _assetToCollateral(
         uint256 assetAmount
     ) internal view virtual returns (uint256) {
-        if (assetAmount == 0) return 0;
+        if (assetAmount == 0 || assetAmount == type(uint256).max)
+            return assetAmount;
         uint256 price = _getCollateralPrice();
         return (assetAmount * ORACLE_PRICE_SCALE) / price;
     }
