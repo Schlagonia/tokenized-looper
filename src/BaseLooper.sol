@@ -400,11 +400,13 @@ abstract contract BaseLooper is BaseHealthCheck {
                 uint256 remainder = _amount - debtToRepay;
                 if (remainder > 0) {
                     // Cap remainder by collateral capacity
-                    uint256 collateralRemainder = _convertAssetToCollateral(
-                        remainder
-                    );
                     _supplyCollateral(
-                        Math.min(collateralRemainder, _maxCollateralDeposit())
+                        Math.min(
+                            _convertAssetToCollateral(
+                                Math.min(_amount, maxAmountToSwap)
+                            ),
+                            _maxCollateralDeposit()
+                        )
                     );
                 }
                 return;
