@@ -176,12 +176,24 @@ abstract contract BaseLooper is BaseHealthCheck {
                 NEEDED TO BE OVERRIDDEN BY STRATEGIST
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Deploy funds into the leveraged position
+    /// @dev Override to customize deployment behavior. Default is no-op (funds deployed via _harvestAndReport).
+    ///      Called by TokenizedStrategy when deposits are made.
+    /// @param _amount The amount of asset to deploy
     function _deployFunds(uint256 _amount) internal virtual override accrue {}
 
+    /// @notice Free funds from the leveraged position for withdrawal
+    /// @dev Override to customize withdrawal behavior. Default deleverages the position.
+    ///      Called by TokenizedStrategy when withdrawals are requested.
+    /// @param _amount The amount of asset to free
     function _freeFunds(uint256 _amount) internal virtual override accrue {
         _delever(_amount);
     }
 
+    /// @notice Harvest rewards and report total assets
+    /// @dev Override to customize harvesting behavior. Default claims rewards, levers up idle assets,
+    ///      and reports total assets. Called during strategy reports.
+    /// @return _totalAssets The total assets held by the strategy
     function _harvestAndReport()
         internal
         virtual
@@ -198,6 +210,9 @@ abstract contract BaseLooper is BaseHealthCheck {
         _totalAssets = estimatedTotalAssets();
     }
 
+    /// @notice Calculate the estimated total assets of the strategy
+    /// @dev Override to customize asset calculation. Default returns loose assets + collateral value - debt.
+    /// @return The estimated total assets in asset token terms
     function estimatedTotalAssets() public view virtual returns (uint256) {
         return
             balanceOfAsset() +
@@ -211,6 +226,11 @@ abstract contract BaseLooper is BaseHealthCheck {
                     OPTIONAL TO OVERRIDE BY STRATEGIST
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Calculate the maximum amount that can be deposited by an address
+    /// @dev Override to customize deposit limits. Default checks allowlist, pause states,
+    ///      deposit limit, collateral capacity, and borrow capacity.
+    /// @param _owner The address attempting to deposit
+    /// @return The maximum amount that can be deposited
     function availableDepositLimit(
         address _owner
     ) public view virtual override returns (uint256) {
@@ -231,13 +251,14 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // Max collateral capacity converted to deposit amount
         // Total collateral = deposit * L, so deposit = collateral / L
-        maxDepositFromCollateral = maxDepositFromCollateral == type(uint256).max
-            ? maxDepositFromCollateral // Add slippage to account for swap values.
-            : (_collateralToAsset(maxDepositFromCollateral) *
-                WAD *
-                (MAX_BPS + slippage)) /
+        if (maxDepositFromCollateral != type(uint256).max) {
+            maxDepositFromCollateral =
+                (_collateralToAsset(maxDepositFromCollateral) *
+                    WAD *
+                    (MAX_BPS + slippage)) / // Add slippage to account for swap values.
                 _targetLeverageRatio /
                 MAX_BPS;
+        }
 
         // Max deposit based on borrow capacity
         // Debt = deposit * (L - 1), so deposit = debt / (L - 1)
@@ -254,6 +275,11 @@ abstract contract BaseLooper is BaseHealthCheck {
             );
     }
 
+    /// @notice Calculate the maximum amount that can be withdrawn by an address
+    /// @dev Override to customize withdraw limits. Default returns max uint256 if flashloan covers debt,
+    ///      otherwise calculates based on flashloan availability and target leverage.
+    ///      The owner parameter is unused in default implementation.
+    /// @return The maximum amount that can be withdrawn
     function availableWithdrawLimit(
         address /*_owner*/
     ) public view virtual override returns (uint256) {
@@ -276,11 +302,19 @@ abstract contract BaseLooper is BaseHealthCheck {
         return currentEquity > targetEquity ? currentEquity - targetEquity : 0;
     }
 
+    /// @notice Rebalance the position to maintain target leverage
+    /// @dev Override to customize rebalancing behavior. Default levers up with idle assets and updates lastTend.
+    ///      Called by keepers when _tendTrigger returns true.
+    /// @param _totalIdle The total idle assets available for deployment
     function _tend(uint256 _totalIdle) internal virtual override accrue {
         _lever(_totalIdle);
         lastTend = block.timestamp;
     }
 
+    /// @notice Check if the position needs rebalancing
+    /// @dev Override to customize tend trigger logic. Default checks liquidation risk, leverage bounds,
+    ///      idle assets, min tend interval, and gas price.
+    /// @return True if a tend operation should be triggered
     function _tendTrigger() internal view virtual override returns (bool) {
         if (_isLiquidatable()) return true;
         if (TokenizedStrategy.totalAssets() == 0) return false;
@@ -301,30 +335,29 @@ abstract contract BaseLooper is BaseHealthCheck {
             return currentLeverage > 0 && _isBaseFeeAcceptable();
         }
 
-        uint256 maxWithdraw = availableWithdrawLimit(address(this));
-
-        // Check buffer zone FIRST (before idle assets check)
-        uint256 upperBound = _targetLeverageRatio + leverageBuffer;
-
-        if (currentLeverage > upperBound) {
+        // If we are over the upper bound
+        if (currentLeverage > _targetLeverageRatio + leverageBuffer) {
             // Over-leveraged: can repay with idle assets OR delever via flashloan
-            if (balanceOfAsset() > 0 || maxWithdraw > 0) {
+            if (
+                balanceOfAsset() > 0 ||
+                availableWithdrawLimit(address(this)) > 0
+            ) {
                 return _isBaseFeeAcceptable();
             }
             return false;
         }
 
-        uint256 maxDeposit = availableDepositLimit(address(this));
-        uint256 lowerBound = _targetLeverageRatio - leverageBuffer;
-
+        // If we have idle assets or are under the lower bound
         if (
             (balanceOfAsset() * (_targetLeverageRatio - WAD)) / WAD >
             minAmountToBorrow ||
-            currentLeverage < lowerBound
+            currentLeverage < _targetLeverageRatio - leverageBuffer
         ) {
-            // Have idle assets, not over-leveraged: need deposit capacity to supply
+            // We still need deposit capacity to supply
             return
-                (maxDeposit * (_targetLeverageRatio - WAD)) / WAD >
+                (availableDepositLimit(address(this)) *
+                    (_targetLeverageRatio - WAD)) /
+                    WAD >
                 minAmountToBorrow &&
                 _isBaseFeeAcceptable();
         }
@@ -397,14 +430,15 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (_amount >= debtToRepay) {
                 // _amount covers the debt repayment, just repay and supply the rest
                 _repay(debtToRepay);
-                uint256 remainder = _amount - debtToRepay;
-                if (remainder > 0) {
+                _amount -= debtToRepay;
+                if (_amount > 0) {
+                    _convertAssetToCollateral(
+                        Math.min(_amount, maxAmountToSwap)
+                    );
                     // Cap remainder by collateral capacity
                     _supplyCollateral(
                         Math.min(
-                            _convertAssetToCollateral(
-                                Math.min(_amount, maxAmountToSwap)
-                            ),
+                            balanceOfCollateralToken(),
                             _maxCollateralDeposit()
                         )
                     );
@@ -432,13 +466,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             _executeFlashloan(address(asset), debtToRepay, data);
         } else {
             // CASE 3: At target debt → just deploy _amount if any
+            _convertAssetToCollateral(Math.min(_amount, maxAmountToSwap));
             _supplyCollateral(
-                Math.min(
-                    _convertAssetToCollateral(
-                        Math.min(_amount, maxAmountToSwap)
-                    ),
-                    _maxCollateralDeposit()
-                )
+                Math.min(balanceOfCollateralToken(), _maxCollateralDeposit())
             );
         }
     }
@@ -597,54 +627,102 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _supplyCollateral(uint256 amount) internal virtual;
 
     /// @notice Withdraw collateral (with collateral->asset conversion)
+    /// @dev Must implement protocol-specific collateral withdrawal logic.
+    /// @param amount The amount of collateral to withdraw
     function _withdrawCollateral(uint256 amount) internal virtual;
 
+    /// @notice Borrow assets from the lending protocol
+    /// @dev Must implement protocol-specific borrow logic.
+    /// @param amount The amount of asset to borrow
     function _borrow(uint256 amount) internal virtual;
 
+    /// @notice Repay borrowed assets to the lending protocol
+    /// @dev Must implement protocol-specific repay logic. Should handle partial repayments gracefully.
+    /// @param amount The amount of asset to repay
     function _repay(uint256 amount) internal virtual;
 
+    /// @notice Check if collateral supply is paused on the lending protocol
+    /// @dev Must implement protocol-specific pause check.
+    /// @return True if supplying collateral is currently paused
     function _isSupplyPaused() internal view virtual returns (bool);
 
+    /// @notice Check if borrowing is paused on the lending protocol
+    /// @dev Must implement protocol-specific pause check.
+    /// @return True if borrowing is currently paused
     function _isBorrowPaused() internal view virtual returns (bool);
 
+    /// @notice Check if the position is at risk of liquidation
+    /// @dev Must implement protocol-specific liquidation check. Used by _tendTrigger for emergency rebalancing.
+    /// @return True if the position can be liquidated
     function _isLiquidatable() internal view virtual returns (bool);
 
+    /// @notice Get the maximum amount of collateral that can be deposited
+    /// @dev Must implement protocol-specific capacity check. Return type(uint256).max if unlimited.
+    /// @return The maximum collateral amount that can be deposited
     function _maxCollateralDeposit() internal view virtual returns (uint256);
 
+    /// @notice Get the maximum amount that can be borrowed
+    /// @dev Must implement protocol-specific borrow capacity check.
+    /// @return The maximum amount that can be borrowed in asset terms
     function _maxBorrowAmount() internal view virtual returns (uint256);
 
+    /// @notice Get the liquidation loan-to-value threshold (LLTV)
+    /// @dev Must implement protocol-specific LLTV retrieval. Used to validate leverage params.
+    /// @return The liquidation threshold in WAD (e.g., 0.9e18 = 90% LLTV)
     function getLiquidateCollateralFactor()
         public
         view
         virtual
         returns (uint256);
 
+    /// @notice Get the current collateral balance in the lending protocol
+    /// @dev Must implement protocol-specific collateral balance retrieval.
+    /// @return The amount of collateral supplied to the protocol
     function balanceOfCollateral() public view virtual returns (uint256);
 
+    /// @notice Get the current debt balance owed to the lending protocol
+    /// @dev Must implement protocol-specific debt balance retrieval.
+    /// @return The amount of debt owed in asset terms
     function balanceOfDebt() public view virtual returns (uint256);
 
-    /// @notice Convert asset to collateral tokens
+    /// @notice Convert asset tokens to collateral tokens
+    /// @dev Must implement swap/conversion logic (e.g., via DEX, staking, or minting).
+    /// @param amount The amount of asset to convert
+    /// @param amountOutMin The minimum amount of collateral to receive (slippage protection)
+    /// @return The amount of collateral tokens received
     function _convertAssetToCollateral(
         uint256 amount,
         uint256 amountOutMin
     ) internal virtual returns (uint256);
 
-    /// @notice Convert collateral tokens to asset
+    /// @notice Convert collateral tokens back to asset tokens
+    /// @dev Must implement swap/conversion logic (e.g., via DEX, unstaking, or redeeming).
+    /// @param amount The amount of collateral to convert
+    /// @param amountOutMin The minimum amount of asset to receive (slippage protection)
+    /// @return The amount of asset tokens received
     function _convertCollateralToAsset(
         uint256 amount,
         uint256 amountOutMin
     ) internal virtual returns (uint256);
 
+    /// @notice Claim and sell any protocol rewards
+    /// @dev Must implement reward claiming and selling logic. Can be no-op if no rewards.
     function _claimAndSellRewards() internal virtual;
 
     /*//////////////////////////////////////////////////////////////
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Get the loose asset balance held by the strategy
+    /// @dev Override if asset is held in a different form or location.
+    /// @return The amount of asset tokens held by this contract
     function balanceOfAsset() public view virtual returns (uint256) {
         return asset.balanceOf(address(this));
     }
 
+    /// @notice Get the loose collateral token balance held by the strategy
+    /// @dev Override if collateral tokens are held in a different form or location.
+    /// @return The amount of collateral tokens held by this contract (not supplied to protocol)
     function balanceOfCollateralToken() public view virtual returns (uint256) {
         return ERC20(collateralToken).balanceOf(address(this));
     }
@@ -684,6 +762,10 @@ abstract contract BaseLooper is BaseHealthCheck {
         return collateralValue > 0 ? (debt * WAD) / collateralValue : 0;
     }
 
+    /// @notice Get the current position details
+    /// @dev Override to customize position calculation.
+    /// @return collateralValue The value of collateral in asset terms
+    /// @return debt The current debt amount
     function position()
         public
         view
@@ -695,6 +777,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         debt = balanceOfDebt();
     }
 
+    /// @notice Calculate the target position for a given equity amount
+    /// @dev Used to determine how much collateral and debt to have at target leverage.
+    /// @param _equity The equity (collateral - debt) to base calculations on
+    /// @return collateral The target collateral amount
+    /// @return debt The target debt amount
     function getTargetPosition(
         uint256 _equity
     ) public view virtual returns (uint256 collateral, uint256 debt) {
@@ -717,6 +804,9 @@ abstract contract BaseLooper is BaseHealthCheck {
         return (converted * (MAX_BPS - slippage)) / MAX_BPS;
     }
 
+    /// @notice Check if the current base fee is acceptable for tending
+    /// @dev Override to customize gas price checks or disable them entirely.
+    /// @return True if the base fee is at or below maxGasPriceToTend
     function _isBaseFeeAcceptable() internal view virtual returns (bool) {
         return block.basefee <= maxGasPriceToTend;
     }
@@ -770,10 +860,13 @@ abstract contract BaseLooper is BaseHealthCheck {
                             EMERGENCY
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Emergency withdraw funds from the leveraged position
+    /// @dev Override to customize emergency withdrawal behavior. Default attempts full unwind via deleverage.
+    ///      Called during emergency shutdown.
+    /// @param _amount The amount of asset to attempt to withdraw
     function _emergencyWithdraw(uint256 _amount) internal virtual override {
         // Try full unwind first
-        uint256 debt = balanceOfDebt();
-        if (debt > 0) {
+        if (balanceOfDebt() > 0) {
             _delever(Math.min(_amount, TokenizedStrategy.totalAssets()));
         } else if (_amount > 0) {
             _amount = Math.min(_amount, balanceOfCollateral());

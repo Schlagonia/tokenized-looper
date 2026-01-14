@@ -16,19 +16,19 @@ contract SetupPT is Setup {
     // PT-siUSD/USDC market
     Id public constant PT_MARKET_ID =
         Id.wrap(
-            //0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789 // cUSD market
-            0x32b4a75db50a20f7435dfdcf54593a2e96fc97901321d3ab07268941dee93edb // siUSD market
+            0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789 // cUSD market
+            //0x32b4a75db50a20f7435dfdcf54593a2e96fc97901321d3ab07268941dee93edb // siUSD market
         );
 
     // PT token (collateral)
     address public constant PT_TOKEN =
-        //0x545A490f9ab534AdF409A2E682bc4098f49952e3; // cUSD token
-        0x5510B080449d5E3Bf345b6635eD40A35B36b081f; // siUSD token
+        0x545A490f9ab534AdF409A2E682bc4098f49952e3; // cUSD token
+    //0x5510B080449d5E3Bf345b6635eD40A35B36b081f; // siUSD token
 
     // Pendle market for PT swaps
     address public constant PENDLE_MARKET =
-        //0x307c15f808914Df5a5DbE17E5608f84953fFa023; //  cUSD market
-        0x126b8f10B8a6f3D3Dbe5dc991cEB14ABa6345E04; // siUSD market
+        0x307c15f808914Df5a5DbE17E5608f84953fFa023; //  cUSD market
+    //0x126b8f10B8a6f3D3Dbe5dc991cEB14ABa6345E04; // siUSD market
 
     address public PENDLE_TOKEN;
 

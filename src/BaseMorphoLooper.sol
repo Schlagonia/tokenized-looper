@@ -40,9 +40,9 @@ abstract contract BaseMorphoLooper is
 
     IMorpho public immutable morpho;
 
-    MarketParams internal marketParams;
-
     bool internal isFlashloanActive;
+
+    MarketParams internal marketParams;
 
     constructor(
         address _asset,
@@ -119,11 +119,17 @@ abstract contract BaseMorphoLooper is
                     MORPHO PROTOCOL OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Supply collateral to Morpho Blue market
+    /// @dev Calls morpho.supplyCollateral with the configured market params.
+    /// @param amount The amount of collateral tokens to supply
     function _supplyCollateral(uint256 amount) internal override {
         if (amount == 0) return;
         morpho.supplyCollateral(marketParams, amount, address(this), "");
     }
 
+    /// @notice Withdraw collateral from Morpho Blue market
+    /// @dev Calls morpho.withdrawCollateral with the configured market params.
+    /// @param amount The amount of collateral tokens to withdraw
     function _withdrawCollateral(uint256 amount) internal override {
         if (amount == 0) return;
         morpho.withdrawCollateral(
@@ -134,11 +140,18 @@ abstract contract BaseMorphoLooper is
         );
     }
 
+    /// @notice Borrow assets from Morpho Blue market
+    /// @dev Override to customize borrow behavior. Calls morpho.borrow with amount (not shares).
+    /// @param amount The amount of asset to borrow
     function _borrow(uint256 amount) internal virtual override {
         if (amount == 0) return;
         morpho.borrow(marketParams, amount, 0, address(this), address(this));
     }
 
+    /// @notice Repay borrowed assets to Morpho Blue market
+    /// @dev Uses share-based repayment to handle interest accrual properly.
+    ///      Calculates shares from amount using expected market balances.
+    /// @param amount The amount of asset to repay
     function _repay(uint256 amount) internal virtual override {
         if (amount == 0) return;
         (
@@ -164,14 +177,25 @@ abstract contract BaseMorphoLooper is
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Check if supplying collateral is paused
+    /// @dev Morpho Blue has no pause mechanism, always returns false.
+    ///      Override if integrating with a protocol that has pause functionality.
+    /// @return Always false for Morpho Blue
     function _isSupplyPaused() internal view virtual override returns (bool) {
         return false;
     }
 
+    /// @notice Check if borrowing is paused
+    /// @dev Morpho Blue has no pause mechanism, always returns false.
+    ///      Override if integrating with a protocol that has pause functionality.
+    /// @return Always false for Morpho Blue
     function _isBorrowPaused() internal view virtual override returns (bool) {
         return false;
     }
 
+    /// @notice Check if the position is at risk of liquidation
+    /// @dev Compares current debt against max borrow allowed by LLTV.
+    /// @return True if debt exceeds max borrow (position is liquidatable)
     function _isLiquidatable() internal view virtual override returns (bool) {
         Position memory p = morpho.position(marketId, address(this));
         if (p.borrowShares == 0) return false;
@@ -183,6 +207,10 @@ abstract contract BaseMorphoLooper is
         return balanceOfDebt() > maxBorrow;
     }
 
+    /// @notice Get the maximum collateral that can be deposited
+    /// @dev Morpho Blue has no supply caps, returns max uint256.
+    ///      Override if the collateral token has supply limits.
+    /// @return Always type(uint256).max for Morpho Blue
     function _maxCollateralDeposit()
         internal
         view
@@ -193,6 +221,9 @@ abstract contract BaseMorphoLooper is
         return type(uint256).max;
     }
 
+    /// @notice Get the maximum amount that can be borrowed
+    /// @dev Returns available liquidity in the Morpho Blue market.
+    /// @return The difference between total supply and total borrow
     function _maxBorrowAmount()
         internal
         view
@@ -208,6 +239,9 @@ abstract contract BaseMorphoLooper is
                 : 0;
     }
 
+    /// @notice Get the liquidation loan-to-value threshold (LLTV)
+    /// @dev Returns the LLTV from the Morpho market params.
+    /// @return The LLTV in WAD (e.g., 0.9e18 = 90%)
     function getLiquidateCollateralFactor()
         public
         view
@@ -218,6 +252,9 @@ abstract contract BaseMorphoLooper is
         return marketParams.lltv;
     }
 
+    /// @notice Get the collateral balance in Morpho Blue
+    /// @dev Reads collateral directly from Morpho position struct.
+    /// @return The amount of collateral supplied to Morpho
     function balanceOfCollateral()
         public
         view
@@ -229,6 +266,9 @@ abstract contract BaseMorphoLooper is
         return p.collateral;
     }
 
+    /// @notice Get the current debt owed to Morpho Blue
+    /// @dev Uses expectedBorrowAssets to include accrued interest.
+    /// @return The total debt including accrued interest
     function balanceOfDebt() public view virtual override returns (uint256) {
         return morpho.expectedBorrowAssets(marketParams, address(this));
     }

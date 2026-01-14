@@ -44,12 +44,16 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
                             CONVERSIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Convert asset to collateral token via Uniswap V3
+    /// @dev Swaps asset (e.g., WETH) to collateral (e.g., wstETH) using configured Uniswap V3 pool.
+    /// @param amount The amount of asset to convert
+    /// @param amountOutMin The minimum amount of collateral to receive (slippage protection)
+    /// @return The amount of collateral tokens received
     function _convertAssetToCollateral(
         uint256 amount,
         uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
-        // Gateway mints iUSD and stakes directly to sIUSD for this contract.
         return
             _swapFrom(
                 address(asset),
@@ -59,12 +63,16 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
             );
     }
 
+    /// @notice Convert collateral token back to asset via Uniswap V3
+    /// @dev Swaps collateral (e.g., wstETH) to asset (e.g., WETH) using configured Uniswap V3 pool.
+    /// @param amount The amount of collateral to convert
+    /// @param amountOutMin The minimum amount of asset to receive (slippage protection)
+    /// @return The amount of asset tokens received
     function _convertCollateralToAsset(
         uint256 amount,
         uint256 amountOutMin
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
-        // Add slippage to the amount in to make sure we get enough for the flash loan repayment.
         return
             _swapFrom(
                 address(collateralToken),
@@ -78,5 +86,7 @@ contract LSTMorphoLooper is BaseMorphoLooper, UniswapV3Swapper {
                         NO-OP REWARDS (NONE)
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Claim and sell protocol rewards
+    /// @dev No rewards to claim for LST positions. Override if rewards become available.
     function _claimAndSellRewards() internal pure override {}
 }

@@ -73,6 +73,12 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
                             CONVERSIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Convert asset tokens to PT (collateral) via Pendle
+    /// @dev First converts asset to pendleToken (if different), then swaps to PT via Pendle AMM.
+    ///      Override _convertAssetToPendleToken if asset != pendleToken.
+    /// @param amount The amount of asset to convert
+    /// @param amountOutMin The minimum amount of PT to receive (slippage protection)
+    /// @return The amount of PT received
     function _convertAssetToCollateral(
         uint256 amount,
         uint256 amountOutMin
@@ -84,6 +90,12 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
             _pendleSwapFrom(pendleToken, collateralToken, amount, amountOutMin);
     }
 
+    /// @notice Convert PT (collateral) back to asset via Pendle
+    /// @dev First sells PT for pendleToken via Pendle AMM, then converts to asset (if different).
+    ///      Override _convertPendleTokenToAsset if asset != pendleToken.
+    /// @param amount The amount of PT to convert
+    /// @param amountOutMin The minimum amount of asset to receive (slippage protection)
+    /// @return The amount of asset received
     function _convertCollateralToAsset(
         uint256 amount,
         uint256 amountOutMin
@@ -96,16 +108,22 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         return converted;
     }
 
-    /// @notice Convert asset to pendle token (override if different)
-    /// @dev Default: asset == pendleToken, so no conversion needed
+    /// @notice Convert asset to Pendle-compatible token
+    /// @dev Override if the strategy's asset differs from the Pendle market's underlying token.
+    ///      Default implementation assumes asset == pendleToken (no conversion needed).
+    /// @param amount The amount of asset to convert
+    /// @return The amount of pendleToken received (same as input by default)
     function _convertAssetToPendleToken(
         uint256 amount
     ) internal virtual returns (uint256) {
         return amount;
     }
 
-    /// @notice Convert pendle token to asset (override if different)
-    /// @dev Default: asset == pendleToken, so no conversion needed
+    /// @notice Convert Pendle token back to strategy's asset
+    /// @dev Override if the strategy's asset differs from the Pendle market's underlying token.
+    ///      Default implementation assumes asset == pendleToken (no conversion needed).
+    /// @param amount The amount of pendleToken to convert
+    /// @return The amount of asset received (same as input by default)
     function _convertPendleTokenToAsset(
         uint256 amount
     ) internal virtual returns (uint256) {
@@ -116,5 +134,7 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
                         NO-OP REWARDS (NONE)
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Claim and sell protocol rewards
+    /// @dev No rewards to claim for PT positions. Override if rewards become available.
     function _claimAndSellRewards() internal pure override {}
 }

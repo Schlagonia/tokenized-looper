@@ -33,12 +33,6 @@ contract Deploy is Script {
         bytes32 marketId;
     }
 
-    struct InfinifiConfig {
-        BaseConfig base;
-        address gateway;
-        address iusd;
-    }
-
     struct LSTConfig {
         BaseConfig base;
         address router;
@@ -61,17 +55,13 @@ contract Deploy is Script {
     address constant MORPHO_KATANA = 0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc;
 
     // ===== INFINIFI MAINNET (USDC/sIUSD) =====
-    function getInfinifiMainnet() internal pure returns (InfinifiConfig memory) {
-        return InfinifiConfig({
-            base: BaseConfig({
+    function getInfinifiMainnet() internal pure returns (BaseConfig memory) {
+        return BaseConfig({
                 asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-                name: "Infinifi Morpho Looper",
+                name: "Infinifi sIUSD Morpho Looper",
                 collateralToken: 0x1e2B4F96b45e1e3d34b8E9727A4F4E78E5E0e501, // sIUSD
                 morpho: MORPHO_MAINNET,
                 marketId: 0x7b553b155ee3d34c08a8620c9bf29edabc6dcc8b11aadcc64883e906b0824b5f
-            }),
-            gateway: 0x45fBa6f9F4a2962E1A82a934a4E2424C0bCeA3Cd, // Infinifi Gateway
-            iusd: 0x38E1Dc33186aBcF9Ba92e10229A4c5218FC77499 // iUSD
         });
     }
 
@@ -185,15 +175,13 @@ contract Deploy is Script {
         console.log("Config:", DEPLOY_CONFIG);
     }
 
-    function deployInfinifi(InfinifiConfig memory cfg) internal returns (address) {
+    function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
         return address(new InfinifiMorphoLooper(
-            cfg.base.asset,
-            cfg.base.name,
-            cfg.base.collateralToken,
-            cfg.base.morpho,
-            Id.wrap(cfg.base.marketId),
-            cfg.gateway,
-            cfg.iusd
+            cfg.asset,
+            cfg.name,
+            cfg.collateralToken,
+            cfg.morpho,
+            Id.wrap(cfg.marketId)
         ));
     }
 

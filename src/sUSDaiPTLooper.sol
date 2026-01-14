@@ -39,12 +39,20 @@ contract sUSDaiPTLooper is PTMorphoLooper {
         ERC20(_asset).forceApprove(address(CURVE_POOL), type(uint256).max);
     }
 
+    /// @notice Convert USDC to sUSDai via Curve pool
+    /// @dev Uses Curve NG pool to swap USDC -> sUSDai for Pendle PT operations.
+    /// @param amount The amount of USDC to convert
+    /// @return The amount of sUSDai received
     function _convertAssetToPendleToken(
         uint256 amount
     ) internal override returns (uint256) {
         return CURVE_POOL.exchange(USDC_INDEX, sUSDai_INDEX, amount, 0);
     }
 
+    /// @notice Convert sUSDai back to USDC via Curve pool
+    /// @dev Uses Curve NG pool to swap sUSDai -> USDC after PT operations.
+    /// @param amount The amount of sUSDai to convert
+    /// @return The amount of USDC received
     function _convertPendleTokenToAsset(
         uint256 amount
     ) internal override returns (uint256) {

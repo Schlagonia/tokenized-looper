@@ -90,9 +90,7 @@ contract Setup is Test, IEvents {
                     "Morpho Looper",
                     SIUSD,
                     MORPHO,
-                    MARKET_ID,
-                    GATEWAY,
-                    IUSD
+                    MARKET_ID
                 )
             )
         );
