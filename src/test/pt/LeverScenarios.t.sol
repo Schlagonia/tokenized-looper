@@ -16,7 +16,7 @@ contract PTLeverScenariosTest is SetupPT, LeverScenariosTest {
         return SetupPT.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupPT, Setup) {
-        SetupPT.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupPT, Setup) {
+        SetupPT.accrueYield(_amount);
     }
 }

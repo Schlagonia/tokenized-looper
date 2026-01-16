@@ -495,14 +495,14 @@ abstract contract BaseLooper is BaseHealthCheck {
             : 0;
         (, uint256 targetDebt) = getTargetPosition(targetEquity);
 
-        uint256 debtToRepay = currentDebt > targetDebt // Add slippage to account for swap back.
-            ? ((currentDebt - targetDebt) * (MAX_BPS + slippage)) / MAX_BPS
+        uint256 debtToRepay = currentDebt > targetDebt
+            ? currentDebt - targetDebt
             : 0;
 
         // Cap flashloan by available liquidity
         debtToRepay = Math.min(debtToRepay, maxFlashloan());
 
-        uint256 collateralToWithdraw = _assetToCollateral(
+        uint256 collateralToWithdraw = debtToRepay == currentDebt ? balanceOfCollateral() : _assetToCollateral(
             debtToRepay + _amountNeeded
         );
 

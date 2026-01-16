@@ -90,7 +90,9 @@ contract SetupLST is Setup {
     }
 
     /// @notice Override accrueYield - for LST just skip time
-    function accrueYield() public virtual override {
+    function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
+        airdrop(asset, address(strategy), _amount * 500 / 10_000);
+
     }
 }

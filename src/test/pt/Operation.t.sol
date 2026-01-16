@@ -15,8 +15,8 @@ contract PTOperationTest is SetupPT, OperationTest {
         return SetupPT.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupPT, Setup) {
-        SetupPT.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupPT, Setup) {
+        SetupPT.accrueYield(_amount);
         //airdrop(asset, address(strategy), minFuzzAmount / 10);
     }
 

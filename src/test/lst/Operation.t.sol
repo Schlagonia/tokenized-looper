@@ -19,7 +19,7 @@ contract LSTOperationTest is SetupLST, OperationTest {
         return SetupLST.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupLST, Setup) {
-        SetupLST.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupLST, Setup) {
+        SetupLST.accrueYield(_amount);
     }
 }

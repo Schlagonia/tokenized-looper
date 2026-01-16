@@ -160,7 +160,7 @@ contract Setup is Test, IEvents {
         deal(address(_asset), _to, balanceBefore + _amount);
     }
 
-    function accrueYield() public virtual {
+    function accrueYield(uint256 _amount) public virtual {
         skip(1 days);
         deal(address(asset), address(this), 1e6);
         asset.approve(address(GATEWAY), 1e6);

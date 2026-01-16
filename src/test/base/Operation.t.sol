@@ -41,7 +41,7 @@ abstract contract OperationTest is Setup {
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
 
         // Earn Interest
-        accrueYield();
+        accrueYield(_amount);
 
         vm.prank(management);
         strategy.setLossLimitRatio(100);
@@ -72,10 +72,7 @@ abstract contract OperationTest is Setup {
         vm.prank(keeper);
         strategy.tend();
 
-        skip(1 days);
-
-        // simulate profit by airdropping USDC
-        airdrop(asset, address(strategy), (_amount * 500) / 10_000);
+        accrueYield(_amount);
 
         vm.prank(keeper);
         strategy.report();

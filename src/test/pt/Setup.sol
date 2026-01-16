@@ -91,6 +91,9 @@ contract SetupPT is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        // Set profit max unlock to 0 so oracle doesn't revert after time skip
+        _strategy.setProfitMaxUnlockTime(0);
+
         vm.stopPrank();
 
         return address(_strategy);
@@ -98,9 +101,9 @@ contract SetupPT is Setup {
 
     /// @notice Override accrueYield - airdrop profit instead of skipping time
     /// @dev The cUSD oracle becomes stale after time skip, so we simulate yield via airdrop
-    function accrueYield() public virtual override {
+    function accrueYield(uint256 _amount) public virtual override {
         // Don't skip time - the cUSD oracle has staleness checks that will revert
         // Instead, simulate yield by airdropping some profit
-        airdrop(asset, address(strategy), 5e6);
+        airdrop(asset, address(strategy), _amount / 10);
     }
 }

@@ -21,7 +21,7 @@ abstract contract ShutdownTest is Setup {
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
 
         // Earn Interest
-        accrueYield();
+        accrueYield(_amount);
 
         // Shutdown the strategy
         vm.prank(emergencyAdmin);
@@ -56,7 +56,7 @@ abstract contract ShutdownTest is Setup {
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
         // Earn Interest
-        accrueYield();
+        accrueYield(_amount);
 
         // Shutdown the strategy
         vm.prank(emergencyAdmin);

@@ -15,8 +15,8 @@ contract PTShutdownTest is SetupPT, ShutdownTest {
         return SetupPT.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupPT, Setup) {
-        SetupPT.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupPT, Setup) {
+        SetupPT.accrueYield(_amount);
     }
 
     /// @notice Override with higher slippage tolerance for PT swaps (~1%)
@@ -30,7 +30,7 @@ contract PTShutdownTest is SetupPT, ShutdownTest {
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
 
-        accrueYield();
+        accrueYield(_amount);
 
         vm.prank(emergencyAdmin);
         strategy.shutdownStrategy();
@@ -61,7 +61,7 @@ contract PTShutdownTest is SetupPT, ShutdownTest {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        accrueYield();
+        accrueYield(_amount);
 
         vm.prank(emergencyAdmin);
         strategy.shutdownStrategy();

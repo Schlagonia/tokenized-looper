@@ -18,7 +18,7 @@ contract PTArbLeverScenariosTest is SetupPTArb, LeverScenariosTest {
         return SetupPTArb.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupPTArb, Setup) {
-        SetupPTArb.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupPTArb, Setup) {
+        SetupPTArb.accrueYield(_amount);
     }
 }
