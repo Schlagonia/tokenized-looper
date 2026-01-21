@@ -288,6 +288,9 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (flashloanAvailable >= currentDebt) return type(uint256).max;
 
+        // If target leverage ratio is 1 or 0 and we cant repay the debt, we cant withdraw yet.
+        if (targetLeverageRatio <= WAD) return 0;
+
         // Limited by flashloan: calculate max withdrawable
         // When debtToRepay is capped at maxFlashloan:
         //   targetDebt = currentDebt - maxFlashloan
@@ -339,8 +342,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         if (currentLeverage > _targetLeverageRatio + leverageBuffer) {
             // Over-leveraged: can repay with idle assets OR delever via flashloan
             if (
-                balanceOfAsset() > 0 ||
-                availableWithdrawLimit(address(this)) > 0
+                balanceOfAsset() > minAmountToBorrow ||
+                maxFlashloan() > minAmountToBorrow
             ) {
                 return _isBaseFeeAcceptable();
             }
@@ -502,9 +505,9 @@ abstract contract BaseLooper is BaseHealthCheck {
         // Cap flashloan by available liquidity
         debtToRepay = Math.min(debtToRepay, maxFlashloan());
 
-        uint256 collateralToWithdraw = debtToRepay == currentDebt ? balanceOfCollateral() : _assetToCollateral(
-            debtToRepay + _amountNeeded
-        );
+        uint256 collateralToWithdraw = debtToRepay == currentDebt
+            ? balanceOfCollateral()
+            : _assetToCollateral(debtToRepay + _amountNeeded);
 
         if (debtToRepay == 0 && collateralToWithdraw != 0) {
             // No debt to repay, just withdraw collateral
@@ -568,6 +571,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 flashloanAmount,
         FlashLoanData memory params
     ) internal virtual {
+        uint256 initialLeverage = getCurrentLeverageRatio();
+
         // Use flashloaned amount to repay debt
         _repay(Math.min(flashloanAmount, balanceOfDebt()));
 
@@ -582,9 +587,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         _convertCollateralToAsset(collateralToWithdraw);
 
         // Sanity check
+        uint256 finalLeverage = getCurrentLeverageRatio();
+        // Make sure the leverage is within the bounds, or at least improved.
         require(
-            getCurrentLeverageRatio() < maxLeverageRatio,
-            "leverage too low"
+            finalLeverage < maxLeverageRatio || finalLeverage < initialLeverage,
+            "leverage too high"
         );
     }
 
