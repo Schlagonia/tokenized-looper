@@ -40,7 +40,9 @@ contract StrategyAprOracle is AprOracleBase {
 
     event UpdatePtTwapDuration(uint32 duration);
 
-    constructor() AprOracleBase("Looper Strategy Apr Oracle", msg.sender) {}
+    constructor(
+        address _governance
+    ) AprOracleBase("Looper Strategy Apr Oracle", _governance) {}
 
     function setPtTwapDuration(uint32 _duration) external onlyGovernance {
         require(_duration != 0, "duration");

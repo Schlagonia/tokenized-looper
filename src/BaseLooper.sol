@@ -187,7 +187,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     ///      Called by TokenizedStrategy when withdrawals are requested.
     /// @param _amount The amount of asset to free
     function _freeFunds(uint256 _amount) internal virtual override accrue {
-        _delever(_amount);
+        _withdrawFunds(_amount);
     }
 
     /// @notice Harvest rewards and report total assets
@@ -476,8 +476,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         }
     }
 
-    /// @notice Deleverage position using flashloan
-    function _delever(uint256 _amountNeeded) internal virtual {
+    /// @notice Will withdraw funds from the strategy to cover the amount needed keeping the position at target leverage ratio using a flashloan
+    function _withdrawFunds(uint256 _amountNeeded) internal virtual {
         (uint256 valueOfCollateral, uint256 currentDebt) = position();
 
         if (currentDebt == 0) {
@@ -824,7 +824,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external onlyEmergencyAuthorized {
-        _delever(TokenizedStrategy.totalAssets());
+        _withdrawFunds(TokenizedStrategy.totalAssets());
     }
 
     /// @notice Manual: supply collateral
@@ -874,7 +874,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _emergencyWithdraw(uint256 _amount) internal virtual override {
         // Try full unwind first
         if (balanceOfDebt() > 0) {
-            _delever(Math.min(_amount, TokenizedStrategy.totalAssets()));
+            _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
         } else if (_amount > 0) {
             _amount = Math.min(_amount, balanceOfCollateral());
             _withdrawCollateral(_amount);

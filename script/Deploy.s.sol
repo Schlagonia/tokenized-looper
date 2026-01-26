@@ -8,6 +8,14 @@ import {InfinifiMorphoLooper} from "../src/InfinifiMorphoLooper.sol";
 import {LSTMorphoLooper} from "../src/LSTMorphoLooper.sol";
 import {PTMorphoLooper} from "../src/PTMorphoLooper.sol";
 import {sUSDaiPTLooper} from "../src/sUSDaiPTLooper.sol";
+import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
+
+interface ICreateXDeployer {
+    function deployCreate2(
+        bytes32 salt,
+        bytes memory initCode
+    ) external payable returns (address newContract);
+}
 
 /// @title Deploy Script for Morpho Loopers
 /// @notice Generic deployment script - change DEPLOY_CONFIG to select strategy
@@ -17,9 +25,12 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string constant DEPLOY_CONFIG = "LST_KATANA";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB
+    string constant DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE
     /// @dev =============================================================
+
+    /// @dev CreateX deployer for CREATE2 deployments
+    address constant CREATE_X = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
 
     /*//////////////////////////////////////////////////////////////
                             CONFIG STRUCTS
@@ -59,9 +70,9 @@ contract Deploy is Script {
         return BaseConfig({
                 asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
                 name: "Infinifi sIUSD Morpho Looper",
-                collateralToken: 0x1e2B4F96b45e1e3d34b8E9727A4F4E78E5E0e501, // sIUSD
+                collateralToken: 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB, // sIUSD
                 morpho: MORPHO_MAINNET,
-                marketId: 0x7b553b155ee3d34c08a8620c9bf29edabc6dcc8b11aadcc64883e906b0824b5f
+                marketId: 0xbbf7ce1b40d32d3e3048f5cf27eeaa6de8cb27b80194690aab191a63381d8c99
         });
     }
 
@@ -112,12 +123,12 @@ contract Deploy is Script {
         return PTConfig({
             base: BaseConfig({
                 asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-                name: "PT siUSD Morpho Looper",
-                collateralToken: 0x5510B080449d5E3Bf345b6635eD40A35B36b081f, // PT-siUSD
+                name: "PT siUSD March 25 Morpho Looper",
+                collateralToken: 0xaF76B3AF3477E4a2cD0B7F80c3152108c19a25e5, // PT-siUSD
                 morpho: MORPHO_MAINNET,
-                marketId: 0x32b4a75db50a20f7435dfdcf54593a2e96fc97901321d3ab07268941dee93edb
+                marketId: 0xaac3ffcdf8a75919657e789fa72ab742a7bbfdf5bb0b87e4bbeb3c29bbbbb05c
             }),
-            pendleMarket: 0x126b8f10B8a6f3D3Dbe5dc991cEB14ABa6345E04,
+            pendleMarket: 0x564f279B0226f60a40f1E4b8C596Feb87c383BFA,
             pendleToken: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 // USDC (same as asset)
         });
     }
@@ -165,6 +176,8 @@ contract Deploy is Script {
             deployed = deploysUSDaiPT(getPTsUSDaiArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_KATANA")) {
             deployed = deployLST(getLSTKatana());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("APR_ORACLE")) {
+            deployed = deployAprOracle();
         } else {
             revert("Unknown config");
         }
@@ -218,5 +231,18 @@ contract Deploy is Script {
             cfg.pendleMarket,
             cfg.pendleToken
         ));
+    }
+
+    function deployAprOracle() internal returns (address) {
+        address governance = vm.envOr("APR_ORACLE_GOV", address(0));
+        require(governance != address(0), "APR_ORACLE_GOV");
+
+        bytes32 salt = vm.envOr("APR_ORACLE_SALT", bytes32(0));
+        bytes memory initCode = abi.encodePacked(
+            type(StrategyAprOracle).creationCode,
+            abi.encode(governance)
+        );
+
+        return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
     }
 }

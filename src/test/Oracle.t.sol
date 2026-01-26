@@ -10,7 +10,7 @@ contract OracleTest is SetupPT {
 
     function setUp() public override {
         super.setUp();
-        oracle = new StrategyAprOracle();
+        oracle = new StrategyAprOracle(management);
     }
 
     function checkOracle(address _strategy, uint256 _delta) public {
