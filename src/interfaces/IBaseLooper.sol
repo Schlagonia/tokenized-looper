@@ -23,6 +23,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function slippage() external view returns (uint64);
 
+    function reportBuffer() external view returns (uint256);
+
     function depositLimit() external view returns (uint256);
 
     function allowed(address _address) external view returns (bool);
@@ -41,6 +43,8 @@ interface IBaseLooper is IBaseHealthCheck {
     function setMaxGasPriceToTend(uint256 _maxGasPriceToTend) external;
 
     function setSlippage(uint256 _slippage) external;
+
+    function setReportBuffer(uint256 _reportBuffer) external;
 
     function setMinAmountToBorrow(uint256 _minAmountToBorrow) external;
 

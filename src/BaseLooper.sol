@@ -44,6 +44,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice The timestamp of the last tend.
     uint256 public lastTend;
 
+    /// @notice The amount to discount collateral by in reports in basis points.
+    uint256 public reportBuffer;
+
     /// @notice The minimum interval between tends.
     uint256 public minTendInterval;
 
@@ -95,7 +98,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         minTendInterval = 2 hours;
         maxAmountToSwap = type(uint256).max;
         maxGasPriceToTend = 200 * 1e9;
-        slippage = 50;
+        slippage = 30;
 
         _setLossLimitRatio(10);
         _setProfitLimitRatio(1_000);
@@ -166,6 +169,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         slippage = uint64(_slippage);
     }
 
+    function setReportBuffer(uint256 _reportBuffer) external onlyManagement {
+        require(_reportBuffer < MAX_BPS, "buffer");
+        reportBuffer = _reportBuffer;
+    }
+
     function setMinAmountToBorrow(
         uint256 _minAmountToBorrow
     ) external onlyManagement {
@@ -226,12 +234,12 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Override to customize asset calculation. Default returns loose assets + collateral value - debt.
     /// @return The estimated total assets in asset token terms
     function estimatedTotalAssets() public view virtual returns (uint256) {
-        return
-            balanceOfAsset() +
-            _collateralToAsset(
-                balanceOfCollateral() + balanceOfCollateralToken()
-            ) -
-            balanceOfDebt();
+        // Collateral value discounted by the report buffer.
+        uint256 collateralValue = (_collateralToAsset(
+            balanceOfCollateral() + balanceOfCollateralToken()
+        ) * (MAX_BPS - reportBuffer)) / MAX_BPS;
+
+        return balanceOfAsset() + collateralValue - balanceOfDebt();
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -1030,4 +1030,95 @@ abstract contract OperationTest is Setup {
             "tendTrigger should return false when within buffer with no idle"
         );
     }
+
+    /*//////////////////////////////////////////////////////////////
+                    REPORT BUFFER TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_reportBuffer_lowersEstimatedTotalAssets(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Create a position with collateral
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Get estimatedTotalAssets with default reportBuffer (0)
+        uint256 estimatedAssetsDefault = strategy.estimatedTotalAssets();
+        assertGt(estimatedAssetsDefault, 0, "!estimatedAssets should be > 0");
+
+        // Set reportBuffer to 100 BPS (1%)
+        vm.prank(management);
+        strategy.setReportBuffer(100);
+        assertEq(strategy.reportBuffer(), 100, "!reportBuffer should be 100");
+
+        // Get estimatedTotalAssets with reportBuffer = 100
+        uint256 estimatedAssetsWithBuffer = strategy.estimatedTotalAssets();
+
+        // estimatedTotalAssets should be lower with higher reportBuffer
+        assertLt(
+            estimatedAssetsWithBuffer,
+            estimatedAssetsDefault,
+            "!estimatedAssets should be lower with reportBuffer"
+        );
+
+        // Set reportBuffer to 500 BPS (5%)
+        vm.prank(management);
+        strategy.setReportBuffer(500);
+        assertEq(strategy.reportBuffer(), 500, "!reportBuffer should be 500");
+
+        // Get estimatedTotalAssets with reportBuffer = 500
+        uint256 estimatedAssetsWithHigherBuffer = strategy
+            .estimatedTotalAssets();
+
+        // Should be even lower with higher reportBuffer
+        assertLt(
+            estimatedAssetsWithHigherBuffer,
+            estimatedAssetsWithBuffer,
+            "!estimatedAssets should be lower with higher reportBuffer"
+        );
+        assertLt(
+            estimatedAssetsWithHigherBuffer,
+            estimatedAssetsDefault,
+            "!estimatedAssets should be lower than default"
+        );
+    }
+
+    function test_reportBuffer_onlyManagement() public {
+        // Non-management should not be able to set
+        vm.prank(user);
+        vm.expectRevert("!management");
+        strategy.setReportBuffer(100);
+
+        // Keeper should not be able to set
+        vm.prank(keeper);
+        vm.expectRevert("!management");
+        strategy.setReportBuffer(100);
+    }
+
+    function test_reportBuffer_boundsValidation() public {
+        vm.startPrank(management);
+
+        // Should fail if reportBuffer >= MAX_BPS
+        vm.expectRevert("buffer");
+        strategy.setReportBuffer(MAX_BPS);
+
+        vm.expectRevert("buffer");
+        strategy.setReportBuffer(MAX_BPS + 1);
+
+        // Should succeed with valid values
+        strategy.setReportBuffer(0);
+        assertEq(strategy.reportBuffer(), 0, "!reportBuffer should be 0");
+
+        strategy.setReportBuffer(MAX_BPS - 1);
+        assertEq(
+            strategy.reportBuffer(),
+            MAX_BPS - 1,
+            "!reportBuffer should be MAX_BPS - 1"
+        );
+
+        vm.stopPrank();
+    }
 }
