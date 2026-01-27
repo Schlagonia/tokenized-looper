@@ -31,7 +31,7 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function minAmountToBorrow() external view returns (uint256);
 
-    /// @notice Maximum amount of asset to swap in a single tend (0 = no limit)
+    /// @notice Maximum amount of asset to swap in a single tend
     function maxAmountToSwap() external view returns (uint256);
 
     function setAllowed(address _address, bool _allowed) external;

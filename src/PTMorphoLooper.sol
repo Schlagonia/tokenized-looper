@@ -34,9 +34,7 @@ contract PTMorphoLooper is BaseMorphoLooper, PendleSwapper {
         address _pendleMarket,
         address _pendleToken
     ) BaseMorphoLooper(_asset, _name, _collateralToken, _morpho, _marketId) {
-        targetLeverageRatio = 5e18;
-        leverageBuffer = 0.25e18;
-        maxLeverageRatio = 6e18;
+        _setLeverageParams(5e18, 0.25e18, 6e18);
 
         pendleMarket = _pendleMarket;
         pendleToken = _pendleToken;

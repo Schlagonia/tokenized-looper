@@ -79,7 +79,7 @@ contract StrategyAprOracle is AprOracleBase {
         uint256 baseAssets = IBaseLooper(_strategy).estimatedTotalAssets();
         if (baseAssets == 0 && _delta <= 0) return 0;
         int256 equityAfterInt = int256(baseAssets) + _delta;
-        if (equityAfterInt <= 0) equityAfterInt = 1;
+        if (equityAfterInt <= 0) equityAfterInt = 0;
         uint256 equityAfter = uint256(equityAfterInt);
 
         uint256 collateralValue = (equityAfter * leverage) / WAD;

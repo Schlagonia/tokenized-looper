@@ -50,7 +50,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice The maximum amount of asset that can be deposited
     uint256 public depositLimit;
 
-    /// @notice Maximum amount of asset to swap in a single tend (0 = no limit)
+    /// @notice Maximum amount of asset to swap in a single tend
     uint256 public maxAmountToSwap;
 
     /// @notice Buffer tolerance in WAD (e.g., 0.5e18 = +/- 0.5x triggers tend)
@@ -121,6 +121,18 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 _leverageBuffer,
         uint256 _maxLeverageRatio
     ) external onlyManagement {
+        _setLeverageParams(
+            _targetLeverageRatio,
+            _leverageBuffer,
+            _maxLeverageRatio
+        );
+    }
+
+    function _setLeverageParams(
+        uint256 _targetLeverageRatio,
+        uint256 _leverageBuffer,
+        uint256 _maxLeverageRatio
+    ) internal virtual {
         if (_targetLeverageRatio == 0) {
             require(_leverageBuffer == 0, "buffer must be 0 if target is 0");
         } else {
@@ -498,25 +510,24 @@ abstract contract BaseLooper is BaseHealthCheck {
             : 0;
         (, uint256 targetDebt) = getTargetPosition(targetEquity);
 
-        uint256 debtToRepay = currentDebt > targetDebt
-            ? currentDebt - targetDebt
-            : 0;
-
-        // Cap flashloan by available liquidity
-        debtToRepay = Math.min(debtToRepay, maxFlashloan());
-
-        uint256 collateralToWithdraw = debtToRepay == currentDebt
-            ? balanceOfCollateral()
-            : _assetToCollateral(debtToRepay + _amountNeeded);
-
-        if (debtToRepay == 0 && collateralToWithdraw != 0) {
+        if (targetDebt > currentDebt) {
+            uint256 collateralToWithdraw = _assetToCollateral(_amountNeeded);
             // No debt to repay, just withdraw collateral
             _withdrawCollateral(collateralToWithdraw);
             _convertCollateralToAsset(collateralToWithdraw);
             return;
         }
 
+        uint256 debtToRepay = currentDebt - targetDebt;
+
+        // Cap flashloan by available liquidity
+        debtToRepay = Math.min(debtToRepay, maxFlashloan());
+
         if (debtToRepay == 0) return;
+
+        uint256 collateralToWithdraw = debtToRepay == currentDebt
+            ? balanceOfCollateral()
+            : _assetToCollateral(debtToRepay + _amountNeeded);
 
         bytes memory data = abi.encode(
             FlashLoanData({
