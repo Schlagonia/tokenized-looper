@@ -25,7 +25,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string constant DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
+    string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
     /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE
     /// @dev =============================================================
 
@@ -145,7 +145,7 @@ contract Deploy is Script {
         return PTConfig({
             base: BaseConfig({
                 asset: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831, // USDC (Arbitrum)
-                name: "PT sUSDai Morpho Looper",
+                name: "PT sUSDai Feb 18 Morpho Looper",
                 collateralToken: 0x1BF1311FCF914A69Dd5805C9B06b72F80539cB3f, // PT-sUSDai
                 morpho: MORPHO_ARBITRUM,
                 marketId: 0x7717f1e04510390518811b3133ea47c298094ddd1d806ed8f8867d88c727bad7
@@ -160,6 +160,28 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
+        if (block.chainid == 1) {
+            DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "INFINIFI_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "LST_MAINNET";
+            deploy();
+        }
+        if (block.chainid == 42161) {
+            DEPLOY_CONFIG = "PT_SUSDAI_ARB";
+            deploy();
+        }
+        if (block.chainid == 747474) {
+            DEPLOY_CONFIG = "LST_KATANA";
+            deploy();
+        }
+
+        DEPLOY_CONFIG = "APR_ORACLE";
+        deploy();
+    }
+
+    function deploy() internal {
         vm.startBroadcast();
 
         address deployed;
