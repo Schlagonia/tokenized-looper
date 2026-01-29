@@ -17,7 +17,7 @@ contract SetupPT is Setup {
     Id public constant PT_MARKET_ID =
         Id.wrap(
             //0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789 // cUSD market
-            0xaac3ffcdf8a75919657e789fa72ab742a7bbfdf5bb0b87e4bbeb3c29bbbbb05c  // siUSD market
+            0xaac3ffcdf8a75919657e789fa72ab742a7bbfdf5bb0b87e4bbeb3c29bbbbb05c // siUSD market
         );
 
     // PT token (collateral)

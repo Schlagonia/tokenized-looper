@@ -30,6 +30,11 @@ contract LooperKeeper is Governance {
         bytes data;
     }
 
+    modifier onlyKeepers() {
+        require(allowed[msg.sender], "not allowed");
+        _;
+    }
+
     IPublicAllocator public immutable publicAllocator;
     mapping(address => bool) public allowed;
 
@@ -57,8 +62,7 @@ contract LooperKeeper is Governance {
         Call[] calldata calls,
         address strategy,
         uint256 allocatorFee
-    ) external payable {
-        require(allowed[msg.sender], "not allowed");
+    ) external payable onlyKeepers {
         require(vault != address(0), "vault=0");
         require(strategy != address(0), "strategy=0");
 
@@ -93,8 +97,13 @@ contract LooperKeeper is Governance {
         return total;
     }
 
-    function report(address strategy) external returns (uint256, uint256) {
-        require(allowed[msg.sender], "not allowed");
-        return IStrategyInterface(strategy).report();
+    function harvestStrategy(
+        address _strategyAddress
+    ) public onlyKeepers returns (uint256 profit, uint256 loss) {
+        (profit, loss) = IStrategyInterface(_strategyAddress).report();
+    }
+
+    function tendStrategy(address _strategyAddress) public onlyKeepers {
+        IStrategyInterface(_strategyAddress).tend();
     }
 }
