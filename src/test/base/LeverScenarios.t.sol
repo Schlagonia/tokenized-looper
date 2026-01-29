@@ -1077,7 +1077,9 @@ abstract contract LeverScenariosTest is Setup {
     }
 
     /// @notice Test lever with increasing target leverage
-    function test_lever_afterIncreasingTargetLeverage(uint256 _amount) public {
+    function test_lever_afterIncreasingTargetLeverage(
+        uint256 _amount
+    ) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // 1. Setup: Lower initial target
