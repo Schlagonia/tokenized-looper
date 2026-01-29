@@ -22,7 +22,7 @@ interface IKeeperRelayer {
 }
 
 /// @notice Simple executor that reallocates liquidity, runs arbitrary calls, then tend().
-contract PublicAllocatorTendExecutor is Governance {
+contract LooperKeeper is Governance {
     event AllowedSet(address indexed _address, bool indexed _allowed);
     struct Call {
         address target;

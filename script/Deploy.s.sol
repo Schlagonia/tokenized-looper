@@ -8,7 +8,7 @@ import {InfinifiMorphoLooper} from "../src/InfinifiMorphoLooper.sol";
 import {LSTMorphoLooper} from "../src/LSTMorphoLooper.sol";
 import {PTMorphoLooper} from "../src/PTMorphoLooper.sol";
 import {sUSDaiPTLooper} from "../src/sUSDaiPTLooper.sol";
-import {PublicAllocatorTendExecutor} from "../src/periphery/PublicAllocatorTendExecutor.sol";
+import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 
 interface ICreateXDeployer {
@@ -303,7 +303,7 @@ contract Deploy is Script {
         require(publicAllocator != address(0), "EXECUTOR_PUBLIC_ALLOCATOR");
         require(governance != address(0), "EXECUTOR_GOVERNANCE");
 
-        return address(new PublicAllocatorTendExecutor(
+        return address(new LooperKeeper(
             governance,
             publicAllocator
         ));
