@@ -8,6 +8,7 @@ import {InfinifiMorphoLooper} from "../src/InfinifiMorphoLooper.sol";
 import {LSTMorphoLooper} from "../src/LSTMorphoLooper.sol";
 import {PTMorphoLooper} from "../src/PTMorphoLooper.sol";
 import {sUSDaiPTLooper} from "../src/sUSDaiPTLooper.sol";
+import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 
 interface ICreateXDeployer {
@@ -25,8 +26,8 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string constant DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE
+    string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, MORPHO_EXECUTOR
     /// @dev =============================================================
 
     /// @dev CreateX deployer for CREATE2 deployments
@@ -90,6 +91,20 @@ contract Deploy is Script {
         });
     }
 
+    // ===== sUSDS/USDT MAINNET =====
+    function getSUSDSUSDTMainnet() internal pure returns (LSTConfig memory) {
+        return LSTConfig({
+            base: BaseConfig({
+                asset: 0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
+                name: "sUSDS/USDT Morpho Looper",
+                collateralToken: 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD, // sUSDS
+                morpho: MORPHO_MAINNET,
+                marketId: 0x3274643db77a064abd3bc851de77556a4ad2e2f502f4f0c80845fa8f909ecf0b
+            }),
+            router: 0xE592427A0AEce92De3Edee1F18E0157C05861564
+        });
+    }
+
     function getLSTKatana() internal pure returns (LSTConfig memory) {
         return LSTConfig({
             base: BaseConfig({
@@ -108,12 +123,12 @@ contract Deploy is Script {
         return PTConfig({
             base: BaseConfig({
                 asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-                name: "PT cUSD Morpho Looper",
-                collateralToken: 0x545A490f9ab534AdF409A2E682bc4098f49952e3, // PT-cUSD
+                name: "PT stcUSD Jul 23 Morpho Looper",
+                collateralToken: 0x2d3C279E5FcDF5b793c0a75ed90738D7369B0b83, // PT-cUSD
                 morpho: MORPHO_MAINNET,
-                marketId: 0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789
+                marketId: 0x2fb3713487c7812e7309935b034f40228841666f6b048faf31fd2110ae674f20
             }),
-            pendleMarket: 0x307c15f808914Df5a5DbE17E5608f84953fFa023,
+            pendleMarket: 0xaC24A6f0068d9701EAEa76AB0B418021017F8D59,
             pendleToken: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 // USDC (same as asset)
         });
     }
@@ -145,7 +160,7 @@ contract Deploy is Script {
         return PTConfig({
             base: BaseConfig({
                 asset: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831, // USDC (Arbitrum)
-                name: "PT sUSDai Morpho Looper",
+                name: "PT sUSDai Feb 18 Morpho Looper",
                 collateralToken: 0x1BF1311FCF914A69Dd5805C9B06b72F80539cB3f, // PT-sUSDai
                 morpho: MORPHO_ARBITRUM,
                 marketId: 0x7717f1e04510390518811b3133ea47c298094ddd1d806ed8f8867d88c727bad7
@@ -160,6 +175,32 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
+        if (block.chainid == 1) {
+            DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "INFINIFI_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "LST_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "PT_CUSD_MAINNET";
+            deploy();
+        }
+        if (block.chainid == 42161) {
+            DEPLOY_CONFIG = "PT_SUSDAI_ARB";
+            deploy();
+        }
+        if (block.chainid == 747474) {
+            DEPLOY_CONFIG = "LST_KATANA";
+            deploy();
+        }
+
+        DEPLOY_CONFIG = "APR_ORACLE";
+        deploy();
+        DEPLOY_CONFIG = "MORPHO_EXECUTOR";
+        deploy();
+    }
+
+    function deploy() internal {
         vm.startBroadcast();
 
         address deployed;
@@ -168,6 +209,8 @@ contract Deploy is Script {
             deployed = deployInfinifi(getInfinifiMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_MAINNET")) {
             deployed = deployLST(getLSTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDS_USDT_MAINNET")) {
+            deployed = deployLST(getSUSDSUSDTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
             deployed = deployPT(getPTcUSDMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SIUSD_MAINNET")) {
@@ -178,6 +221,8 @@ contract Deploy is Script {
             deployed = deployLST(getLSTKatana());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("APR_ORACLE")) {
             deployed = deployAprOracle();
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("MORPHO_EXECUTOR")) {
+            deployed = deployMorphoExecutor();
         } else {
             revert("Unknown config");
         }
@@ -244,5 +289,23 @@ contract Deploy is Script {
         );
 
         return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
+    }
+
+    function deployMorphoExecutor() internal returns (address) {
+        address publicAllocator = vm.envOr(
+            "EXECUTOR_PUBLIC_ALLOCATOR",
+            address(0)
+        );
+        address governance = vm.envOr(
+            "EXECUTOR_GOVERNANCE",
+            address(0)
+        );
+        require(publicAllocator != address(0), "EXECUTOR_PUBLIC_ALLOCATOR");
+        require(governance != address(0), "EXECUTOR_GOVERNANCE");
+
+        return address(new LooperKeeper(
+            governance,
+            publicAllocator
+        ));
     }
 }
