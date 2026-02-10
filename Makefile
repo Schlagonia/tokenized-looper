@@ -14,6 +14,9 @@ FORK_URL := ${ETH_RPC_URL} # BASE_RPC_URL, ETH_RPC_URL, ARBITRUM_RPC_URL
 
 # if we want to run only matching tests, set that here
 test := test_
+# if we want to run tests by file path/glob or folder hint (e.g. aave, aave/lst)
+path := src/test
+PATH_GLOB := $(if $(filter %.t.sol,$(path)),$(path),$(if $(findstring src/,$(path)),$(path),src/test/**/$(path)/**/*.t.sol))
 
 # local tests without fork
 test  :; forge test -vv --fork-url ${FORK_URL}
@@ -25,6 +28,8 @@ trace-contract  :; forge test -vvv --match-contract $(contract) --fork-url ${FOR
 test-test  :; forge test -vv --match-test $(test) --fork-url ${FORK_URL}
 test-test-trace  :; forge test -vvv --match-test $(test) --fork-url ${FORK_URL}
 trace-test  :; forge test -vvvvv --match-test $(test) --fork-url ${FORK_URL}
+test-path  :; forge test -vv --match-path $(PATH_GLOB) --fork-url ${FORK_URL}
+trace-path  :; forge test -vvvv --match-path $(PATH_GLOB) --fork-url ${FORK_URL}
 snapshot :; forge snapshot -vv --fork-url ${FORK_URL}
 snapshot-diff :; forge snapshot --diff -vv --fork-url ${FORK_URL}
 trace-setup  :; forge test -vvvv --fork-url ${FORK_URL}

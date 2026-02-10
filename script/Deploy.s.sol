@@ -27,7 +27,7 @@ contract Deploy is Script {
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
     string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, MORPHO_EXECUTOR
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev CreateX deployer for CREATE2 deployments
@@ -196,7 +196,7 @@ contract Deploy is Script {
 
         DEPLOY_CONFIG = "APR_ORACLE";
         deploy();
-        DEPLOY_CONFIG = "MORPHO_EXECUTOR";
+        DEPLOY_CONFIG = "LOOPER_KEEPER";
         deploy();
     }
 
@@ -221,8 +221,8 @@ contract Deploy is Script {
             deployed = deployLST(getLSTKatana());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("APR_ORACLE")) {
             deployed = deployAprOracle();
-        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("MORPHO_EXECUTOR")) {
-            deployed = deployMorphoExecutor();
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LOOPER_KEEPER")) {
+            deployed = deployLooperKeeper();
         } else {
             revert("Unknown config");
         }
@@ -291,7 +291,7 @@ contract Deploy is Script {
         return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
     }
 
-    function deployMorphoExecutor() internal returns (address) {
+    function deployLooperKeeper() internal returns (address) {
         address publicAllocator = vm.envOr(
             "EXECUTOR_PUBLIC_ALLOCATOR",
             address(0)

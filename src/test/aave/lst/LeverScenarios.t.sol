@@ -19,8 +19,8 @@ contract AaveLSTLeverScenariosTest is SetupAaveLST, LeverScenariosTest {
         return SetupAaveLST.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupAaveLST, Setup) {
-        SetupAaveLST.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupAaveLST, Setup) {
+        SetupAaveLST.accrueYield(_amount);
     }
 
     /// @notice Override base test - Aave wstETH has 81% LLTV (~5.26x max leverage)

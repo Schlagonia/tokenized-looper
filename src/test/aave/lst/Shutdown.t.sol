@@ -19,7 +19,7 @@ contract AaveLSTShutdownTest is SetupAaveLST, ShutdownTest {
         return SetupAaveLST.setUpStrategy();
     }
 
-    function accrueYield() public override(SetupAaveLST, Setup) {
-        SetupAaveLST.accrueYield();
+    function accrueYield(uint256 _amount) public override(SetupAaveLST, Setup) {
+        SetupAaveLST.accrueYield(_amount);
     }
 }
