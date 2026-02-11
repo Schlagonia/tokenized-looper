@@ -48,9 +48,10 @@ abstract contract BaseMorphoLooper is
         address _asset,
         string memory _name,
         address _collateralToken,
+        address _exchange,
         address _morpho,
         Id _marketId
-    ) BaseLooper(_asset, _name, _collateralToken) {
+    ) BaseLooper(_asset, _name, _collateralToken, _exchange) {
         morpho = IMorpho(_morpho);
         marketId = _marketId;
 
@@ -83,13 +84,13 @@ abstract contract BaseMorphoLooper is
     /// @notice Morpho flashloan callback - CRITICAL SECURITY FUNCTION
     /// @dev Only callable by Morpho contract during flashLoan execution
     function onMorphoFlashLoan(
-        uint256 assets,
+        uint256,
         bytes calldata data
     ) external override {
         require(msg.sender == address(morpho), "!morpho");
         require(isFlashloanActive, "flashloan active");
         // Delegate to parent's generic handler
-        _onFlashloanReceived(assets, data);
+        _onFlashloanReceived(data);
 
         // Morpho already has max approval from constructor, no need to re-approve
     }

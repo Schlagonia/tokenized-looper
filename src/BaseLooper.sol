@@ -5,7 +5,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
-
+import {BaseExchange} from "./Exchanges/BaseExchange.sol";
 /**
  * @title BaseLooper
  * @notice Shared leverage-looping logic using flashloans exclusively.
@@ -17,6 +17,19 @@ import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthChe
 abstract contract BaseLooper is BaseHealthCheck {
     using SafeERC20 for ERC20;
 
+    enum Operation {
+        SUPPLY,
+        WITHDRAW,
+        BORROW,
+        REPAY,
+        SWAP
+    }
+
+    struct OperationData {
+        Operation operation;
+        bytes data;
+    }
+
     /// @notice Accrue interest before state changing functions
     modifier accrue() {
         _accrueInterest();
@@ -26,35 +39,14 @@ abstract contract BaseLooper is BaseHealthCheck {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
 
-    /// @notice Flashloan operation types
-    enum FlashLoanOperation {
-        LEVERAGE, // Deposit flow: increase leverage
-        DELEVERAGE // Withdraw flow: decrease leverage
-    }
-
-    /// @notice Data passed through flashloan callback
-    struct FlashLoanData {
-        FlashLoanOperation operation;
-        uint256 amount; // Amount to deploy or free (in asset terms)
-    }
-
     /// @notice Slippage tolerance (in basis points) for swaps.
     uint64 public slippage;
-
-    /// @notice The timestamp of the last tend.
-    uint256 public lastTend;
 
     /// @notice The amount to discount collateral by in reports in basis points.
     uint256 public reportBuffer;
 
-    /// @notice The minimum interval between tends.
-    uint256 public minTendInterval;
-
     /// @notice The maximum amount of asset that can be deposited
     uint256 public depositLimit;
-
-    /// @notice Maximum amount of asset to swap in a single tend
-    uint256 public maxAmountToSwap;
 
     /// @notice Buffer tolerance in WAD (e.g., 0.5e18 = +/- 0.5x triggers tend)
     /// @dev Bounds are [targetLeverageRatio - buffer, targetLeverageRatio + buffer]
@@ -71,19 +63,20 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// The max the base fee (in gwei) will be for a tend.
     uint256 public maxGasPriceToTend;
 
-    /// Lower limit on flashloan size.
-    uint256 public minAmountToBorrow;
-
     /// The token posted as collateral in the loop.
     address public immutable collateralToken;
+
+    address public immutable EXCHANGE;
 
     mapping(address => bool) public allowed;
 
     constructor(
         address _asset,
         string memory _name,
-        address _collateralToken
+        address _collateralToken,
+        address _exchange
     ) BaseHealthCheck(_asset, _name) {
+        EXCHANGE = _exchange;
         collateralToken = _collateralToken;
 
         depositLimit = type(uint256).max;
@@ -95,8 +88,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         leverageBuffer = 0.25e18;
         maxLeverageRatio = 4e18;
 
-        minTendInterval = 2 hours;
-        maxAmountToSwap = type(uint256).max;
         maxGasPriceToTend = 200 * 1e9;
         slippage = 30;
 
@@ -174,22 +165,61 @@ abstract contract BaseLooper is BaseHealthCheck {
         reportBuffer = _reportBuffer;
     }
 
-    function setMinAmountToBorrow(
-        uint256 _minAmountToBorrow
-    ) external onlyManagement {
-        minAmountToBorrow = _minAmountToBorrow;
+    /*//////////////////////////////////////////////////////////////
+                            WORK FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function doWork(bytes calldata data, bool flashloan, uint256 amount) external {
+        uint256 startLeverage = getCurrentLeverageRatio();
+
+        if (flashloan) {
+            _executeFlashloan(address(asset), amount, data);
+        } else {
+            _executeOperations(data);
+        }
+
+        uint256 endLeverage = getCurrentLeverageRatio();
+        require(endLeverage <= maxLeverageRatio || endLeverage < startLeverage, "leverage ratio exceeded");
     }
 
-    function setMinTendInterval(
-        uint256 _minTendInterval
-    ) external onlyManagement {
-        minTendInterval = _minTendInterval;
+    function _onFlashloanReceived(bytes memory data) internal override {
+        _executeOperations(data);
     }
 
-    function setMaxAmountToSwap(
-        uint256 _maxAmountToSwap
-    ) external onlyManagement {
-        maxAmountToSwap = _maxAmountToSwap;
+    function _executeOperations(bytes memory data) internal {
+        OperationData[] memory operations = abi.decode(data, (OperationData[]));
+        for (uint256 i = 0; i < operations.length; i++) {
+            OperationData memory operation = operations[i];
+            if (operation.operation == Operation.SUPPLY) {
+                _supplyCollateral(abi.decode(operation.data, (uint256)));
+            } else if (operation.operation == Operation.WITHDRAW) {
+                _withdrawCollateral(abi.decode(operation.data, (uint256)));
+            } else if (operation.operation == Operation.BORROW) {
+                _borrow(abi.decode(operation.data, (uint256)));
+            } else if (operation.operation == Operation.REPAY) {
+                _repay(abi.decode(operation.data, (uint256)));
+            } else if (operation.operation == Operation.SWAP) {
+                _swap(abi.decode(operation.data, (address, uint256, bytes)));
+            }
+        }
+    }
+
+    function _swap(address tokenIn, uint256 amountIn, bytes memory data) internal {
+        if (amountIn == type(uint256).max) {
+            amountIn = ERC20(tokenIn).balanceOf(address(this));
+        }
+        
+        address tokenOut = tokenIn == address(asset) ? collateralToken : address(asset);
+        uint256 minAmountOut = _getAmountOut(amountIn, tokenIn == address(asset));
+
+        uint256 startBalance = ERC20(tokenOut).balanceOf(address(this));
+
+        ERC20(tokenIn).forceApprove(EXCHANGE, amountIn);
+        BaseExchange(EXCHANGE).exchange(tokenIn, tokenOut, amountIn, data);
+        ERC20(tokenOut).forceApprove(EXCHANGE, 0);
+
+        uint256 endBalance = ERC20(tokenOut).balanceOf(address(this));
+        require(endBalance >= startBalance + minAmountOut, "insufficient output");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -206,9 +236,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Override to customize withdrawal behavior. Default deleverages the position.
     ///      Called by TokenizedStrategy when withdrawals are requested.
     /// @param _amount The amount of asset to free
-    function _freeFunds(uint256 _amount) internal virtual override accrue {
-        _withdrawFunds(_amount);
-    }
+    function _freeFunds(uint256 _amount) internal virtual override accrue {}
 
     /// @notice Harvest rewards and report total assets
     /// @dev Override to customize harvesting behavior. Default claims rewards, levers up idle assets,
@@ -222,10 +250,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         returns (uint256 _totalAssets)
     {
         _claimAndSellRewards();
-
-        _lever(
-            Math.min(balanceOfAsset(), availableDepositLimit(address(this)))
-        );
 
         _totalAssets = estimatedTotalAssets();
     }
@@ -256,43 +280,12 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) public view virtual override returns (uint256) {
         if (!allowed[_owner]) return 0;
 
-        if (_isSupplyPaused() || _isBorrowPaused()) return 0;
-
         uint256 totalAssets = TokenizedStrategy.totalAssets();
         uint256 limit = depositLimit > totalAssets
             ? depositLimit - totalAssets
             : 0;
 
-        uint256 _targetLeverageRatio = targetLeverageRatio;
-        if (_targetLeverageRatio <= WAD) return 0;
-
-        uint256 maxDepositFromCollateral = _maxCollateralDeposit();
-        if (maxDepositFromCollateral == 0) return 0;
-
-        // Max collateral capacity converted to deposit amount
-        // Total collateral = deposit * L, so deposit = collateral / L
-        if (maxDepositFromCollateral != type(uint256).max) {
-            maxDepositFromCollateral =
-                (_collateralToAsset(maxDepositFromCollateral) *
-                    WAD *
-                    (MAX_BPS + slippage)) / // Add slippage to account for swap values.
-                _targetLeverageRatio /
-                MAX_BPS;
-        }
-
-        // Max deposit based on borrow capacity
-        // Debt = deposit * (L - 1), so deposit = debt / (L - 1)
-        uint256 maxBorrow = _maxBorrowAmount();
-        if (maxBorrow == 0) return 0;
-
-        uint256 maxDepositFromBorrow = (maxBorrow * WAD) /
-            (_targetLeverageRatio - WAD);
-
-        return
-            Math.min(
-                limit,
-                Math.min(maxDepositFromCollateral, maxDepositFromBorrow)
-            );
+        return limit;
     }
 
     /// @notice Calculate the maximum amount that can be withdrawn by an address
@@ -303,35 +296,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     function availableWithdrawLimit(
         address /*_owner*/
     ) public view virtual override returns (uint256) {
-        uint256 currentDebt = balanceOfDebt();
-        uint256 flashloanAvailable = maxFlashloan();
-
-        if (flashloanAvailable >= currentDebt) return type(uint256).max;
-
-        // If target leverage ratio is 1 or 0 and we cant repay the debt, we cant withdraw yet.
-        if (targetLeverageRatio <= WAD) return 0;
-
-        // Limited by flashloan: calculate max withdrawable
-        // When debtToRepay is capped at maxFlashloan:
-        //   targetDebt = currentDebt - maxFlashloan
-        //   targetEquity = targetDebt * WAD / (L - WAD)
-        //   maxWithdraw = currentEquity - targetEquity
-        uint256 targetDebt = currentDebt - flashloanAvailable;
-        uint256 targetEquity = (targetDebt * WAD) / (targetLeverageRatio - WAD);
-
-        (uint256 collateralValue, ) = position();
-        uint256 currentEquity = collateralValue - currentDebt;
-
-        return currentEquity > targetEquity ? currentEquity - targetEquity : 0;
-    }
-
-    /// @notice Rebalance the position to maintain target leverage
-    /// @dev Override to customize rebalancing behavior. Default levers up with idle assets and updates lastTend.
-    ///      Called by keepers when _tendTrigger returns true.
-    /// @param _totalIdle The total idle assets available for deployment
-    function _tend(uint256 _totalIdle) internal virtual override accrue {
-        _lever(_totalIdle);
-        lastTend = block.timestamp;
+        return balanceOfAsset();
     }
 
     /// @notice Check if the position needs rebalancing
@@ -347,10 +312,6 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (currentLeverage > maxLeverageRatio) {
             return true;
-        }
-
-        if (block.timestamp - lastTend < minTendInterval) {
-            return false;
         }
 
         uint256 _targetLeverageRatio = targetLeverageRatio;
@@ -369,261 +330,6 @@ abstract contract BaseLooper is BaseHealthCheck {
             }
             return false;
         }
-
-        // If we have idle assets or are under the lower bound
-        if (
-            (balanceOfAsset() * (_targetLeverageRatio - WAD)) / WAD >
-            minAmountToBorrow ||
-            currentLeverage < _targetLeverageRatio - leverageBuffer
-        ) {
-            // We still need deposit capacity to supply
-            return
-                (availableDepositLimit(address(this)) *
-                    (_targetLeverageRatio - WAD)) /
-                    WAD >
-                minAmountToBorrow &&
-                _isBaseFeeAcceptable();
-        }
-
-        return false;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                        FLASHLOAN OPERATIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Adjust position to target leverage ratio
-    /// @dev Handles three cases: lever up, delever, or just deploy _amount
-    function _lever(uint256 _amount) internal virtual {
-        (uint256 currentCollateralValue, uint256 currentDebt) = position();
-        uint256 currentEquity = currentCollateralValue - currentDebt + _amount;
-        (, uint256 targetDebt) = getTargetPosition(currentEquity);
-
-        if (targetDebt > currentDebt) {
-            // CASE 1: Need MORE debt → leverage up via flashloan
-            uint256 flashloanAmount = Math.min(
-                targetDebt - currentDebt,
-                maxFlashloan()
-            );
-
-            // Cap total swap if maxAmountToSwap is set or collateral capacity is reached
-            uint256 maxCollateralInAsset = _collateralToAsset(
-                _maxCollateralDeposit()
-            );
-            uint256 _maxAmountToSwap = maxCollateralInAsset == type(uint256).max
-                ? maxAmountToSwap
-                : Math.min(
-                    maxAmountToSwap,
-                    (maxCollateralInAsset * (MAX_BPS - slippage)) / MAX_BPS
-                );
-            if (_maxAmountToSwap != type(uint256).max) {
-                uint256 totalSwap = _amount + flashloanAmount;
-
-                if (totalSwap > _maxAmountToSwap) {
-                    if (_amount >= _maxAmountToSwap) {
-                        // _amount alone exceeds max, just swap max and supply
-                        _supplyCollateral(
-                            _convertAssetToCollateral(_maxAmountToSwap)
-                        );
-                        return;
-                    }
-                    // Reduce flashloan to stay within limit
-                    flashloanAmount = _maxAmountToSwap - _amount;
-                }
-            }
-
-            if (flashloanAmount <= minAmountToBorrow) {
-                // Too small for flashloan, just repay debt with available assets
-                _repay(Math.min(_amount, balanceOfDebt()));
-                return;
-            }
-
-            bytes memory data = abi.encode(
-                FlashLoanData({
-                    operation: FlashLoanOperation.LEVERAGE,
-                    amount: _amount
-                })
-            );
-
-            _executeFlashloan(address(asset), flashloanAmount, data);
-        } else if (currentDebt > targetDebt) {
-            // CASE 2: Need LESS debt → deleverage
-            uint256 debtToRepay = currentDebt - targetDebt;
-
-            if (_amount >= debtToRepay) {
-                // _amount covers the debt repayment, just repay and supply the rest
-                _repay(debtToRepay);
-                _amount -= debtToRepay;
-                if (_amount > 0) {
-                    _convertAssetToCollateral(
-                        Math.min(_amount, maxAmountToSwap)
-                    );
-                    // Cap remainder by collateral capacity
-                    _supplyCollateral(
-                        Math.min(
-                            balanceOfCollateralToken(),
-                            _maxCollateralDeposit()
-                        )
-                    );
-                }
-                return;
-            }
-
-            // First repay what is loose.
-            _repay(_amount);
-            debtToRepay -= _amount;
-
-            // Cap flashloan by available liquidity
-            debtToRepay = Math.min(debtToRepay, maxFlashloan());
-
-            // Flashloan to repay debt, withdraw collateral to cover
-            uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
-                (MAX_BPS + slippage)) / MAX_BPS;
-
-            bytes memory data = abi.encode(
-                FlashLoanData({
-                    operation: FlashLoanOperation.DELEVERAGE,
-                    amount: collateralToWithdraw
-                })
-            );
-            _executeFlashloan(address(asset), debtToRepay, data);
-        } else {
-            // CASE 3: At target debt → just deploy _amount if any
-            _convertAssetToCollateral(Math.min(_amount, maxAmountToSwap));
-            _supplyCollateral(
-                Math.min(balanceOfCollateralToken(), _maxCollateralDeposit())
-            );
-        }
-    }
-
-    /// @notice Will withdraw funds from the strategy to cover the amount needed keeping the position at target leverage ratio using a flashloan
-    function _withdrawFunds(uint256 _amountNeeded) internal virtual {
-        (uint256 valueOfCollateral, uint256 currentDebt) = position();
-
-        if (currentDebt == 0) {
-            // No debt, just withdraw collateral
-            uint256 toWithdraw = Math.min(
-                _assetToCollateral(_amountNeeded),
-                balanceOfCollateral()
-            );
-            _withdrawCollateral(toWithdraw);
-            _convertCollateralToAsset(toWithdraw);
-            return;
-        }
-
-        uint256 equity = valueOfCollateral - currentDebt;
-
-        uint256 targetEquity = equity > _amountNeeded
-            ? equity - _amountNeeded
-            : 0;
-        (, uint256 targetDebt) = getTargetPosition(targetEquity);
-
-        if (targetDebt > currentDebt) {
-            uint256 collateralToWithdraw = _assetToCollateral(_amountNeeded);
-            // No debt to repay, just withdraw collateral
-            _withdrawCollateral(collateralToWithdraw);
-            _convertCollateralToAsset(collateralToWithdraw);
-            return;
-        }
-
-        uint256 debtToRepay = currentDebt - targetDebt;
-
-        // Cap flashloan by available liquidity
-        debtToRepay = Math.min(debtToRepay, maxFlashloan());
-
-        if (debtToRepay == 0) return;
-
-        uint256 collateralToWithdraw = debtToRepay == currentDebt
-            ? balanceOfCollateral()
-            : _assetToCollateral(debtToRepay + _amountNeeded);
-
-        bytes memory data = abi.encode(
-            FlashLoanData({
-                operation: FlashLoanOperation.DELEVERAGE,
-                amount: collateralToWithdraw
-            })
-        );
-
-        _executeFlashloan(address(asset), debtToRepay, data);
-    }
-
-    /// @notice Called by protocol-specific flashloan callback
-    function _onFlashloanReceived(
-        uint256 assets,
-        bytes memory data
-    ) internal virtual {
-        FlashLoanData memory params = abi.decode(data, (FlashLoanData));
-
-        if (params.operation == FlashLoanOperation.LEVERAGE) {
-            _executeLeverageCallback(assets, params);
-        } else if (params.operation == FlashLoanOperation.DELEVERAGE) {
-            _executeDeleverageCallback(assets, params);
-        } else {
-            revert("invalid operation");
-        }
-    }
-
-    function _executeLeverageCallback(
-        uint256 flashloanAmount,
-        FlashLoanData memory params
-    ) internal virtual {
-        // Total asset to convert = deposit + flashloan
-        uint256 totalToConvert = params.amount + flashloanAmount;
-
-        // Convert all asset to collateral
-        uint256 collateralReceived = _convertAssetToCollateral(totalToConvert);
-
-        // Supply collateral
-        _supplyCollateral(collateralReceived);
-
-        // Borrow to repay flashloan
-        _borrow(flashloanAmount);
-
-        // Sanity check
-        require(
-            getCurrentLeverageRatio() < maxLeverageRatio,
-            "leverage too high"
-        );
-    }
-
-    function _executeDeleverageCallback(
-        uint256 flashloanAmount,
-        FlashLoanData memory params
-    ) internal virtual {
-        uint256 initialLeverage = getCurrentLeverageRatio();
-
-        // Use flashloaned amount to repay debt
-        _repay(Math.min(flashloanAmount, balanceOfDebt()));
-
-        uint256 collateralToWithdraw = Math.min(
-            params.amount,
-            balanceOfCollateral()
-        );
-        // Withdraw
-        _withdrawCollateral(collateralToWithdraw);
-
-        // Convert collateral back to asset
-        _convertCollateralToAsset(collateralToWithdraw);
-
-        // Sanity check
-        uint256 finalLeverage = getCurrentLeverageRatio();
-        // Make sure the leverage is within the bounds, or at least improved.
-        require(
-            finalLeverage < maxLeverageRatio || finalLeverage < initialLeverage,
-            "leverage too high"
-        );
-    }
-
-    function _convertCollateralToAsset(
-        uint256 amount
-    ) internal returns (uint256) {
-        return _convertCollateralToAsset(amount, _getAmountOut(amount, false));
-    }
-
-    function _convertAssetToCollateral(
-        uint256 amount
-    ) internal returns (uint256) {
-        return _convertAssetToCollateral(amount, _getAmountOut(amount, true));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -710,26 +416,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Must implement protocol-specific debt balance retrieval.
     /// @return The amount of debt owed in asset terms
     function balanceOfDebt() public view virtual returns (uint256);
-
-    /// @notice Convert asset tokens to collateral tokens
-    /// @dev Must implement swap/conversion logic (e.g., via DEX, staking, or minting).
-    /// @param amount The amount of asset to convert
-    /// @param amountOutMin The minimum amount of collateral to receive (slippage protection)
-    /// @return The amount of collateral tokens received
-    function _convertAssetToCollateral(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal virtual returns (uint256);
-
-    /// @notice Convert collateral tokens back to asset tokens
-    /// @dev Must implement swap/conversion logic (e.g., via DEX, unstaking, or redeeming).
-    /// @param amount The amount of collateral to convert
-    /// @param amountOutMin The minimum amount of asset to receive (slippage protection)
-    /// @return The amount of asset tokens received
-    function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal virtual returns (uint256);
 
     /// @notice Claim and sell any protocol rewards
     /// @dev Must implement reward claiming and selling logic. Can be no-op if no rewards.
@@ -838,51 +524,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        MANAGEMENT FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Emergency full position close via flashloan
-    function manualFullUnwind() external onlyEmergencyAuthorized {
-        _withdrawFunds(TokenizedStrategy.totalAssets());
-    }
-
-    /// @notice Manual: supply collateral
-    function manualSupplyCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _supplyCollateral(Math.min(amount, balanceOfCollateralToken()));
-    }
-
-    /// @notice Manual: withdraw collateral
-    function manualWithdrawCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _withdrawCollateral(Math.min(amount, balanceOfCollateral()));
-    }
-
-    /// @notice Manual: borrow from protocol
-    function manualBorrow(uint256 amount) external onlyEmergencyAuthorized {
-        _borrow(amount);
-    }
-
-    /// @notice Manual: repay debt
-    function manualRepay(uint256 amount) external onlyEmergencyAuthorized {
-        _repay(Math.min(amount, balanceOfAsset()));
-    }
-
-    function convertCollateralToAsset(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _convertCollateralToAsset(Math.min(amount, balanceOfCollateralToken()));
-    }
-
-    function convertAssetToCollateral(
-        uint256 amount
-    ) external onlyEmergencyAuthorized {
-        _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
-    }
-
-    /*//////////////////////////////////////////////////////////////
                             EMERGENCY
     //////////////////////////////////////////////////////////////*/
 
@@ -891,13 +532,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     ///      Called during emergency shutdown.
     /// @param _amount The amount of asset to attempt to withdraw
     function _emergencyWithdraw(uint256 _amount) internal virtual override {
-        // Try full unwind first
-        if (balanceOfDebt() > 0) {
-            _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
-        } else if (_amount > 0) {
-            _amount = Math.min(_amount, balanceOfCollateral());
-            _withdrawCollateral(_amount);
-            _convertCollateralToAsset(_amount);
-        }
+        _withdrawCollateral(Math.min(balanceOfCollateralToken(), _amount));
     }
 }
