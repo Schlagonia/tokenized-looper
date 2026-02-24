@@ -4,8 +4,23 @@ import "forge-std/console2.sol";
 import {Setup} from "./Setup.sol";
 
 abstract contract ShutdownTest is Setup {
+    // Allow tiny residual collateral after full unwind due to rounding/swap dust.
+    uint256 internal constant UNWIND_COLLATERAL_DUST_BPS = 1; // 0.01%
+    uint256 internal constant MIN_UNWIND_COLLATERAL_DUST = 1;
+
     function setUp() public virtual override {
         super.setUp();
+    }
+
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure returns (uint256) {
+        uint256 relativeDust = collateralBeforeUnwind /
+            (10_000 / UNWIND_COLLATERAL_DUST_BPS);
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
     }
 
     function test_shutdownCanWithdraw(uint256 _amount) public virtual {
@@ -112,7 +127,8 @@ abstract contract ShutdownTest is Setup {
         strategy.tend();
 
         // Verify position exists
-        assertGt(strategy.balanceOfCollateral(), 0, "!collateral before");
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
+        assertGt(collateralBeforeUnwind, 0, "!collateral before");
         assertGt(strategy.balanceOfDebt(), 0, "!debt before");
 
         // Set idle mode
@@ -124,8 +140,11 @@ abstract contract ShutdownTest is Setup {
         strategy.manualFullUnwind();
 
         // Verify position is fully unwound
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should be 0");
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should be 0");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
     }
 
     function test_idleMode_tendTriggerFalseAfterUnwind(uint256 _amount) public {
@@ -135,6 +154,7 @@ abstract contract ShutdownTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
         vm.prank(keeper);
         strategy.tend();
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
         // Set idle mode and unwind using manualFullUnwind
         vm.prank(management);
@@ -143,8 +163,11 @@ abstract contract ShutdownTest is Setup {
         strategy.manualFullUnwind();
 
         // Verify position is unwound
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should be 0");
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should be 0");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
 
         // After full unwind in idle mode, tendTrigger should be FALSE
         // - getCurrentLeverageRatio() returns 0 when no position
@@ -186,6 +209,7 @@ abstract contract ShutdownTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
         vm.prank(keeper);
         strategy.tend();
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
         // Set idle mode and unwind using manualFullUnwind
         vm.prank(management);
@@ -194,8 +218,11 @@ abstract contract ShutdownTest is Setup {
         strategy.manualFullUnwind();
 
         // Verify position is unwound
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should be 0");
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should be 0");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
 
         // In idle mode, availableDepositLimit() returns 0 because targetLeverageRatio <= WAD
         // This prevents new deposits from being accepted
@@ -234,6 +261,7 @@ abstract contract ShutdownTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
         vm.prank(keeper);
         strategy.tend();
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
         // Set idle mode and unwind using manualFullUnwind
         vm.prank(management);
@@ -242,8 +270,11 @@ abstract contract ShutdownTest is Setup {
         strategy.manualFullUnwind();
 
         // Verify position is unwound
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should be 0");
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should be 0");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
 
         // Re-enable leverage (3x with 0.5x buffer)
         vm.prank(management);

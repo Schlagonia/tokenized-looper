@@ -61,6 +61,29 @@ interface IPool {
     ) external returns (uint256);
 
     /**
+     * @notice Allows smartcontracts to access the liquidity of the pool within one transaction.
+     *         Can either be repaid in full (interestRateMode = 0) or opened as debt (1 stable / 2 variable).
+     * @param receiverAddress The address of the contract receiving the funds
+     * @param assets The addresses of the assets being flash-borrowed
+     * @param amounts The amounts of the assets being flash-borrowed
+     * @param interestRateModes The interest rate modes for each asset:
+     *                          0 = no debt (must repay amount + premium),
+     *                          1 = stable debt, 2 = variable debt
+     * @param onBehalfOf The address that will receive the debt if a debt mode is used
+     * @param params Variadic packed params to pass to the receiver as extra information
+     * @param referralCode Code used to register the integrator originating the operation
+     */
+    function flashLoan(
+        address receiverAddress,
+        address[] calldata assets,
+        uint256[] calldata amounts,
+        uint256[] calldata interestRateModes,
+        address onBehalfOf,
+        bytes calldata params,
+        uint16 referralCode
+    ) external;
+
+    /**
      * @notice Allows smartcontracts to access the liquidity of the pool within one transaction,
      * as long as the amount taken plus a fee is returned.
      * @param receiverAddress The address of the contract receiving the funds
@@ -137,6 +160,13 @@ interface IPool {
             uint128 unbacked,
             uint128 isolationModeTotalDebt
         );
+
+    /**
+     * @notice Returns the reserve virtual underlying balance.
+     * @param asset The address of the underlying asset of the reserve
+     * @return The virtual underlying balance
+     */
+    function getVirtualUnderlyingBalance(address asset) external view returns (uint256);
 
     /**
      * @notice Returns the total fee on flash loans

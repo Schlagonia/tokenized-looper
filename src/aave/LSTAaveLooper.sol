@@ -42,6 +42,7 @@ contract LSTAaveLooper is BaseAaveLooper {
         string memory _name,
         address _collateralToken,
         address _addressesProvider,
+        address _morpho,
         uint8 _eModeCategoryId
     )
         BaseAaveLooper(
@@ -49,6 +50,7 @@ contract LSTAaveLooper is BaseAaveLooper {
             _name,
             _collateralToken,
             _addressesProvider,
+            _morpho,
             _eModeCategoryId
         )
     {
@@ -104,6 +106,24 @@ contract LSTAaveLooper is BaseAaveLooper {
         );
         IWETH(address(asset)).deposit{value: address(this).balance}();
         return amountOut;
+    }
+
+    function estimatedTotalAssets()
+        public
+        view
+        override
+        returns (uint256)
+    {
+        return super.estimatedTotalAssets() + pendingRedemptions;
+    }
+
+    function _harvestAndReport()
+        internal
+        override
+        returns (uint256 _totalAssets)
+    {
+        require(pendingRedemptions == 0, "pending redemptions");
+        return super._harvestAndReport();
     }
 
     /// @notice Initiate stETH withdrawal through Lido queue for 1:1 redemption
@@ -169,5 +189,11 @@ contract LSTAaveLooper is BaseAaveLooper {
 
         // Convert received ETH to WETH
         IWETH(address(asset)).deposit{value: address(this).balance}();
+    }
+
+    /// @notice Manually zero the pending redemptions in case of significant dust or a Lido slashing event.
+    /// @dev Only may be called by governance.
+    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+        pendingRedemptions = 0;
     }
 }

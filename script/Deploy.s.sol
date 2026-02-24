@@ -7,6 +7,7 @@ import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {LSTMorphoLooper} from "../src/morpho/LSTMorphoLooper.sol";
 import {PTMorphoLooper} from "../src/morpho/PTMorphoLooper.sol";
+import {SUSDSUSDTMorphoLooper} from "../src/morpho/SUSDSUSDTMorphoLooper.sol";
 import {sUSDaiPTLooper} from "../src/morpho/sUSDaiPTLooper.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
@@ -175,12 +176,17 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
+        DEPLOY_CONFIG = "SUSDS_USDT_MAINNET";
+        deploy();
+        return;
         if (block.chainid == 1) {
             DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
             deploy();
             DEPLOY_CONFIG = "INFINIFI_MAINNET";
             deploy();
             DEPLOY_CONFIG = "LST_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "SUSDS_USDT_MAINNET";
             deploy();
             DEPLOY_CONFIG = "PT_CUSD_MAINNET";
             deploy();
@@ -210,7 +216,7 @@ contract Deploy is Script {
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_MAINNET")) {
             deployed = deployLST(getLSTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDS_USDT_MAINNET")) {
-            deployed = deployLST(getSUSDSUSDTMainnet());
+            deployed = deploySUSDSUSDT(getSUSDSUSDTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
             deployed = deployPT(getPTcUSDMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SIUSD_MAINNET")) {
@@ -245,6 +251,17 @@ contract Deploy is Script {
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
         return address(new LSTMorphoLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.morpho,
+            Id.wrap(cfg.base.marketId),
+            cfg.router
+        ));
+    }
+
+    function deploySUSDSUSDT(LSTConfig memory cfg) internal returns (address) {
+        return address(new SUSDSUSDTMorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,

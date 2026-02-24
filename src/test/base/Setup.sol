@@ -5,6 +5,7 @@ import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {InfinifiMorphoLooper} from "../../morpho/InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
@@ -23,6 +24,8 @@ interface IFactory {
 }
 
 contract Setup is Test, IEvents {
+    using SafeERC20 for ERC20;
+
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
@@ -121,7 +124,7 @@ contract Setup is Test, IEvents {
         uint256 _amount
     ) public {
         vm.prank(_user);
-        asset.approve(address(_strategy), _amount);
+        asset.forceApprove(address(_strategy), _amount);
 
         vm.prank(_user);
         _strategy.deposit(_amount, _user);
