@@ -35,7 +35,9 @@ contract SetupAaveSyrupUSDT is Setup {
 
         syrupUsdtV4PoolId = vm.envOr(
             "SYRUP_USDT_V4_POOL_ID",
-            bytes32(0xd861038a98942312d1495dd1313fb66c7e7de48f549a15edf3a45decf7338e1d)
+            bytes32(
+                0xd861038a98942312d1495dd1313fb66c7e7de48f549a15edf3a45decf7338e1d
+            )
         );
 
         tokenAddrs["USDT"] = USDT;

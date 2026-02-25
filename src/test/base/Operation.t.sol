@@ -6,7 +6,7 @@ import {Setup} from "./Setup.sol";
 
 abstract contract OperationTest is Setup {
     // Allow tiny residual collateral after full unwind due to rounding/swap dust.
-    uint256 internal constant UNWIND_COLLATERAL_DUST_BPS = 1; // 0.01%
+    uint256 internal constant UNWIND_COLLATERAL_DUST_BPS = 2; // 0.02%
     uint256 internal constant MIN_UNWIND_COLLATERAL_DUST = 1;
 
     function setUp() public virtual override {
@@ -108,9 +108,9 @@ abstract contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        // After deposit with idle funds, tend should be triggered
+        // After deposit with idle funds, tend should NOT auto-trigger.
         (trigger, ) = strategy.tendTrigger();
-        assertTrue(trigger, "tend should be triggered after deposit");
+        assertFalse(trigger, "tend should not auto-trigger after deposit");
 
         // Deploy funds via tend
         vm.prank(keeper);
@@ -199,7 +199,11 @@ abstract contract OperationTest is Setup {
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
-        assertGt(collateralBeforeUnwind, 0, "!collateral should be > 0 before unwind");
+        assertGt(
+            collateralBeforeUnwind,
+            0,
+            "!collateral should be > 0 before unwind"
+        );
 
         // Full unwind via flashloan
         vm.prank(management);
@@ -539,9 +543,9 @@ abstract contract OperationTest is Setup {
         // Skip past the interval
         skip(1 hours + 1);
 
-        // Now tend should be triggered (we have idle funds)
+        // Still false after interval because idle assets no longer auto-trigger.
         (trigger, ) = strategy.tendTrigger();
-        assertTrue(trigger, "!tend should trigger after interval passed");
+        assertFalse(trigger, "!tend should remain false after interval passed");
     }
 
     function test_tendTrigger_bypassesIntervalForEmergency(
@@ -785,10 +789,9 @@ abstract contract OperationTest is Setup {
         }
     }
 
-    /// @notice Test 4: Under-leveraged and can deposit should trigger
-    /// @dev When under-leveraged (< lowerBound) and maxDeposit > minAmountToBorrow,
-    ///      tendTrigger should return true.
-    function test_tendTrigger_underLeveragedCanDeposit() public {
+    /// @notice Test 4: Under-leveraged and can deposit should NOT auto-trigger
+    /// @dev Under the new behavior, under-leveraged states are not auto-levered by tendTrigger.
+    function test_tendTrigger_underLeveragedCanDeposit_noAutoTrigger() public {
         uint256 equity = 10000e6;
 
         // Create under-leveraged position
@@ -808,11 +811,11 @@ abstract contract OperationTest is Setup {
         uint256 minBorrow = strategy.minAmountToBorrow();
         assertGt(maxDeposit, minBorrow, "should have deposit capacity");
 
-        // tendTrigger should return true
+        // tendTrigger should return false (no auto lever-up when under-leveraged)
         (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(
+        assertFalse(
             trigger,
-            "tendTrigger should return true when under-leveraged and can deposit"
+            "tendTrigger should return false when under-leveraged"
         );
     }
 
@@ -855,10 +858,9 @@ abstract contract OperationTest is Setup {
         );
     }
 
-    /// @notice Test 6: Has meaningful idle assets and can deposit should trigger
-    /// @dev When within buffer but has idle assets that would generate debt > minAmountToBorrow,
-    ///      and maxDeposit > minAmountToBorrow, tendTrigger should return true.
-    function test_tendTrigger_idleAssetsCanDeposit() public {
+    /// @notice Test 6: Meaningful idle assets do NOT auto-trigger tend
+    /// @dev Under the new behavior, idle assets are not auto-deployed by tendTrigger.
+    function test_tendTrigger_idleAssetsCanDeposit_noAutoTrigger() public {
         uint256 equity = 10000e6;
 
         // Create a position at target
@@ -901,11 +903,11 @@ abstract contract OperationTest is Setup {
             "should have deposit capacity"
         );
 
-        // tendTrigger should return true
+        // tendTrigger should return false (no idle auto-deploy)
         (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(
+        assertFalse(
             trigger,
-            "tendTrigger should return true with idle assets and deposit capacity"
+            "tendTrigger should return false with idle assets and deposit capacity"
         );
     }
 

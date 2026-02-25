@@ -69,7 +69,9 @@ contract SyrupMorphoLooper is BaseMorphoLooper, UniswapUniversalSwapper {
         base = _base;
     }
 
-    function setMinAmountToSell(uint256 _minAmountToSell) external onlyManagement {
+    function setMinAmountToSell(
+        uint256 _minAmountToSell
+    ) external onlyManagement {
         _setMinAmountToSell(_minAmountToSell);
     }
 
@@ -135,7 +137,9 @@ contract SyrupMorphoLooper is BaseMorphoLooper, UniswapUniversalSwapper {
     function cancelDirectRedemption(
         uint256 _shares
     ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
-        _shares = _shares == type(uint256).max ? pendingRedemptionShares : _shares;
+        _shares = _shares == type(uint256).max
+            ? pendingRedemptionShares
+            : _shares;
         require(_shares > 0, "!shares");
 
         _removedShares = ISyrupPool(collateralToken).removeShares(

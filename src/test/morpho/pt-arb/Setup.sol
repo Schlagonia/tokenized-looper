@@ -20,16 +20,16 @@ contract SetupPTArb is Setup {
     // Market config
     Id public constant PT_MARKET_ID =
         Id.wrap(
-            0x7717f1e04510390518811b3133ea47c298094ddd1d806ed8f8867d88c727bad7
+            0x50d1b741a63204ce27bdf17e5a9300800c350ecb9278d92d2292a5713ea227e6
         );
 
     // PT token (collateral)
     address public constant PT_TOKEN =
-        0x1BF1311FCF914A69Dd5805C9B06b72F80539cB3f;
+        0x07bc5bD6cE9A17f0e7aa91E0Adbc9070dcB1d1dE;
 
     // Pendle market for PT swaps
     address public constant PENDLE_MARKET =
-        0x2092Fa5d02276B3136A50F3C2C3a6Ed45413183E;
+        0x299674F6Da858f903D77486FBA50Bc9F2e0Db24D;
 
     // Pendle token (sUSDai) - intermediate for USDC <-> PT conversion
     address public constant PENDLE_TOKEN =

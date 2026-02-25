@@ -166,7 +166,9 @@ interface IPool {
      * @param asset The address of the underlying asset of the reserve
      * @return The virtual underlying balance
      */
-    function getVirtualUnderlyingBalance(address asset) external view returns (uint256);
+    function getVirtualUnderlyingBalance(
+        address asset
+    ) external view returns (uint256);
 
     /**
      * @notice Returns the total fee on flash loans

@@ -183,7 +183,12 @@ abstract contract BaseAaveLooper is
 
     function _supplyCollateral(uint256 amount) internal override {
         if (amount == 0) return;
-        IPool(POOL).supply(collateralToken, amount, address(this), REFERRAL_CODE);
+        IPool(POOL).supply(
+            collateralToken,
+            amount,
+            address(this),
+            REFERRAL_CODE
+        );
 
         // Enable as collateral (idempotent - safe to call multiple times)
         IPool(POOL).setUserUseReserveAsCollateral(collateralToken, true);
@@ -207,7 +212,12 @@ abstract contract BaseAaveLooper is
 
     function _repay(uint256 amount) internal virtual override {
         if (amount == 0) return;
-        IPool(POOL).repay(address(asset), amount, VARIABLE_RATE_MODE, address(this));
+        IPool(POOL).repay(
+            address(asset),
+            amount,
+            VARIABLE_RATE_MODE,
+            address(this)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

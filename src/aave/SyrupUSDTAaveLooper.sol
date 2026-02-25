@@ -74,7 +74,9 @@ contract SyrupUSDTAaveLooper is BaseAaveLooper, UniswapUniversalSwapper {
         base = _base;
     }
 
-    function setMinAmountToSell(uint256 _minAmountToSell) external onlyManagement {
+    function setMinAmountToSell(
+        uint256 _minAmountToSell
+    ) external onlyManagement {
         _setMinAmountToSell(_minAmountToSell);
     }
 
@@ -98,12 +100,7 @@ contract SyrupUSDTAaveLooper is BaseAaveLooper, UniswapUniversalSwapper {
         return _swapFrom(collateralToken, address(asset), amount, amountOutMin);
     }
 
-    function estimatedTotalAssets()
-        public
-        view
-        override
-        returns (uint256)
-    {
+    function estimatedTotalAssets() public view override returns (uint256) {
         uint256 pendingAssets;
         if (pendingRedemptionShares > 0) {
             pendingAssets = ISyrupPool(collateralToken).convertToAssets(
@@ -144,7 +141,9 @@ contract SyrupUSDTAaveLooper is BaseAaveLooper, UniswapUniversalSwapper {
     function cancelDirectRedemption(
         uint256 _shares
     ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
-        _shares = _shares == type(uint256).max ? pendingRedemptionShares : _shares;
+        _shares = _shares == type(uint256).max
+            ? pendingRedemptionShares
+            : _shares;
         require(_shares > 0, "!shares");
 
         _removedShares = ISyrupPool(collateralToken).removeShares(

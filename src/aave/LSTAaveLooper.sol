@@ -108,12 +108,7 @@ contract LSTAaveLooper is BaseAaveLooper {
         return amountOut;
     }
 
-    function estimatedTotalAssets()
-        public
-        view
-        override
-        returns (uint256)
-    {
+    function estimatedTotalAssets() public view override returns (uint256) {
         return super.estimatedTotalAssets() + pendingRedemptions;
     }
 

@@ -104,6 +104,10 @@ abstract contract BaseLooper is BaseHealthCheck {
         _setProfitLimitRatio(1_000);
     }
 
+    function version() public pure virtual returns (string memory) {
+        return "1.0.1";
+    }
+
     /*//////////////////////////////////////////////////////////////
                             SETTERS
     //////////////////////////////////////////////////////////////*/
@@ -258,41 +262,15 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (_isSupplyPaused() || _isBorrowPaused()) return 0;
 
-        uint256 totalAssets = TokenizedStrategy.totalAssets();
-        uint256 limit = depositLimit > totalAssets
-            ? depositLimit - totalAssets
-            : 0;
+        if (targetLeverageRatio <= WAD) return 0;
 
-        uint256 _targetLeverageRatio = targetLeverageRatio;
-        if (_targetLeverageRatio <= WAD) return 0;
-
-        uint256 maxDepositFromCollateral = _maxCollateralDeposit();
-        if (maxDepositFromCollateral == 0) return 0;
-
-        // Max collateral capacity converted to deposit amount
-        // Total collateral = deposit * L, so deposit = collateral / L
-        if (maxDepositFromCollateral != type(uint256).max) {
-            maxDepositFromCollateral =
-                (_collateralToAsset(maxDepositFromCollateral) *
-                    WAD *
-                    (MAX_BPS + slippage)) / // Add slippage to account for swap values.
-                _targetLeverageRatio /
-                MAX_BPS;
+        uint256 _depositLimit = depositLimit;
+        if (_depositLimit == type(uint256).max) {
+            return type(uint256).max;
         }
 
-        // Max deposit based on borrow capacity
-        // Debt = deposit * (L - 1), so deposit = debt / (L - 1)
-        uint256 maxBorrow = _maxBorrowAmount();
-        if (maxBorrow == 0) return 0;
-
-        uint256 maxDepositFromBorrow = (maxBorrow * WAD) /
-            (_targetLeverageRatio - WAD);
-
-        return
-            Math.min(
-                limit,
-                Math.min(maxDepositFromCollateral, maxDepositFromBorrow)
-            );
+        uint256 totalAssets = TokenizedStrategy.totalAssets();
+        return _depositLimit > totalAssets ? _depositLimit - totalAssets : 0;
     }
 
     /// @notice Calculate the maximum amount that can be withdrawn by an address
@@ -370,21 +348,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             return false;
         }
 
-        // If we have idle assets or are under the lower bound
-        if (
-            (balanceOfAsset() * (_targetLeverageRatio - WAD)) / WAD >
-            minAmountToBorrow ||
-            currentLeverage < _targetLeverageRatio - leverageBuffer
-        ) {
-            // We still need deposit capacity to supply
-            return
-                (availableDepositLimit(address(this)) *
-                    (_targetLeverageRatio - WAD)) /
-                    WAD >
-                minAmountToBorrow &&
-                _isBaseFeeAcceptable();
-        }
-
+        // We don't auto tend when under the lower bound
         return false;
     }
 
@@ -502,12 +466,11 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (currentDebt == 0) {
             // No debt, just withdraw collateral
-            uint256 toWithdraw = Math.min(
-                _assetToCollateral(_amountNeeded),
-                balanceOfCollateral()
+            uint256 toWithdraw = _assetToCollateral(_amountNeeded);
+            _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
+            _convertCollateralToAsset(
+                Math.min(toWithdraw, balanceOfCollateralToken())
             );
-            _withdrawCollateral(toWithdraw);
-            _convertCollateralToAsset(toWithdraw);
             return;
         }
 
