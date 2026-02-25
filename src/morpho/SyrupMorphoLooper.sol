@@ -55,16 +55,6 @@ contract SyrupMorphoLooper is BaseMorphoLooper, UniswapUniversalSwapper {
         _setV4Pool(_token0, _token1, _poolId);
     }
 
-    function setV4Pool(
-        address _token0,
-        address _token1,
-        uint24 _fee,
-        int24 _tickSpacing,
-        address _hooks
-    ) external onlyManagement {
-        _setV4Pool(_token0, _token1, _fee, _tickSpacing, _hooks);
-    }
-
     function setBase(address _base) external onlyManagement {
         base = _base;
     }

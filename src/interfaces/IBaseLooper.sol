@@ -4,6 +4,8 @@ pragma solidity ^0.8.18;
 import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
 
 interface IBaseLooper is IBaseHealthCheck {
+    function version() external pure returns (string memory);
+
     function collateralToken() external view returns (address);
 
     /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
