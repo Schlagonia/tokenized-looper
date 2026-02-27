@@ -17,16 +17,11 @@ import {IMerklDistributor} from "../interfaces/IMerkleDistributor.sol";
 import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
- * @title BaseMorphoLooper
- * @notice Morpho Blue specific implementation of BaseLooper.
- *         Implements the flashloan callback and protocol-specific operations.
- *         All generic flashloan logic and calculations live in BaseLooper.
+ * @title MorphoLooper
+ * @notice Morpho Blue specific looper implementation.
+ *         Exchange conversion logic is inherited from BaseLooper.
  */
-abstract contract BaseMorphoLooper is
-    BaseLooper,
-    IMorphoFlashLoanCallback,
-    AuctionSwapper
-{
+contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     using SafeERC20 for ERC20;
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
@@ -38,7 +33,7 @@ abstract contract BaseMorphoLooper is
 
     Id public immutable marketId;
 
-    IMorpho public immutable morpho;
+    IMorpho public immutable MORPHO;
 
     bool internal isFlashloanActive;
 
@@ -49,12 +44,14 @@ abstract contract BaseMorphoLooper is
         string memory _name,
         address _collateralToken,
         address _morpho,
-        Id _marketId
-    ) BaseLooper(_asset, _name, _collateralToken) {
-        morpho = IMorpho(_morpho);
+        Id _marketId,
+        address _exchange,
+        address _governance
+    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
+        MORPHO = IMorpho(_morpho);
         marketId = _marketId;
 
-        marketParams = morpho.idToMarketParams(_marketId);
+        marketParams = MORPHO.idToMarketParams(_marketId);
         require(marketParams.loanToken == _asset, "!loanToken");
         require(
             marketParams.collateralToken == _collateralToken,
@@ -76,7 +73,7 @@ abstract contract BaseMorphoLooper is
         bytes memory data
     ) internal override {
         isFlashloanActive = true;
-        morpho.flashLoan(token, amount, data);
+        MORPHO.flashLoan(token, amount, data);
         isFlashloanActive = false;
     }
 
@@ -86,7 +83,7 @@ abstract contract BaseMorphoLooper is
         uint256 assets,
         bytes calldata data
     ) external override {
-        require(msg.sender == address(morpho), "!morpho");
+        require(msg.sender == address(MORPHO), "!morpho");
         require(isFlashloanActive, "flashloan active");
         // Delegate to parent's generic handler
         _onFlashloanReceived(assets, data);
@@ -96,7 +93,7 @@ abstract contract BaseMorphoLooper is
 
     /// @notice Max available flashloan from Morpho
     function maxFlashloan() public view override returns (uint256) {
-        return asset.balanceOf(address(morpho));
+        return asset.balanceOf(address(MORPHO));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -124,7 +121,7 @@ abstract contract BaseMorphoLooper is
     /// @param amount The amount of collateral tokens to supply
     function _supplyCollateral(uint256 amount) internal override {
         if (amount == 0) return;
-        morpho.supplyCollateral(marketParams, amount, address(this), "");
+        MORPHO.supplyCollateral(marketParams, amount, address(this), "");
     }
 
     /// @notice Withdraw collateral from Morpho Blue market
@@ -132,7 +129,7 @@ abstract contract BaseMorphoLooper is
     /// @param amount The amount of collateral tokens to withdraw
     function _withdrawCollateral(uint256 amount) internal override {
         if (amount == 0) return;
-        morpho.withdrawCollateral(
+        MORPHO.withdrawCollateral(
             marketParams,
             amount,
             address(this),
@@ -145,7 +142,7 @@ abstract contract BaseMorphoLooper is
     /// @param amount The amount of asset to borrow
     function _borrow(uint256 amount) internal virtual override {
         if (amount == 0) return;
-        morpho.borrow(marketParams, amount, 0, address(this), address(this));
+        MORPHO.borrow(marketParams, amount, 0, address(this), address(this));
     }
 
     /// @notice Repay borrowed assets to Morpho Blue market
@@ -159,7 +156,7 @@ abstract contract BaseMorphoLooper is
             ,
             uint256 totalBorrowAssets,
             uint256 totalBorrowShares
-        ) = MorphoBalancesLib.expectedMarketBalances(morpho, marketParams);
+        ) = MorphoBalancesLib.expectedMarketBalances(MORPHO, marketParams);
 
         uint256 shares = Math.min(
             SharesMathLib.toSharesDown(
@@ -167,10 +164,10 @@ abstract contract BaseMorphoLooper is
                 totalBorrowAssets,
                 totalBorrowShares
             ),
-            morpho.borrowShares(marketId, address(this))
+            MORPHO.borrowShares(marketId, address(this))
         );
 
-        morpho.repay(marketParams, 0, shares, address(this), "");
+        MORPHO.repay(marketParams, 0, shares, address(this), "");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -197,7 +194,7 @@ abstract contract BaseMorphoLooper is
     /// @dev Compares current debt against max borrow allowed by LLTV.
     /// @return True if debt exceeds max borrow (position is liquidatable)
     function _isLiquidatable() internal view virtual override returns (bool) {
-        Position memory p = morpho.position(marketId, address(this));
+        Position memory p = MORPHO.position(marketId, address(this));
         if (p.borrowShares == 0) return false;
 
         uint256 collateralValue = (uint256(p.collateral) *
@@ -231,7 +228,7 @@ abstract contract BaseMorphoLooper is
         override
         returns (uint256)
     {
-        (uint256 totalSupplyAssets, , uint256 totalBorrowAssets, ) = morpho
+        (uint256 totalSupplyAssets, , uint256 totalBorrowAssets, ) = MORPHO
             .expectedMarketBalances(marketParams);
         return
             totalSupplyAssets > totalBorrowAssets
@@ -262,7 +259,7 @@ abstract contract BaseMorphoLooper is
         override
         returns (uint256)
     {
-        Position memory p = morpho.position(marketId, address(this));
+        Position memory p = MORPHO.position(marketId, address(this));
         return p.collateral;
     }
 
@@ -270,7 +267,7 @@ abstract contract BaseMorphoLooper is
     /// @dev Uses expectedBorrowAssets to include accrued interest.
     /// @return The total debt including accrued interest
     function balanceOfDebt() public view virtual override returns (uint256) {
-        return morpho.expectedBorrowAssets(marketParams, address(this));
+        return MORPHO.expectedBorrowAssets(marketParams, address(this));
     }
 
     ////////////////////////////////////////////////////////////////
@@ -292,6 +289,8 @@ abstract contract BaseMorphoLooper is
     ) external {
         MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
+
+    function _claimAndSellRewards() internal virtual override {}
 
     function setAuction(address _auction) external onlyManagement {
         _setAuction(_auction);

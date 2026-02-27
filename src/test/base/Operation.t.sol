@@ -15,13 +15,27 @@ abstract contract OperationTest is Setup {
 
     function _maxUnwindCollateralDust(
         uint256 collateralBeforeUnwind
-    ) internal pure returns (uint256) {
+    ) internal pure virtual returns (uint256) {
         uint256 relativeDust = collateralBeforeUnwind /
             (10_000 / UNWIND_COLLATERAL_DUST_BPS);
         return
             relativeDust > MIN_UNWIND_COLLATERAL_DUST
                 ? relativeDust
                 : MIN_UNWIND_COLLATERAL_DUST;
+    }
+
+    function _baseTestAmount() internal view returns (uint256) {
+        uint256 min = minFuzzAmount;
+        uint256 max = maxFuzzAmount;
+        if (max <= min) return min;
+
+        uint256 mid = (min + max) / 2;
+        return mid > min ? mid : min;
+    }
+
+    function _baseIdleAmount() internal view returns (uint256) {
+        uint256 idle = _baseTestAmount() / 10;
+        return idle > 0 ? idle : 1;
     }
 
     function test_setupStrategyOK() public virtual {
@@ -471,7 +485,7 @@ abstract contract OperationTest is Setup {
         //   targetEquity = targetDebt * WAD / (L - WAD)
         //   maxWithdraw = currentEquity - targetEquity
 
-        uint256 _amount = 100_000e6;
+        uint256 _amount = _baseTestAmount();
         mintAndDepositIntoStrategy(strategy, user, _amount);
         vm.prank(keeper);
         strategy.tend();
@@ -671,7 +685,7 @@ abstract contract OperationTest is Setup {
     /// @dev When over-leveraged (> upperBound) and has idle assets (balanceOfAsset > 0),
     ///      tendTrigger should return true as we can use idle assets to repay debt.
     function test_tendTrigger_overLeveragedWithIdleAssets() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -680,7 +694,7 @@ abstract contract OperationTest is Setup {
         skip(strategy.minTendInterval() + 1);
 
         // Airdrop idle assets to the strategy
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Verify we have idle assets
@@ -704,7 +718,7 @@ abstract contract OperationTest is Setup {
     /// @dev When over-leveraged and no idle assets, but maxWithdraw > 0 (can delever via flashloan),
     ///      tendTrigger should return true.
     function test_tendTrigger_overLeveragedCanWithdraw() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -754,7 +768,7 @@ abstract contract OperationTest is Setup {
         // it returns true (test 2 above). The code path for returning false when can't withdraw
         // is tested implicitly.
 
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -791,8 +805,11 @@ abstract contract OperationTest is Setup {
 
     /// @notice Test 4: Under-leveraged and can deposit should NOT auto-trigger
     /// @dev Under the new behavior, under-leveraged states are not auto-levered by tendTrigger.
-    function test_tendTrigger_underLeveragedCanDeposit_noAutoTrigger() public {
-        uint256 equity = 10000e6;
+    function test_tendTrigger_underLeveragedCanDeposit_noAutoTrigger()
+        public
+        virtual
+    {
+        uint256 equity = _baseTestAmount();
 
         // Create under-leveraged position
         _createUnderLeveragedPosition(equity);
@@ -822,8 +839,8 @@ abstract contract OperationTest is Setup {
     /// @notice Test 5: Under-leveraged but cannot deposit should NOT trigger
     /// @dev When under-leveraged but maxDeposit = 0 (no deposit capacity),
     ///      tendTrigger should return false.
-    function test_tendTrigger_underLeveragedCantDeposit() public {
-        uint256 equity = 10000e6;
+    function test_tendTrigger_underLeveragedCantDeposit() public virtual {
+        uint256 equity = _baseTestAmount();
 
         // Create under-leveraged position
         _createUnderLeveragedPosition(equity);
@@ -861,7 +878,7 @@ abstract contract OperationTest is Setup {
     /// @notice Test 6: Meaningful idle assets do NOT auto-trigger tend
     /// @dev Under the new behavior, idle assets are not auto-deployed by tendTrigger.
     function test_tendTrigger_idleAssetsCanDeposit_noAutoTrigger() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -874,7 +891,7 @@ abstract contract OperationTest is Setup {
         // Airdrop meaningful idle assets
         // At 3x leverage, idle * (L - 1) / 1 = idle * 2 should be > minAmountToBorrow
         // With minAmountToBorrow = 0 (default for InfinifiMorphoLooper), any idle triggers
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Verify we have idle assets
@@ -914,7 +931,7 @@ abstract contract OperationTest is Setup {
     /// @notice Test 7: Has meaningful idle assets but cannot deposit should NOT trigger
     /// @dev When has idle assets but maxDeposit = 0, tendTrigger should return false.
     function test_tendTrigger_idleAssetsCantDeposit() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -925,7 +942,7 @@ abstract contract OperationTest is Setup {
         skip(strategy.minTendInterval() + 1);
 
         // Airdrop meaningful idle assets
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Set deposit limit to 0 to simulate no deposit capacity
@@ -951,7 +968,7 @@ abstract contract OperationTest is Setup {
     /// @dev When idle assets are so small that debt generated would be < minAmountToBorrow,
     ///      tendTrigger should return false.
     function test_tendTrigger_tinyIdleAssetsNoTrigger() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -963,13 +980,14 @@ abstract contract OperationTest is Setup {
 
         // Set a high minAmountToBorrow
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000e6);
+        strategy.setMinAmountToBorrow(_baseIdleAmount() * 5);
 
         // Airdrop tiny idle assets that won't generate enough debt
         // At 3x leverage: idle * (L - 1) / 1 = idle * 2
         // For debt > 1000e6, we need idle > 500e6
         // So idle of 100e6 should generate debt of 200e6 < 1000e6 minAmountToBorrow
-        uint256 tinyIdle = 100e6;
+        uint256 tinyIdle = _baseIdleAmount() / 5;
+        if (tinyIdle == 0) tinyIdle = 1;
         airdrop(asset, address(strategy), tinyIdle);
 
         // Verify we have idle assets
@@ -1012,7 +1030,7 @@ abstract contract OperationTest is Setup {
     /// @dev When within the leverage buffer range and no idle assets to deploy,
     ///      tendTrigger should return false.
     function test_tendTrigger_withinBufferNoIdle() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);

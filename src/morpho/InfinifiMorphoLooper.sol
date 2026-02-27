@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {BaseMorphoLooper} from "./BaseMorphoLooper.sol";
+import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol";
 
@@ -15,7 +15,7 @@ import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol"
  *         - Withdraws sIUSD -> redeems to iUSD -> redeems to USDC.
  *         - Uses the provided Morpho Blue marketId (collateral = sIUSD, borrow = USDC).
  */
-contract InfinifiMorphoLooper is BaseMorphoLooper {
+contract InfinifiMorphoLooper is MorphoLooper {
     using SafeERC20 for ERC20;
 
     /// @notice iUSD receipt token (12 decimals).
@@ -30,8 +30,19 @@ contract InfinifiMorphoLooper is BaseMorphoLooper {
         string memory _name,
         address _collateralToken,
         address _morpho,
-        Id _marketId
-    ) BaseMorphoLooper(_asset, _name, _collateralToken, _morpho, _marketId) {
+        Id _marketId,
+        address _governance
+    )
+        MorphoLooper(
+            _asset,
+            _name,
+            _collateralToken,
+            _morpho,
+            _marketId,
+            address(0),
+            _governance
+        )
+    {
         // Approvals for gateway and Morpho.
         ERC20(_asset).forceApprove(GATEWAY, type(uint256).max);
         ERC20(IUSD).forceApprove(GATEWAY, type(uint256).max);

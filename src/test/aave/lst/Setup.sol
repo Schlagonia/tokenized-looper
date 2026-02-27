@@ -7,11 +7,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {LSTAaveLooper} from "../../../aave/LSTAaveLooper.sol";
+import {WETHWstETHExchange} from "../../../periphery/WETHWstETHExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
 /// @notice Setup for LST (wstETH/WETH) Aave V3 Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupAaveLST is Setup {
+    WETHWstETHExchange public exchange;
+
     // Aave V3 Core Mainnet
     address public constant AAVE_ADDRESSES_PROVIDER =
         0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
@@ -21,8 +24,6 @@ contract SetupAaveLST is Setup {
     // wstETH/WETH config
     address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant UNISWAP_V3_ROUTER =
-        0xE592427A0AEce92De3Edee1F18E0157C05861564;
 
     // E-Mode category 1 for ETH-correlated assets (better LTV)
     uint8 public constant EMODE_CATEGORY_ID = 1;
@@ -60,18 +61,25 @@ contract SetupAaveLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(
-                new LSTAaveLooper(
-                    address(asset),
-                    "LST Aave Looper",
-                    WSTETH,
-                    AAVE_ADDRESSES_PROVIDER,
-                    MORPHO_FLASHLOAN_PROVIDER,
-                    EMODE_CATEGORY_ID
-                )
-            )
+        exchange = new WETHWstETHExchange();
+
+        LSTAaveLooper looper = new LSTAaveLooper(
+            address(asset),
+            "LST Aave Looper",
+            WSTETH,
+            AAVE_ADDRESSES_PROVIDER,
+            MORPHO_FLASHLOAN_PROVIDER,
+            EMODE_CATEGORY_ID,
+            address(exchange),
+            management
         );
+        IStrategyInterface _strategy = IStrategyInterface(address(looper));
+        exchange.setStrategy(address(_strategy));
+
+        // Guard against inherited ETH balance at this CREATE address on fork state.
+        if (address(looper).balance > 0) {
+            vm.deal(address(looper), 0);
+        }
 
         _strategy.setPendingManagement(management);
 

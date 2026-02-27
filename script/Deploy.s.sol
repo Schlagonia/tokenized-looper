@@ -5,10 +5,12 @@ import "forge-std/Script.sol";
 
 import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
-import {LSTMorphoLooper} from "../src/morpho/LSTMorphoLooper.sol";
-import {PTMorphoLooper} from "../src/morpho/PTMorphoLooper.sol";
-import {SUSDSUSDTMorphoLooper} from "../src/morpho/SUSDSUSDTMorphoLooper.sol";
-import {sUSDaiPTLooper} from "../src/morpho/sUSDaiPTLooper.sol";
+import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
+import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
+import {PTExchange} from "../src/periphery/PTExchange.sol";
+import {sUSDaiPTExchange} from "../src/periphery/sUSDaiPTExchange.sol";
+import {SUSDSUSDTExchange} from "../src/periphery/SUSDSUSDTExchange.sol";
+import {UniswapUniversalSwapperExchange} from "../src/periphery/UniswapUniversalSwapperExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 
@@ -28,7 +30,7 @@ contract Deploy is Script {
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
     string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, LOOPER_KEEPER
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev CreateX deployer for CREATE2 deployments
@@ -55,6 +57,12 @@ contract Deploy is Script {
         BaseConfig base;
         address pendleMarket;
         address pendleToken;
+    }
+
+    struct SyrupConfig {
+        BaseConfig base;
+        address weth;
+        bytes32 assetCollateralV4PoolId;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -103,6 +111,21 @@ contract Deploy is Script {
                 marketId: 0x3274643db77a064abd3bc851de77556a4ad2e2f502f4f0c80845fa8f909ecf0b
             }),
             router: 0xE592427A0AEce92De3Edee1F18E0157C05861564
+        });
+    }
+
+    // ===== syrupUSDC/USDC MAINNET =====
+    function getSyrupUSDCMainnet() internal pure returns (SyrupConfig memory) {
+        return SyrupConfig({
+            base: BaseConfig({
+                asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
+                name: "syrupUSDC/USDC Morpho Looper",
+                collateralToken: 0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b, // syrupUSDC
+                morpho: MORPHO_MAINNET,
+                marketId: 0x729badf297ee9f2f6b3f717b96fd355fc6ec00422284ce1968e76647b258cf44
+            }),
+            weth: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, // WETH
+            assetCollateralV4PoolId: 0xcdb422a853a4fa2deb364317db92ad76d1cb7a8e1b82a32219bcb41720a90228
         });
     }
 
@@ -176,7 +199,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = "SUSDS_USDT_MAINNET";
+        DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
         deploy();
         return;
         if (block.chainid == 1) {
@@ -217,6 +240,8 @@ contract Deploy is Script {
             deployed = deployLST(getLSTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDS_USDT_MAINNET")) {
             deployed = deploySUSDSUSDT(getSUSDSUSDTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_MAINNET")) {
+            deployed = deploySyrup(getSyrupUSDCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
             deployed = deployPT(getPTcUSDMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SIUSD_MAINNET")) {
@@ -240,59 +265,124 @@ contract Deploy is Script {
     }
 
     function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
+        address governance = msg.sender;
         return address(new InfinifiMorphoLooper(
             cfg.asset,
             cfg.name,
             cfg.collateralToken,
             cfg.morpho,
-            Id.wrap(cfg.marketId)
+            Id.wrap(cfg.marketId),
+            governance
         ));
     }
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
-        return address(new LSTMorphoLooper(
+        address governance = msg.sender;
+
+        UniswapUniversalSwapperExchange exchange = new UniswapUniversalSwapperExchange(
+                cfg.base.asset
+            );
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            cfg.router
-        ));
+            address(exchange),
+            governance
+        );
+        exchange.setStrategy(address(looper));
+        exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, 100);
+
+        return address(looper);
     }
 
     function deploySUSDSUSDT(LSTConfig memory cfg) internal returns (address) {
-        return address(new SUSDSUSDTMorphoLooper(
+        address governance = msg.sender;
+
+        SUSDSUSDTExchange exchange = new SUSDSUSDTExchange();
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            cfg.router
-        ));
+            address(exchange),
+            governance
+        );
+        exchange.setStrategy(address(looper));
+
+        return address(looper);
+    }
+
+    function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
+        address governance = msg.sender;
+
+        UniswapUniversalSwapperExchange exchange = new UniswapUniversalSwapperExchange(
+                cfg.weth
+            );
+        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.morpho,
+            Id.wrap(cfg.base.marketId),
+            address(exchange),
+            governance
+        );
+        exchange.setStrategy(address(looper));
+        exchange.setBase(cfg.base.asset);
+        exchange.setV4Pool(
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.assetCollateralV4PoolId
+        );
+
+        return address(looper);
     }
 
     function deployPT(PTConfig memory cfg) internal returns (address) {
-        return address(new PTMorphoLooper(
+        address governance = msg.sender;
+        PTExchange exchange = new PTExchange(
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.pendleMarket,
+            cfg.pendleToken
+        );
+
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            cfg.pendleMarket,
-            cfg.pendleToken
-        ));
+            address(exchange),
+            governance
+        );
+        exchange.setStrategy(address(looper));
+        return address(looper);
     }
 
     function deploysUSDaiPT(PTConfig memory cfg) internal returns (address) {
-        return address(new sUSDaiPTLooper(
+        address governance = msg.sender;
+        sUSDaiPTExchange exchange = new sUSDaiPTExchange(
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.pendleMarket,
+            cfg.pendleToken
+        );
+
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            cfg.pendleMarket,
-            cfg.pendleToken
-        ));
+            address(exchange),
+            governance
+        );
+        exchange.setStrategy(address(looper));
+        return address(looper);
     }
 
     function deployAprOracle() internal returns (address) {

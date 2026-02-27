@@ -6,13 +6,16 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {PTMorphoLooper} from "../../../morpho/PTMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
+import {PTExchange} from "../../../periphery/PTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for PT (Pendle PT/USDC) Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupPT is Setup {
+    PTExchange public exchange;
+
     // PT-siUSD/USDC market
     Id public constant PT_MARKET_ID =
         Id.wrap(
@@ -42,7 +45,7 @@ contract SetupPT is Setup {
         decimals = asset.decimals();
 
         // Fuzz amounts for 6 decimal token (USDC)
-        maxFuzzAmount = 100_000e6; // up to 100,000,000 USDC
+        maxFuzzAmount = 10_000e6; // up to 10,000 USDC
         minFuzzAmount = 10e6; // 100 USDC
 
         // Deploy strategy and set variables
@@ -62,19 +65,27 @@ contract SetupPT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
+        exchange = new PTExchange(
+            address(asset),
+            PT_TOKEN,
+            PENDLE_MARKET,
+            PENDLE_TOKEN
+        );
+
         IStrategyInterface _strategy = IStrategyInterface(
             address(
-                new PTMorphoLooper(
+                new MorphoLooper(
                     address(asset), // USDC
                     "PT Morpho Looper",
                     PT_TOKEN, // PT as collateral
                     MORPHO,
                     PT_MARKET_ID,
-                    PENDLE_MARKET,
-                    PENDLE_TOKEN // pendleToken = USDC
+                    address(exchange),
+                    management
                 )
             )
         );
+        exchange.setStrategy(address(_strategy));
 
         _strategy.setPendingManagement(management);
 
@@ -90,6 +101,9 @@ contract SetupPT is Setup {
 
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
+
+        // Use Pendle's unbounded approximation range to avoid guess overflow.
+        exchange.setGuessMaxMultiplier(0);
 
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);

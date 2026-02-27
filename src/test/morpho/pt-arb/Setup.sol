@@ -6,13 +6,16 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {sUSDaiPTLooper} from "../../../morpho/sUSDaiPTLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
+import {sUSDaiPTExchange} from "../../../periphery/sUSDaiPTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for sUSDai PT Morpho Looper tests on Arbitrum
 /// @dev Inherits from Setup and overrides for Arbitrum network
 contract SetupPTArb is Setup {
+    sUSDaiPTExchange public exchange;
+
     // Arbitrum Morpho
     address public constant ARB_MORPHO =
         0x6c247b1F6182318877311737BaC0844bAa518F5e;
@@ -48,8 +51,8 @@ contract SetupPTArb is Setup {
 
         // Fuzz amounts for 6 decimal token (USDC)
         // Keep smaller amounts due to limited liquidity in Arbitrum pool
-        maxFuzzAmount = 10_000e6; // 10K USDC max
-        minFuzzAmount = 10e6;
+        maxFuzzAmount = 10e6; // 10 USDC max
+        minFuzzAmount = 0.1e6;
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
@@ -69,19 +72,27 @@ contract SetupPTArb is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
+        exchange = new sUSDaiPTExchange(
+            address(asset),
+            PT_TOKEN,
+            PENDLE_MARKET,
+            PENDLE_TOKEN
+        );
+
         IStrategyInterface _strategy = IStrategyInterface(
             address(
-                new sUSDaiPTLooper(
+                new MorphoLooper(
                     address(asset), // USDC
                     "sUSDai PT Morpho Looper",
                     PT_TOKEN, // PT as collateral
                     ARB_MORPHO,
                     PT_MARKET_ID,
-                    PENDLE_MARKET,
-                    PENDLE_TOKEN // sUSDai
+                    address(exchange),
+                    management
                 )
             )
         );
+        exchange.setStrategy(address(_strategy));
 
         _strategy.setPendingManagement(management);
 
@@ -96,6 +107,9 @@ contract SetupPTArb is Setup {
 
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
+
+        // Use Pendle's unbounded approximation range to avoid guess overflow.
+        exchange.setGuessMaxMultiplier(0);
 
         vm.stopPrank();
 

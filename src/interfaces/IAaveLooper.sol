@@ -7,7 +7,7 @@ import {IPoolDataProvider} from "./aave/IPoolDataProvider.sol";
 import {IAaveOracle} from "./aave/IAaveOracle.sol";
 import {IRewardsController} from "./aave/IRewardsController.sol";
 
-interface IBaseAaveLooper is IBaseLooper {
+interface IAaveLooper is IBaseLooper {
     function MORPHO() external view returns (IMorpho);
 
     function POOL() external view returns (address);

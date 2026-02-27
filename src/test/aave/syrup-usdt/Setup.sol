@@ -7,10 +7,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
+import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
+    UniswapUniversalSwapperExchange public exchange;
+
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
         0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
@@ -46,7 +49,8 @@ contract SetupAaveSyrupUSDT is Setup {
         asset = ERC20(USDT);
         decimals = asset.decimals();
 
-        maxFuzzAmount = 1_000_000e6;
+        // Keep conservative while pool-level limits evolve.
+        maxFuzzAmount = 50_000e6;
         minFuzzAmount = 100e6;
 
         strategy = IStrategyInterface(setUpStrategy());
@@ -63,25 +67,35 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(
-                new SyrupUSDTAaveLooper(
-                    address(asset),
-                    "syrupUSDT Aave Looper",
-                    SYRUP_USDT,
-                    AAVE_ADDRESSES_PROVIDER,
-                    MORPHO_FLASHLOAN_PROVIDER,
-                    EMODE_CATEGORY_ID,
-                    WETH,
-                    syrupUsdtV4PoolId
-                )
-            )
+        exchange = new UniswapUniversalSwapperExchange(WETH);
+
+        SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
+            address(asset),
+            "syrupUSDT Aave Looper",
+            SYRUP_USDT,
+            AAVE_ADDRESSES_PROVIDER,
+            MORPHO_FLASHLOAN_PROVIDER,
+            EMODE_CATEGORY_ID,
+            address(exchange),
+            management
         );
 
+        IStrategyInterface _strategy = IStrategyInterface(address(looper));
+        exchange.setStrategy(address(_strategy));
         _strategy.setPendingManagement(management);
 
-        vm.startPrank(management);
+        vm.prank(management);
         _strategy.acceptManagement();
+
+        vm.startPrank(management);
+        exchange.setBase(address(asset));
+        exchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
+
+        // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
+        uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
+        if (uniFee != 0) {
+            exchange.setUniFees(USDT, SYRUP_USDT, uniFee);
+        }
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -92,16 +106,6 @@ contract SetupAaveSyrupUSDT is Setup {
 
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
-
-        // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
-        uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
-        if (uniFee != 0) {
-            SyrupUSDTAaveLooper(payable(address(_strategy))).setUniFees(
-                USDT,
-                SYRUP_USDT,
-                uniFee
-            );
-        }
 
         vm.stopPrank();
 

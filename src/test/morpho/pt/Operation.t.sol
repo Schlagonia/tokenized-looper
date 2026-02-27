@@ -20,7 +20,7 @@ contract PTOperationTest is SetupPT, OperationTest {
         //airdrop(asset, address(strategy), minFuzzAmount / 10);
     }
 
-    /// @notice Override to check PT-specific leverage params (5x instead of 3x)
+    /// @notice PT now uses base Morpho looper defaults.
     function test_setupStrategyOK() public override {
         assertTrue(address(0) != address(strategy));
         assertEq(strategy.asset(), address(asset));
@@ -32,8 +32,7 @@ contract PTOperationTest is SetupPT, OperationTest {
             "!collateralToken"
         );
 
-        // PT uses 5x leverage instead of 3x
-        assertEq(strategy.targetLeverageRatio(), 5e18, "!targetLeverageRatio");
+        assertEq(strategy.targetLeverageRatio(), 3e18, "!targetLeverageRatio");
         assertEq(strategy.leverageBuffer(), 0.25e18, "!leverageBuffer");
     }
 }

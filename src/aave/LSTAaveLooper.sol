@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.18;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {BaseAaveLooper} from "./BaseAaveLooper.sol";
-import {ISteth, IQueue, IWETH, ICurveFi, IwstETH} from "../interfaces/IStethInterfaces.sol";
+import {AaveLooper} from "./AaveLooper.sol";
+import {ISteth, IQueue, IWETH, IwstETH} from "../interfaces/IStethInterfaces.sol";
 
 /**
  * @title LSTAaveLooper
@@ -16,26 +15,16 @@ import {ISteth, IQueue, IWETH, ICurveFi, IwstETH} from "../interfaces/IStethInte
  * @dev Example: Use wstETH as collateral, borrow WETH, swap to wstETH, repeat.
  *      E-Mode category 1 is typically ETH-correlated assets on Aave V3.
  */
-contract LSTAaveLooper is BaseAaveLooper {
+contract LSTAaveLooper is AaveLooper {
     using SafeERC20 for *;
 
-    // new stuff for redemptions
+    /// @notice Shares queued for direct Lido withdrawals.
     uint256 public pendingRedemptions;
+
     IQueue internal constant WITHDRAWAL_QUEUE =
         IQueue(0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1); // stETH withdrawal queue
-
-    ICurveFi public constant StableSwapSTETH =
-        ICurveFi(0xDC24316b9AE028F1497c275EB9192a3Ea0f67022);
-
-    ISteth public constant stETH =
+    ISteth internal constant STETH =
         ISteth(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
-
-    address internal constant REFERRAL =
-        0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7;
-
-    // stETH specific constants
-    int128 internal constant WETHID = 0;
-    int128 internal constant STETHID = 1;
 
     constructor(
         address _asset,
@@ -43,70 +32,23 @@ contract LSTAaveLooper is BaseAaveLooper {
         address _collateralToken,
         address _addressesProvider,
         address _morpho,
-        uint8 _eModeCategoryId
+        uint8 _eModeCategoryId,
+        address _exchange,
+        address _governance
     )
-        BaseAaveLooper(
+        AaveLooper(
             _asset,
             _name,
             _collateralToken,
             _addressesProvider,
             _morpho,
-            _eModeCategoryId
+            _eModeCategoryId,
+            _exchange,
+            _governance
         )
-    {
-        stETH.approve(address(StableSwapSTETH), type(uint256).max);
-        stETH.forceApprove(_collateralToken, type(uint256).max);
-    }
+    {}
 
     receive() external payable {}
-
-    /*//////////////////////////////////////////////////////////////
-                            CONVERSIONS
-    //////////////////////////////////////////////////////////////*/
-
-    function _convertAssetToCollateral(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal override returns (uint256) {
-        if (amount == 0) return 0;
-
-        IWETH(address(asset)).withdraw(amount);
-
-        //test if we should buy instead of mint
-        uint256 out = StableSwapSTETH.get_dy(WETHID, STETHID, amount);
-        if (out < amount) {
-            stETH.submit{value: amount}(REFERRAL);
-        } else {
-            StableSwapSTETH.exchange{value: amount}(
-                WETHID,
-                STETHID,
-                amount,
-                Math.max(amountOutMin, amount)
-            );
-        }
-
-        return
-            IwstETH(address(collateralToken)).wrap(
-                stETH.balanceOf(address(this))
-            );
-    }
-
-    function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal override returns (uint256) {
-        if (amount == 0) return 0;
-
-        uint256 stETHAmount = IwstETH(address(collateralToken)).unwrap(amount);
-        uint256 amountOut = StableSwapSTETH.exchange(
-            STETHID,
-            WETHID,
-            stETHAmount,
-            amountOutMin
-        );
-        IWETH(address(asset)).deposit{value: address(this).balance}();
-        return amountOut;
-    }
 
     function estimatedTotalAssets() public view override returns (uint256) {
         return super.estimatedTotalAssets() + pendingRedemptions;
@@ -150,7 +92,7 @@ contract LSTAaveLooper is BaseAaveLooper {
     function _initiateLSTWithdrawal(
         uint256 _amount
     ) internal returns (uint256[] memory requestIds) {
-        stETH.forceApprove(address(WITHDRAWAL_QUEUE), _amount);
+        STETH.forceApprove(address(WITHDRAWAL_QUEUE), _amount);
 
         uint256[] memory _amounts = new uint256[](1);
         _amounts[0] = _amount;

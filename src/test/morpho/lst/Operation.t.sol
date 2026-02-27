@@ -22,4 +22,15 @@ contract LSTOperationTest is SetupLST, OperationTest {
     function accrueYield(uint256 _amount) public override(SetupLST, Setup) {
         SetupLST.accrueYield(_amount);
     }
+
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure override returns (uint256) {
+        // LST unwinds through AMMs and can leave larger residual wstETH dust.
+        uint256 relativeDust = collateralBeforeUnwind / 100; // 1%
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
+    }
 }

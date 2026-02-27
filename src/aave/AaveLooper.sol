@@ -16,16 +16,11 @@ import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCal
 import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
- * @title BaseAaveLooper
- * @notice Aave V3 specific implementation of BaseLooper.
- *         Implements the flashloan callback and protocol-specific operations.
- *         All generic flashloan logic and calculations live in BaseLooper.
+ * @title AaveLooper
+ * @notice Aave V3 specific looper implementation.
+ *         Exchange conversion logic is inherited from BaseLooper.
  */
-abstract contract BaseAaveLooper is
-    BaseLooper,
-    IMorphoFlashLoanCallback,
-    AuctionSwapper
-{
+contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     using SafeERC20 for ERC20;
 
     /// @notice Interest rate mode: 2 = variable rate
@@ -73,8 +68,10 @@ abstract contract BaseAaveLooper is
         address _collateralToken,
         address _addressesProvider,
         address _morpho,
-        uint8 _eModeCategoryId
-    ) BaseLooper(_asset, _name, _collateralToken) {
+        uint8 _eModeCategoryId,
+        address _exchange,
+        address _governance
+    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
         MORPHO = IMorpho(_morpho);
         POOL = IPoolAddressesProvider(_addressesProvider).getPool();
         DATA_PROVIDER = IPoolDataProvider(

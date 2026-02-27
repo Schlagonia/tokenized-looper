@@ -8,6 +8,10 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function collateralToken() external view returns (address);
 
+    function GOVERNANCE() external view returns (address);
+
+    function exchange() external view returns (address);
+
     /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
     function targetLeverageRatio() external view returns (uint256);
 
@@ -53,6 +57,8 @@ interface IBaseLooper is IBaseHealthCheck {
     function setMinTendInterval(uint256 _minTendInterval) external;
 
     function setMaxAmountToSwap(uint256 _maxAmountToSwap) external;
+
+    function setExchange(address _exchange) external;
 
     function estimatedTotalAssets() external view returns (uint256);
 

@@ -6,13 +6,16 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {LSTMorphoLooper} from "../../../morpho/LSTMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
+import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for LST (wstETH/WETH) Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupLST is Setup {
+    UniswapUniversalSwapperExchange public exchange;
+
     // wstETH/WETH market
     Id public constant LST_MARKET_ID =
         Id.wrap(
@@ -20,7 +23,6 @@ contract SetupLST is Setup {
         );
     address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant ROUTER = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
 
     function setUp() public virtual override {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -53,18 +55,22 @@ contract SetupLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
+        exchange = new UniswapUniversalSwapperExchange(WETH);
+
         IStrategyInterface _strategy = IStrategyInterface(
             address(
-                new LSTMorphoLooper(
+                new MorphoLooper(
                     address(asset),
                     "LST Morpho Looper",
                     WSTETH,
                     MORPHO,
                     LST_MARKET_ID,
-                    ROUTER
+                    address(exchange),
+                    management
                 )
             )
         );
+        exchange.setStrategy(address(_strategy));
 
         _strategy.setPendingManagement(management);
 
@@ -81,8 +87,7 @@ contract SetupLST is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
-        // Set higher slippage tolerance for testing (25% for now - investigate swap pricing)
-        //_strategy.setSlippage(2500);
+        exchange.setUniFees(WETH, WSTETH, 100);
 
         vm.stopPrank();
 

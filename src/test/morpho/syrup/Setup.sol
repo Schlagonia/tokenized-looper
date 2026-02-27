@@ -7,11 +7,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
+import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests
 contract SetupSyrupMorpho is Setup {
+    UniswapUniversalSwapperExchange public exchange;
+
     // Provided market id (syrupUSDC/USDC)
     Id public constant SYRUP_USDC_MARKET_ID =
         Id.wrap(
@@ -55,24 +58,32 @@ contract SetupSyrupMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(
-                new SyrupMorphoLooper(
-                    address(asset),
-                    "syrupUSDC/USDC Morpho Looper",
-                    SYRUP_USDC,
-                    MORPHO,
-                    SYRUP_USDC_MARKET_ID,
-                    WETH,
-                    SYRUP_USDC_USDC_V4_POOL_ID
-                )
-            )
+        exchange = new UniswapUniversalSwapperExchange(WETH);
+
+        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+            address(asset),
+            "syrupUSDC/USDC Morpho Looper",
+            SYRUP_USDC,
+            MORPHO,
+            SYRUP_USDC_MARKET_ID,
+            address(exchange),
+            management
         );
 
+        IStrategyInterface _strategy = IStrategyInterface(address(looper));
+        exchange.setStrategy(address(_strategy));
         _strategy.setPendingManagement(management);
 
-        vm.startPrank(management);
+        vm.prank(management);
         _strategy.acceptManagement();
+
+        vm.startPrank(management);
+        exchange.setBase(address(asset));
+        exchange.setV4Pool(
+            address(asset),
+            SYRUP_USDC,
+            SYRUP_USDC_USDC_V4_POOL_ID
+        );
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);

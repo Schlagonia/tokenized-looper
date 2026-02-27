@@ -5,6 +5,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+import {IExchange} from "./interfaces/IExchange.sol";
 
 /**
  * @title BaseLooper
@@ -16,6 +17,11 @@ import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthChe
  */
 abstract contract BaseLooper is BaseHealthCheck {
     using SafeERC20 for ERC20;
+
+    modifier onlyGovernance() {
+        require(msg.sender == GOVERNANCE, "!governance");
+        _;
+    }
 
     /// @notice Accrue interest before state changing functions
     modifier accrue() {
@@ -38,8 +44,14 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount; // Amount to deploy or free (in asset terms)
     }
 
+    /// @notice Governance address allowed to update exchange configuration.
+    address public immutable GOVERNANCE;
+
     /// @notice Slippage tolerance (in basis points) for swaps.
     uint64 public slippage;
+
+    /// @notice Exchange address
+    address public exchange;
 
     /// @notice The timestamp of the last tend.
     uint256 public lastTend;
@@ -82,9 +94,13 @@ abstract contract BaseLooper is BaseHealthCheck {
     constructor(
         address _asset,
         string memory _name,
-        address _collateralToken
+        address _collateralToken,
+        address _governance,
+        address _exchange
     ) BaseHealthCheck(_asset, _name) {
+        require(_governance != address(0), "!governance");
         collateralToken = _collateralToken;
+        GOVERNANCE = _governance;
 
         depositLimit = type(uint256).max;
         // Allow self so we can use availableDepositLimit() to get the max deposit amount.
@@ -102,6 +118,10 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         _setLossLimitRatio(10);
         _setProfitLimitRatio(1_000);
+
+        if (_exchange != address(0)) {
+            _setExchange(_exchange);
+        }
     }
 
     function version() public pure virtual returns (string memory) {
@@ -194,6 +214,24 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 _maxAmountToSwap
     ) external onlyManagement {
         maxAmountToSwap = _maxAmountToSwap;
+    }
+
+    function setExchange(address _exchange) external onlyGovernance {
+        _setExchange(_exchange);
+    }
+
+    function _setExchange(address _exchange) internal virtual {
+        require(_exchange != address(0), "!exchange");
+
+        address oldExchange = exchange;
+        if (oldExchange != address(0)) {
+            asset.forceApprove(oldExchange, 0);
+            ERC20(collateralToken).forceApprove(oldExchange, 0);
+        }
+
+        exchange = _exchange;
+        asset.forceApprove(_exchange, type(uint256).max);
+        ERC20(collateralToken).forceApprove(_exchange, type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -482,10 +520,10 @@ abstract contract BaseLooper is BaseHealthCheck {
         (, uint256 targetDebt) = getTargetPosition(targetEquity);
 
         if (targetDebt > currentDebt) {
-            uint256 collateralToWithdraw = _assetToCollateral(_amountNeeded);
             // No debt to repay, just withdraw collateral
-            _withdrawCollateral(collateralToWithdraw);
-            _convertCollateralToAsset(collateralToWithdraw);
+            uint256 toWithdraw = _assetToCollateral(_amountNeeded);
+            _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
+            _convertCollateralToAsset(toWithdraw);
             return;
         }
 
@@ -579,14 +617,46 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     function _convertCollateralToAsset(
         uint256 amount
-    ) internal returns (uint256) {
+    ) internal virtual returns (uint256) {
         return _convertCollateralToAsset(amount, _getAmountOut(amount, false));
     }
 
     function _convertAssetToCollateral(
         uint256 amount
-    ) internal returns (uint256) {
+    ) internal virtual returns (uint256) {
         return _convertAssetToCollateral(amount, _getAmountOut(amount, true));
+    }
+
+    function _convertAssetToCollateral(
+        uint256 amount,
+        uint256 amountOutMin
+    ) internal virtual returns (uint256) {
+        if (amount == 0) return 0;
+
+        uint256 amountOut = IExchange(exchange).exchange(
+            address(asset),
+            collateralToken,
+            amount,
+            amountOutMin
+        );
+        require(amountOut >= amountOutMin, "!amountOut");
+        return amountOut;
+    }
+
+    function _convertCollateralToAsset(
+        uint256 amount,
+        uint256 amountOutMin
+    ) internal virtual returns (uint256) {
+        if (amount == 0) return 0;
+
+        uint256 amountOut = IExchange(exchange).exchange(
+            collateralToken,
+            address(asset),
+            amount,
+            amountOutMin
+        );
+        require(amountOut >= amountOutMin, "!amountOut");
+        return amountOut;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -673,26 +743,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Must implement protocol-specific debt balance retrieval.
     /// @return The amount of debt owed in asset terms
     function balanceOfDebt() public view virtual returns (uint256);
-
-    /// @notice Convert asset tokens to collateral tokens
-    /// @dev Must implement swap/conversion logic (e.g., via DEX, staking, or minting).
-    /// @param amount The amount of asset to convert
-    /// @param amountOutMin The minimum amount of collateral to receive (slippage protection)
-    /// @return The amount of collateral tokens received
-    function _convertAssetToCollateral(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal virtual returns (uint256);
-
-    /// @notice Convert collateral tokens back to asset tokens
-    /// @dev Must implement swap/conversion logic (e.g., via DEX, unstaking, or redeeming).
-    /// @param amount The amount of collateral to convert
-    /// @param amountOutMin The minimum amount of asset to receive (slippage protection)
-    /// @return The amount of asset tokens received
-    function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal virtual returns (uint256);
 
     /// @notice Claim and sell any protocol rewards
     /// @dev Must implement reward claiming and selling logic. Can be no-op if no rewards.

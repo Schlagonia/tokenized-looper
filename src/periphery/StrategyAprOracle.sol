@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import {AprOracleBase} from "@periphery/AprOracle/AprOracleBase.sol";
 import {IBaseLooper} from "../interfaces/IBaseLooper.sol";
-import {IBaseMorphoLooper} from "../interfaces/IBaseMorphoLooper.sol";
+import {IMorphoLooper} from "../interfaces/IMorphoLooper.sol";
 import {IMorpho, Id, MarketParams, Market} from "../interfaces/morpho/IMorpho.sol";
 import {IIrm} from "../interfaces/morpho/IIrm.sol";
 import {IOracle as IMorphoOracle} from "../interfaces/morpho/IOracle.sol";
@@ -249,18 +249,44 @@ contract StrategyAprOracle is AprOracleBase {
     function _getMorphoData(
         address _strategy
     ) internal view returns (address morpho, Id marketId) {
-        morpho = IBaseMorphoLooper(_strategy).morpho();
-        marketId = IBaseMorphoLooper(_strategy).marketId();
+        morpho = IMorphoLooper(_strategy).MORPHO();
+        marketId = IMorphoLooper(_strategy).marketId();
     }
 
     function _getPendleMarket(
         address _strategy
     ) internal view returns (bool isPt, address pendleMarket) {
-        (bool success, bytes memory data) = _strategy.staticcall(
-            abi.encodeWithSignature("pendleMarket()")
-        );
-        if (!success || data.length != 32) return (false, address(0));
-        pendleMarket = abi.decode(data, (address));
+        // Legacy path: strategy exposes pendle market directly.
+        pendleMarket = _readAddress(_strategy, "pendleMarket()");
+        if (pendleMarket == address(0)) {
+            pendleMarket = _readAddress(_strategy, "PENDLE_MARKET()");
+        }
+
+        // Refactored path: strategy uses an exchange contract that exposes market metadata.
+        if (pendleMarket == address(0)) {
+            address strategyExchange = IBaseLooper(_strategy).exchange();
+            if (strategyExchange != address(0)) {
+                pendleMarket = _readAddress(strategyExchange, "pendleMarket()");
+                if (pendleMarket == address(0)) {
+                    pendleMarket = _readAddress(
+                        strategyExchange,
+                        "PENDLE_MARKET()"
+                    );
+                }
+            }
+        }
+
         isPt = pendleMarket != address(0);
+    }
+
+    function _readAddress(
+        address target,
+        string memory signature
+    ) internal view returns (address value) {
+        (bool success, bytes memory data) = target.staticcall(
+            abi.encodeWithSignature(signature)
+        );
+        if (!success || data.length < 32) return address(0);
+        value = abi.decode(data, (address));
     }
 }

@@ -26,6 +26,17 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         SetupSyrupMorpho.accrueYield(_amount);
     }
 
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure override returns (uint256) {
+        // Syrup unwinds can leave slightly more residual share dust.
+        uint256 relativeDust = (collateralBeforeUnwind * 5) / 10_000; // 5 bps
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
+    }
+
     function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
