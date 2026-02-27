@@ -7,14 +7,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
-import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for LST (wstETH/WETH) Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupLST is Setup {
-    UniswapUniversalSwapperExchange public exchange;
+    UniswapUniversalRouterExchange public exchange;
 
     // wstETH/WETH market
     Id public constant LST_MARKET_ID =
@@ -55,7 +55,7 @@ contract SetupLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalSwapperExchange(WETH);
+        exchange = new UniswapUniversalRouterExchange(WETH);
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(

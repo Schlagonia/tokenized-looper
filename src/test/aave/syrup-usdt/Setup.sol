@@ -7,12 +7,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
-    UniswapUniversalSwapperExchange public exchange;
+    UniswapUniversalRouterExchange public exchange;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -67,7 +67,7 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalSwapperExchange(WETH);
+        exchange = new UniswapUniversalRouterExchange(WETH);
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),

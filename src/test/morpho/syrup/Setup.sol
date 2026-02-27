@@ -7,13 +7,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {UniswapUniversalSwapperExchange} from "../../../periphery/UniswapUniversalSwapperExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests
 contract SetupSyrupMorpho is Setup {
-    UniswapUniversalSwapperExchange public exchange;
+    UniswapUniversalRouterExchange public exchange;
 
     // Provided market id (syrupUSDC/USDC)
     Id public constant SYRUP_USDC_MARKET_ID =
@@ -58,7 +58,7 @@ contract SetupSyrupMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalSwapperExchange(WETH);
+        exchange = new UniswapUniversalRouterExchange(WETH);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),

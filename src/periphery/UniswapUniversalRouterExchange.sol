@@ -9,14 +9,14 @@ import {UniswapUniversalSwapper} from "@periphery/swappers/UniswapUniversalSwapp
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**
- * @title UniswapUniversalSwapperExchange
+ * @title UniswapUniversalRouterExchange
  * @notice Strategy-bound exchange wrapper using the universal swapper.
  *         - Only strategy can swap
  *         - Setters are onlyManagement via strategy.management()
  *         - Sweep is onlyGovernance via strategy factory governance
  *         - Base defaults to WETH from the parent constructor
  */
-contract UniswapUniversalSwapperExchange is
+contract UniswapUniversalRouterExchange is
     UniswapUniversalSwapper,
     BaseExchange
 {

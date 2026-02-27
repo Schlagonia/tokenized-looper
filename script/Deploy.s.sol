@@ -10,7 +10,7 @@ import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {PTExchange} from "../src/periphery/PTExchange.sol";
 import {sUSDaiPTExchange} from "../src/periphery/sUSDaiPTExchange.sol";
 import {SUSDSUSDTExchange} from "../src/periphery/SUSDSUSDTExchange.sol";
-import {UniswapUniversalSwapperExchange} from "../src/periphery/UniswapUniversalSwapperExchange.sol";
+import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 
@@ -279,7 +279,7 @@ contract Deploy is Script {
     function deployLST(LSTConfig memory cfg) internal returns (address) {
         address governance = msg.sender;
 
-        UniswapUniversalSwapperExchange exchange = new UniswapUniversalSwapperExchange(
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
                 cfg.base.asset
             );
         MorphoLooper looper = new MorphoLooper(
@@ -318,7 +318,7 @@ contract Deploy is Script {
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
         address governance = msg.sender;
 
-        UniswapUniversalSwapperExchange exchange = new UniswapUniversalSwapperExchange(
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
                 cfg.weth
             );
         SyrupMorphoLooper looper = new SyrupMorphoLooper(

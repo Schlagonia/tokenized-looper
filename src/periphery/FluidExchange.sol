@@ -6,13 +6,13 @@ import {FluidSwapper} from "@periphery/swappers/FluidSwapper.sol";
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**
- * @title FluidSwapperExchange
+ * @title FluidExchange
  * @notice Strategy-bound exchange wrapper using FluidSwapper routes.
  *         - Only strategy can swap
  *         - Setters are onlyManagement via strategy.management()
  *         - Sweep is onlyGovernance via strategy.GOVERNANCE()
  */
-contract FluidSwapperExchange is FluidSwapper, BaseExchange {
+contract FluidExchange is FluidSwapper, BaseExchange {
     constructor(address _base) {
         require(_base != address(0), "!base");
         base = _base;
