@@ -132,10 +132,17 @@ abstract contract BaseLooper is BaseHealthCheck {
                             SETTERS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Set the maximum total assets the strategy can accept.
+    /// @dev This gates new deposits via `availableDepositLimit`; it does not force an unwind if current assets already exceed the new cap.
+    /// @param _depositLimit New deposit limit in asset units.
     function setDepositLimit(uint256 _depositLimit) external onlyManagement {
         depositLimit = _depositLimit;
     }
 
+    /// @notice Allow or disallow an address for privileged strategy interactions.
+    /// @dev `availableDepositLimit` returns 0 for addresses not allowlisted, so disabling an address blocks fresh deposits from that caller.
+    /// @param _address Address to update.
+    /// @param _allowed Whether the address is allowed.
     function setAllowed(
         address _address,
         bool _allowed
@@ -143,6 +150,12 @@ abstract contract BaseLooper is BaseHealthCheck {
         allowed[_address] = _allowed;
     }
 
+    /// @notice Configure leverage targeting and safety bounds.
+    /// @dev Setting target to 0 disables leverage targeting and requires buffer = 0;
+    ///     max leverage is also constrained below protocol liquidation threshold.
+    /// @param _targetLeverageRatio Target leverage ratio in WAD (1e18 = 1x).
+    /// @param _leverageBuffer Allowed deviation from target leverage in WAD.
+    /// @param _maxLeverageRatio Hard max leverage ratio in WAD.
     function setLeverageParams(
         uint256 _targetLeverageRatio,
         uint256 _leverageBuffer,
@@ -182,40 +195,65 @@ abstract contract BaseLooper is BaseHealthCheck {
         maxLeverageRatio = _maxLeverageRatio;
     }
 
+    /// @notice Set the maximum base fee accepted for keeper tending.
+    /// @dev This only affects `_tendTrigger` keepers; it does not block management/emergency operations.
+    /// @param _maxGasPriceToTend Max acceptable `block.basefee`.
     function setMaxGasPriceToTend(
         uint256 _maxGasPriceToTend
     ) external onlyManagement {
         maxGasPriceToTend = _maxGasPriceToTend;
     }
 
+    /// @notice Set swap slippage tolerance used for min amount out checks.
+    /// @dev Applied to both asset->collateral and collateral->asset swaps; value is in BPS and must be strictly less than `MAX_BPS`.
+    /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slippage");
         slippage = uint64(_slippage);
     }
 
+    /// @notice Set the report buffer used when accounting for assets.
+    /// @dev `estimatedTotalAssets` discounts collateral value by this BPS amount,
+    ///       so increasing it makes reported assets more conservative.
+    /// @param _reportBuffer Buffer in basis points.
     function setReportBuffer(uint256 _reportBuffer) external onlyManagement {
         require(_reportBuffer < MAX_BPS, "buffer");
         reportBuffer = _reportBuffer;
     }
 
+    /// @notice Set the minimum debt amount required to execute borrow/deleverage ops.
+    /// @dev If set too high, small rebalance operations are skipped and leverage can drift until a larger adjustment is possible.
+    /// @param _minAmountToBorrow Minimum amount in asset units.
     function setMinAmountToBorrow(
         uint256 _minAmountToBorrow
     ) external onlyManagement {
         minAmountToBorrow = _minAmountToBorrow;
     }
 
+    /// @notice Set the minimum interval between automated tend operations.
+    /// @dev This throttles routine keeper tending after checks pass;
+    ///     it does not bypass hard risk checks like liquidation/max leverage triggers.
+    /// @param _minTendInterval Minimum delay in seconds.
     function setMinTendInterval(
         uint256 _minTendInterval
     ) external onlyManagement {
         minTendInterval = _minTendInterval;
     }
 
+    /// @notice Set the max asset amount that can be swapped in one rebalance path.
+    /// @dev Caps `_amount + flashloanAmount` during lever-up;
+    ///      lower values reduce execution size but can leave idle assets and under-target leverage.
+    /// @param _maxAmountToSwap Maximum swap amount in asset units.
     function setMaxAmountToSwap(
         uint256 _maxAmountToSwap
     ) external onlyManagement {
         maxAmountToSwap = _maxAmountToSwap;
     }
 
+    /// @notice Set the exchange contract used for asset/collateral swaps.
+    /// @dev Resets token approvals on the old exchange and grants max approvals to the new one;
+    ///      new exchange must support expected swap paths.
+    /// @param _exchange New exchange address.
     function setExchange(address _exchange) external onlyGovernance {
         _setExchange(_exchange);
     }
@@ -376,10 +414,11 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // If we are over the upper bound
         if (currentLeverage > _targetLeverageRatio + leverageBuffer) {
+            uint256 _minAmountToBorrow = minAmountToBorrow;
             // Over-leveraged: can repay with idle assets OR delever via flashloan
             if (
-                balanceOfAsset() > minAmountToBorrow ||
-                maxFlashloan() > minAmountToBorrow
+                balanceOfAsset() > _minAmountToBorrow ||
+                maxFlashloan() > _minAmountToBorrow
             ) {
                 return _isBaseFeeAcceptable();
             }
@@ -477,6 +516,8 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             // Cap flashloan by available liquidity
             debtToRepay = Math.min(debtToRepay, maxFlashloan());
+
+            if (debtToRepay == 0) return;
 
             // Flashloan to repay debt, withdraw collateral to cover
             uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
@@ -855,43 +896,47 @@ abstract contract BaseLooper is BaseHealthCheck {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emergency full position close via flashloan
-    function manualFullUnwind() external onlyEmergencyAuthorized {
+    function manualFullUnwind() external accrue onlyEmergencyAuthorized {
         _withdrawFunds(TokenizedStrategy.totalAssets());
     }
 
     /// @notice Manual: supply collateral
     function manualSupplyCollateral(
         uint256 amount
-    ) external onlyEmergencyAuthorized {
+    ) external accrue onlyEmergencyAuthorized {
         _supplyCollateral(Math.min(amount, balanceOfCollateralToken()));
     }
 
     /// @notice Manual: withdraw collateral
     function manualWithdrawCollateral(
         uint256 amount
-    ) external onlyEmergencyAuthorized {
+    ) external accrue onlyEmergencyAuthorized {
         _withdrawCollateral(Math.min(amount, balanceOfCollateral()));
     }
 
     /// @notice Manual: borrow from protocol
-    function manualBorrow(uint256 amount) external onlyEmergencyAuthorized {
+    function manualBorrow(
+        uint256 amount
+    ) external accrue onlyEmergencyAuthorized {
         _borrow(amount);
     }
 
     /// @notice Manual: repay debt
-    function manualRepay(uint256 amount) external onlyEmergencyAuthorized {
+    function manualRepay(
+        uint256 amount
+    ) external accrue onlyEmergencyAuthorized {
         _repay(Math.min(amount, balanceOfAsset()));
     }
 
     function convertCollateralToAsset(
         uint256 amount
-    ) external onlyEmergencyAuthorized {
+    ) external accrue onlyEmergencyAuthorized {
         _convertCollateralToAsset(Math.min(amount, balanceOfCollateralToken()));
     }
 
     function convertAssetToCollateral(
         uint256 amount
-    ) external onlyEmergencyAuthorized {
+    ) external accrue onlyEmergencyAuthorized {
         _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
     }
 
@@ -903,7 +948,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Override to customize emergency withdrawal behavior. Default attempts full unwind via deleverage.
     ///      Called during emergency shutdown.
     /// @param _amount The amount of asset to attempt to withdraw
-    function _emergencyWithdraw(uint256 _amount) internal virtual override {
+    function _emergencyWithdraw(
+        uint256 _amount
+    ) internal virtual override accrue {
         // Try full unwind first
         if (balanceOfDebt() > 0) {
             _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));

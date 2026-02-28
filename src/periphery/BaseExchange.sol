@@ -63,12 +63,11 @@ abstract contract BaseExchange is IExchange {
 
     function sweep(address token, uint256 amount) external onlyGovernance {
         require(token != address(0), "!token");
-        address receiver = _governance();
 
         uint256 tokenToSweep = amount == type(uint256).max
             ? ERC20(token).balanceOf(address(this))
             : amount;
-        ERC20(token).safeTransfer(receiver, tokenToSweep);
+        ERC20(token).safeTransfer(msg.sender, tokenToSweep);
     }
 
     function _governance() internal view returns (address) {

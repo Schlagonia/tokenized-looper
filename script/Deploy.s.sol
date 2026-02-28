@@ -33,6 +33,9 @@ contract Deploy is Script {
     /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
+    /// @dev Global looper governance used by all looper deployments in this script run.
+    address public LOOPER_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
+
     /// @dev CreateX deployer for CREATE2 deployments
     address constant CREATE_X = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
 
@@ -264,21 +267,19 @@ contract Deploy is Script {
         console.log("Config:", DEPLOY_CONFIG);
     }
 
+
     function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
         return address(new InfinifiMorphoLooper(
             cfg.asset,
             cfg.name,
             cfg.collateralToken,
             cfg.morpho,
             Id.wrap(cfg.marketId),
-            governance
+            LOOPER_GOVERNANCE
         ));
     }
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
-
         UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
                 cfg.base.asset
             );
@@ -289,7 +290,7 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            governance
+            LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, 100);
@@ -298,8 +299,6 @@ contract Deploy is Script {
     }
 
     function deploySUSDSUSDT(LSTConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
-
         SUSDSUSDTExchange exchange = new SUSDSUSDTExchange();
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
@@ -308,7 +307,7 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            governance
+            LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
 
@@ -316,8 +315,6 @@ contract Deploy is Script {
     }
 
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
-
         UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
                 cfg.weth
             );
@@ -328,7 +325,7 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            governance
+            LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
@@ -342,7 +339,6 @@ contract Deploy is Script {
     }
 
     function deployPT(PTConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
         PTExchange exchange = new PTExchange(
             cfg.base.asset,
             cfg.base.collateralToken,
@@ -357,14 +353,13 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            governance
+            LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         return address(looper);
     }
 
     function deploysUSDaiPT(PTConfig memory cfg) internal returns (address) {
-        address governance = msg.sender;
         sUSDaiPTExchange exchange = new sUSDaiPTExchange(
             cfg.base.asset,
             cfg.base.collateralToken,
@@ -379,7 +374,7 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            governance
+            LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         return address(looper);
