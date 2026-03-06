@@ -1,46 +1,54 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import "forge-std/console2.sol";
-
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
-/// @notice Setup for syrupUSDC/USDC Morpho looper tests
-contract SetupSyrupMorpho is Setup {
-    UniswapUniversalRouterExchange public exchange;
+/// @notice Setup for syrupUSDC/USDC Morpho looper tests on Arbitrum
+contract SetupSyrupUsdcArbMorpho is Setup {
+    FluidExchange public exchange;
 
-    // Provided market id (syrupUSDC/USDC)
+    // Arbitrum Morpho deployment
+    address public constant ARB_MORPHO =
+        0x6c247b1F6182318877311737BaC0844bAa518F5e;
+
+    // Provided market id (syrupUSDC/USDC on Arbitrum)
     Id public constant SYRUP_USDC_MARKET_ID =
         Id.wrap(
-            0x729badf297ee9f2f6b3f717b96fd355fc6ec00422284ce1968e76647b258cf44
+            0xf86f3edd6f16cd8211f4d206866dc4ecd41be6211063ac11f8508e1b7112ef40
         );
 
-    // Market params fetched from on-chain market id:
-    // loanToken: USDC, collateralToken: syrupUSDC
-    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public constant SYRUP_USDC =
-        0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
-    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    bytes32 public constant SYRUP_USDC_USDC_V4_POOL_ID =
-        0xcdb422a853a4fa2deb364317db92ad76d1cb7a8e1b82a32219bcb41720a90228;
+    // Market params for SYRUP_USDC_MARKET_ID:
+    // loanToken = ARB_USDC, collateralToken = ARB_SYRUP_USDC
+    address public constant ARB_USDC =
+        0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
+    address public constant ARB_SYRUP_USDC =
+        0x41CA7586cC1311807B4605fBB748a3B8862b42b5;
+
+    // Arbitrum WETH
+    address public constant ARB_WETH =
+        0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+
+    // Fluid DEX pool for syrupUSDC <-> USDC on Arbitrum
+    address public constant ARB_FLUID_DEX_SYRUP_USDC_USDC =
+        0xc800b0e15c40a1Ff0539218100c86F4c1BAC8D9C;
 
     function setUp() public virtual override {
-        vm.createSelectFork(vm.envString("ETH_RPC_URL"));
-        user = makeAddr("syrup-usdc-user");
+        vm.createSelectFork(vm.envString("ARB_RPC_URL"));
+        user = makeAddr("syrup-usdc-arb-user");
 
-        tokenAddrs["USDC"] = USDC;
-        tokenAddrs["SYRUP_USDC"] = SYRUP_USDC;
+        tokenAddrs["USDC"] = ARB_USDC;
+        tokenAddrs["SYRUP_USDC_ARB"] = ARB_SYRUP_USDC;
 
-        asset = ERC20(USDC);
+        asset = ERC20(ARB_USDC);
         decimals = asset.decimals();
 
-        // Keep conservative while pool-level limits evolve.
+        // Keep conservative while pool depth evolves.
         maxFuzzAmount = 50_000e6;
         minFuzzAmount = 100e6;
 
@@ -52,19 +60,23 @@ contract SetupSyrupMorpho is Setup {
         vm.label(address(asset), "asset");
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
+        vm.label(ARB_SYRUP_USDC, "ARB_SYRUP_USDC");
+        vm.label(ARB_USDC, "ARB_USDC");
+        vm.label(
+            ARB_FLUID_DEX_SYRUP_USDC_USDC,
+            "ARB_FLUID_DEX_SYRUP_USDC_USDC"
+        );
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
-        vm.label(SYRUP_USDC, "SYRUP_USDC");
-        vm.label(USDC, "USDC");
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalRouterExchange(WETH);
+        exchange = new FluidExchange(ARB_WETH);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
-            "syrupUSDC/USDC Morpho Looper",
-            SYRUP_USDC,
-            MORPHO,
+            "syrupUSDC/USDC Arbitrum Morpho Looper",
+            ARB_SYRUP_USDC,
+            ARB_MORPHO,
             SYRUP_USDC_MARKET_ID,
             address(exchange),
             management
@@ -72,6 +84,7 @@ contract SetupSyrupMorpho is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.setStrategy(address(_strategy));
+
         _strategy.setPendingManagement(management);
 
         vm.prank(management);
@@ -79,10 +92,10 @@ contract SetupSyrupMorpho is Setup {
 
         vm.startPrank(management);
         exchange.setBase(address(asset));
-        exchange.setV4Pool(
+        exchange.setFluidDex(
             address(asset),
-            SYRUP_USDC,
-            SYRUP_USDC_USDC_V4_POOL_ID
+            ARB_SYRUP_USDC,
+            ARB_FLUID_DEX_SYRUP_USDC_USDC
         );
 
         _strategy.setKeeper(keeper);
@@ -99,6 +112,6 @@ contract SetupSyrupMorpho is Setup {
 
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
-        airdrop(asset, address(strategy), (_amount * 300) / 10_000);
+        airdrop(asset, address(strategy), _amount / 30);
     }
 }

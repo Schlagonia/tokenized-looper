@@ -166,9 +166,10 @@ contract Setup is Test, IEvents {
 
     function accrueYield(uint256 _amount) public virtual {
         skip(1 days);
-        deal(address(asset), address(this), 1e6);
-        asset.approve(address(GATEWAY), 1e6);
-        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), 1e6);
+        _amount = (_amount * 300) / 10_000;
+        deal(address(asset), address(this), _amount);
+        asset.approve(address(GATEWAY), _amount);
+        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(strategy), _amount);
     }
 
     function setFees(uint16 _protocolFee, uint16 _performanceFee) public {
