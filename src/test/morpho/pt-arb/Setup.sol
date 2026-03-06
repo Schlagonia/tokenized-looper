@@ -120,6 +120,6 @@ contract SetupPTArb is Setup {
     /// @dev Oracle may have staleness checks that will revert after time skip
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
-        airdrop(asset, address(strategy), _amount / 10);
+        airdrop(asset, address(strategy), _amount / 30);
     }
 }

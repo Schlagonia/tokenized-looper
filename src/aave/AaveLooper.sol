@@ -56,9 +56,6 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @notice Cached decimals for asset token
     uint256 internal immutable ASSET_DECIMALS;
 
-    /// @notice E-Mode category ID (0 = no eMode)
-    uint8 public immutable E_MODE_CATEGORY_ID;
-
     /// @notice Flashloan reentrancy guard
     bool internal isFlashloanActive;
 
@@ -102,10 +99,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         ASSET_DECIMALS = ERC20(_asset).decimals();
 
         // Set E-Mode category for better capital efficiency on correlated assets
-        E_MODE_CATEGORY_ID = _eModeCategoryId;
-        if (_eModeCategoryId != 0) {
-            IPool(POOL).setUserEMode(_eModeCategoryId);
-        }
+        _setEModeCategory(_eModeCategoryId);
 
         // Approve pool for asset and collateral
         ERC20(_asset).forceApprove(POOL, type(uint256).max);
@@ -222,7 +216,12 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     //////////////////////////////////////////////////////////////*/
 
     function _isSupplyPaused() internal view virtual override returns (bool) {
-        return DATA_PROVIDER.getPaused(collateralToken);
+        bool isPaused = DATA_PROVIDER.getPaused(collateralToken);
+        if (isPaused) return true;
+
+        (, , , , , , , , , bool isFrozen) = DATA_PROVIDER
+            .getReserveConfigurationData(collateralToken);
+        return isFrozen;
     }
 
     function _isBorrowPaused() internal view virtual override returns (bool) {
@@ -300,8 +299,18 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        (, , uint256 liquidationThreshold, , , , , , , ) = DATA_PROVIDER
-            .getReserveConfigurationData(collateralToken);
+        uint256 liquidationThreshold;
+        uint256 userEModeCategory = IPool(POOL).getUserEMode(address(this));
+        if (userEModeCategory != 0) {
+            liquidationThreshold = IPool(POOL)
+                .getEModeCategoryData(uint8(userEModeCategory))
+                .liquidationThreshold;
+            require(liquidationThreshold != 0, "bad emode");
+        } else {
+            (, , liquidationThreshold, , , , , , , ) = DATA_PROVIDER
+                .getReserveConfigurationData(collateralToken);
+        }
+
         // Aave returns in basis points (10000 = 100%), convert to WAD
         return liquidationThreshold * 1e14; // 10000 * 1e14 = 1e18
     }
@@ -342,9 +351,17 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         _setUseAuction(_useAuction);
     }
 
+    function setEModeCategory(uint8 _eModeCategoryId) external onlyManagement {
+        _setEModeCategory(_eModeCategoryId);
+    }
+
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
         return _kickAuction(_token);
+    }
+
+    function _setEModeCategory(uint8 _eModeCategoryId) internal {
+        IPool(POOL).setUserEMode(_eModeCategoryId);
     }
 }

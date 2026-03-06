@@ -7,14 +7,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {WETHWstETHExchange} from "../../../periphery/WETHWstETHExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
 /// @notice Setup for LST (wstETH/WETH) Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupLST is Setup {
-    UniswapUniversalRouterExchange public exchange;
+    WETHWstETHExchange public exchange;
 
     // wstETH/WETH market
     Id public constant LST_MARKET_ID =
@@ -55,7 +55,7 @@ contract SetupLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalRouterExchange(WETH);
+        exchange = new WETHWstETHExchange();
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(
@@ -87,8 +87,6 @@ contract SetupLST is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
-        exchange.setUniFees(WETH, WSTETH, 100);
-
         vm.stopPrank();
 
         return address(_strategy);
@@ -97,6 +95,6 @@ contract SetupLST is Setup {
     /// @notice Override accrueYield - for LST just skip time
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
-        airdrop(asset, address(strategy), (_amount * 500) / 10_000);
+        airdrop(asset, address(strategy), (_amount * 300) / 10_000);
     }
 }

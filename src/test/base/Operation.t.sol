@@ -548,7 +548,7 @@ abstract contract OperationTest is Setup {
 
         // Immediately after tend, trigger should be false (even with idle funds)
         // unless there's an emergency condition
-        airdrop(asset, address(strategy), _amount / 10);
+        airdrop(asset, address(strategy), _amount / 30);
 
         // Check tend trigger - should be false due to interval
         (bool trigger, ) = strategy.tendTrigger();
@@ -609,7 +609,7 @@ abstract contract OperationTest is Setup {
 
         // Skip some time and tend again
         skip(3 hours);
-        airdrop(asset, address(strategy), _amount / 10);
+        airdrop(asset, address(strategy), _amount / 30);
         vm.prank(keeper);
         strategy.tend();
 
@@ -1064,6 +1064,47 @@ abstract contract OperationTest is Setup {
             trigger,
             "tendTrigger should return false when within buffer with no idle"
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SLIPPAGE TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSlippage_onlyManagement() public {
+        vm.prank(user);
+        vm.expectRevert("!management");
+        strategy.setSlippage(10);
+
+        vm.prank(keeper);
+        vm.expectRevert("!management");
+        strategy.setSlippage(10);
+    }
+
+    function test_setSlippage_boundsValidation() public {
+        vm.startPrank(management);
+
+        vm.expectRevert("slippage");
+        strategy.setSlippage(MAX_BPS);
+
+        vm.expectRevert("slippage");
+        strategy.setSlippage(MAX_BPS + 1);
+
+        vm.expectRevert("slippage too high");
+        strategy.setSlippage(100);
+
+        strategy.setSlippage(99);
+        assertEq(strategy.slippage(), 99, "!slippage should be 99");
+
+        vm.stopPrank();
+    }
+
+    function test_setSlippage_allowsHigherAfterShutdown() public {
+        vm.prank(emergencyAdmin);
+        strategy.shutdownStrategy();
+
+        vm.prank(management);
+        strategy.setSlippage(MAX_BPS - 1);
+        assertEq(strategy.slippage(), MAX_BPS - 1, "!slippage should be max");
     }
 
     /*//////////////////////////////////////////////////////////////

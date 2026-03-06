@@ -4,6 +4,8 @@ pragma solidity ^0.8.18;
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAaveLST} from "./Setup.sol";
+import {AaveLooper} from "../../../aave/AaveLooper.sol";
+import {IPool} from "../../../interfaces/aave/IPool.sol";
 
 /// @notice Aave LST Operation tests - inherits all tests from OperationTest, uses Aave LST setup
 contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
@@ -131,6 +133,99 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
         assertFalse(
             trigger,
             "tendTrigger should return false when under-leveraged but can't deposit"
+        );
+    }
+
+    function test_getLiquidateCollateralFactor_usesEModeThreshold() public {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+
+        uint256 strategyLiquidationFactor = looper
+            .getLiquidateCollateralFactor();
+
+        (, , uint256 reserveLiquidationThreshold, , , , , , , ) = looper
+            .DATA_PROVIDER()
+            .getReserveConfigurationData(WSTETH);
+
+        IPool pool = IPool(looper.POOL());
+        uint256 userEModeCategory = pool.getUserEMode(address(looper));
+        assertEq(userEModeCategory, EMODE_CATEGORY_ID, "!emode category");
+
+        uint16 eModeLiquidationThreshold = pool
+            .getEModeCategoryData(uint8(userEModeCategory))
+            .liquidationThreshold;
+
+        assertGt(
+            uint256(eModeLiquidationThreshold),
+            reserveLiquidationThreshold,
+            "!emode should improve LT"
+        );
+        assertEq(
+            strategyLiquidationFactor,
+            uint256(eModeLiquidationThreshold) * 1e14,
+            "!should use emode LT"
+        );
+    }
+
+    function test_setEModeCategory_onlyManagement() public {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+        IPool pool = IPool(looper.POOL());
+
+        vm.prank(user);
+        vm.expectRevert("!management");
+        looper.setEModeCategory(0);
+
+        vm.prank(management);
+        looper.setEModeCategory(0);
+        assertEq(pool.getUserEMode(address(looper)), 0, "!emode id");
+    }
+
+    function test_setEModeCategory_updatesPoolUserModeAndLiquidationFactor()
+        public
+    {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+        IPool pool = IPool(looper.POOL());
+
+        (, , uint256 reserveLiquidationThreshold, , , , , , , ) = looper
+            .DATA_PROVIDER()
+            .getReserveConfigurationData(WSTETH);
+
+        vm.prank(management);
+        looper.setEModeCategory(0);
+        assertEq(
+            pool.getUserEMode(address(looper)),
+            0,
+            "!user emode after clear"
+        );
+        uint256 liquidationFactorAfterClear = looper
+            .getLiquidateCollateralFactor();
+        assertEq(
+            liquidationFactorAfterClear,
+            reserveLiquidationThreshold * 1e14,
+            "!reserve LT after clear"
+        );
+
+        vm.prank(management);
+        looper.setEModeCategory(EMODE_CATEGORY_ID);
+        assertEq(
+            pool.getUserEMode(address(looper)),
+            EMODE_CATEGORY_ID,
+            "!user emode after set"
+        );
+
+        uint16 eModeLiquidationThreshold = pool
+            .getEModeCategoryData(uint8(EMODE_CATEGORY_ID))
+            .liquidationThreshold;
+        uint256 liquidationFactorAfterSet = looper
+            .getLiquidateCollateralFactor();
+        assertEq(
+            liquidationFactorAfterSet,
+            uint256(eModeLiquidationThreshold) * 1e14,
+            "!emode LT after set"
+        );
+        assertGt(
+            liquidationFactorAfterSet,
+            liquidationFactorAfterClear,
+            "!lt should increase after emode set"
         );
     }
 }

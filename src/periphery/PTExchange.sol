@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {PendleSwapper} from "@periphery/swappers/PendleSwapper.sol";
+import {IPMarket, IPPrincipalToken, IStandardizedYield} from "@periphery/interfaces/Pendle/IPendle.sol";
 
 import {BaseExchange} from "./BaseExchange.sol";
 
@@ -35,6 +36,11 @@ contract PTExchange is BaseExchange, PendleSwapper {
         require(_collateral != address(0), "!collateral");
         require(_pendleMarket != address(0), "!market");
         require(_pendleToken != address(0), "!pendleToken");
+
+        (IStandardizedYield sy, IPPrincipalToken pt, ) = IPMarket(_pendleMarket)
+            .readTokens();
+        require(address(pt) == _collateral, "!marketPT");
+        require(_isTokenIn(_pendleToken, sy.getTokensIn()), "!tokenIn");
 
         ASSET = _asset;
         COLLATERAL = _collateral;
@@ -110,5 +116,19 @@ contract PTExchange is BaseExchange, PendleSwapper {
         uint256 amount
     ) internal virtual returns (uint256) {
         return amount;
+    }
+
+    function _isTokenIn(
+        address token,
+        address[] memory tokensIn
+    ) internal pure returns (bool) {
+        uint256 length = tokensIn.length;
+        for (uint256 i; i < length; ) {
+            if (tokensIn[i] == token) return true;
+            unchecked {
+                ++i;
+            }
+        }
+        return false;
     }
 }

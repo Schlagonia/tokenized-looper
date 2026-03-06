@@ -2,6 +2,14 @@
 pragma solidity ^0.8.18;
 
 interface IPool {
+    struct EModeCategory {
+        uint16 ltv;
+        uint16 liquidationThreshold;
+        uint16 liquidationBonus;
+        address priceSource;
+        string label;
+    }
+
     /**
      * @notice Supplies an `amount` of underlying asset into the reserve, receiving in return overlying aTokens.
      * @param asset The address of the underlying asset to supply
@@ -188,4 +196,13 @@ interface IPool {
      * @return The eMode id
      */
     function getUserEMode(address user) external view returns (uint256);
+
+    /**
+     * @notice Returns the data of an eMode category
+     * @param id The eMode category id
+     * @return The category configuration data
+     */
+    function getEModeCategoryData(
+        uint8 id
+    ) external view returns (EModeCategory memory);
 }

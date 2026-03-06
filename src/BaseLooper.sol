@@ -30,6 +30,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     uint256 internal constant WAD = 1e18;
+    uint256 internal constant MAX_SLIPPAGE = 100;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
 
     /// @notice Flashloan operation types
@@ -113,11 +114,11 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         minTendInterval = 2 hours;
         maxAmountToSwap = type(uint256).max;
-        maxGasPriceToTend = 200 * 1e9;
+        maxGasPriceToTend = 50 * 1e9;
         slippage = 30;
 
         _setLossLimitRatio(10);
-        _setProfitLimitRatio(1_000);
+        _setProfitLimitRatio(500);
 
         if (_exchange != address(0)) {
             _setExchange(_exchange);
@@ -206,9 +207,12 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Set swap slippage tolerance used for min amount out checks.
     /// @dev Applied to both asset->collateral and collateral->asset swaps; value is in BPS and must be strictly less than `MAX_BPS`.
+    ///      If the strategy is not shutdown, the slippage must be strictly less than `MAX_SLIPPAGE`.
     /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slippage");
+        if (!TokenizedStrategy.isShutdown())
+            require(_slippage < MAX_SLIPPAGE, "slippage too high");
         slippage = uint64(_slippage);
     }
 

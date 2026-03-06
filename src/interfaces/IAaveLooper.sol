@@ -22,7 +22,7 @@ interface IAaveLooper is IBaseLooper {
 
     function VARIABLE_DEBT_TOKEN() external view returns (address);
 
-    function E_MODE_CATEGORY_ID() external view returns (uint8);
+    function setEModeCategory(uint8 _eModeCategoryId) external;
 
     function setAuction(address _auction) external;
 

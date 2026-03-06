@@ -38,6 +38,7 @@ contract SyrupMorphoLooper is MorphoLooper {
         )
     {}
 
+    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 pendingAssets;
         if (pendingRedemptionShares > 0) {
@@ -53,6 +54,7 @@ contract SyrupMorphoLooper is MorphoLooper {
         override
         returns (uint256 _totalAssets)
     {
+        // Don't allow reports since we cannot guarantee the pending redemption shares are filled or not
         require(pendingRedemptionShares == 0, "pending redemptions");
         return super._harvestAndReport();
     }
@@ -95,7 +97,9 @@ contract SyrupMorphoLooper is MorphoLooper {
             : pendingRedemptionShares - _removedShares;
     }
 
-    /// @notice Manually clear pending redemptions in exceptional scenarios.
+    /// @notice Manually clear pending redemptions.
+    /// NOTE: Maple will automatically send usdc to the strategy. So this will
+    ///       need to be called once done to allow reports to continue.
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
         pendingRedemptionShares = 0;
     }

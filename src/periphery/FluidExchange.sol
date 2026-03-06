@@ -13,10 +13,7 @@ import {BaseExchange} from "./BaseExchange.sol";
  *         - Sweep is onlyGovernance via strategy.GOVERNANCE()
  */
 contract FluidExchange is FluidSwapper, BaseExchange {
-    constructor(address _base) {
-        require(_base != address(0), "!base");
-        base = _base;
-    }
+    constructor(address _weth) FluidSwapper(_weth) {}
 
     function setBase(address _base) external onlyManagement {
         require(_base != address(0), "!base");

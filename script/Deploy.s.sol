@@ -7,12 +7,14 @@ import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
+import {AaveLooper} from "../src/aave/AaveLooper.sol";
 import {PTExchange} from "../src/periphery/PTExchange.sol";
 import {sUSDaiPTExchange} from "../src/periphery/sUSDaiPTExchange.sol";
 import {SUSDSUSDTExchange} from "../src/periphery/SUSDSUSDTExchange.sol";
 import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
+import {AaveStrategyAprOracle} from "../src/periphery/AaveStrategyAprOracle.sol";
 
 interface ICreateXDeployer {
     function deployCreate2(
@@ -30,7 +32,7 @@ contract Deploy is Script {
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
     string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, APR_ORACLE, LOOPER_KEEPER
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev Global looper governance used by all looper deployments in this script run.
@@ -68,12 +70,31 @@ contract Deploy is Script {
         bytes32 assetCollateralV4PoolId;
     }
 
+    struct AaveConfig {
+        address asset;
+        string name;
+        address collateralToken;
+        address addressesProvider;
+        address morpho;
+        uint8 eModeCategoryId;
+        address weth;
+        uint24 uniFee;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         MAINNET CONFIGURATIONS
     //////////////////////////////////////////////////////////////*/
 
     // Morpho Blue Mainnet
     address constant MORPHO_MAINNET = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
+
+    // Mainnet core addresses
+    address constant WETH_MAINNET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address constant AAVE_MAINNET_ADDRESSES_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
+
+    // Mainnet BTC assets
+    address constant WBTC_MAINNET = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
+    address constant LBTC_MAINNET = 0x8236a87084f8B84306f72007F36F2618A5634494;
 
     // Morpho Katana Mainnet
     address constant MORPHO_KATANA = 0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc;
@@ -129,6 +150,35 @@ contract Deploy is Script {
             }),
             weth: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, // WETH
             assetCollateralV4PoolId: 0xcdb422a853a4fa2deb364317db92ad76d1cb7a8e1b82a32219bcb41720a90228
+        });
+    }
+
+    // ===== AAVE LBTC/WBTC MAINNET =====
+    function getAaveLBTCWBTCMainnet() internal pure returns (AaveConfig memory) {
+        return AaveConfig({
+            asset: WBTC_MAINNET,
+            name: "lBTC/WBTC Aave Looper",
+            collateralToken: LBTC_MAINNET,
+            addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+            morpho: MORPHO_MAINNET,
+            eModeCategoryId: 4, // LBTC_WBTC
+            weth: WETH_MAINNET,
+            uniFee: 500
+        });
+    }
+
+    // ===== MORPHO LBTC/WBTC MAINNET =====
+    function getMorphoLBTCWBTCMainnet()
+        internal
+        pure
+        returns (BaseConfig memory)
+    {
+        return BaseConfig({
+            asset: WBTC_MAINNET,
+            name: "lBTC/WBTC Morpho Looper",
+            collateralToken: LBTC_MAINNET,
+            morpho: MORPHO_MAINNET,
+            marketId: 0xf6a056627a51e511ec7f48332421432ea6971fc148d8f3c451e14ea108026549
         });
     }
 
@@ -202,7 +252,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
+        DEPLOY_CONFIG = "AAVE_LBTC_WBTC_MAINNET";
         deploy();
         return;
         if (block.chainid == 1) {
@@ -216,6 +266,10 @@ contract Deploy is Script {
             deploy();
             DEPLOY_CONFIG = "PT_CUSD_MAINNET";
             deploy();
+            DEPLOY_CONFIG = "MORPHO_LBTC_WBTC_MAINNET";
+            deploy();
+            DEPLOY_CONFIG = "AAVE_LBTC_WBTC_MAINNET";
+            deploy();
         }
         if (block.chainid == 42161) {
             DEPLOY_CONFIG = "PT_SUSDAI_ARB";
@@ -227,6 +281,8 @@ contract Deploy is Script {
         }
 
         DEPLOY_CONFIG = "APR_ORACLE";
+        deploy();
+        DEPLOY_CONFIG = "AAVE_APR_ORACLE";
         deploy();
         DEPLOY_CONFIG = "LOOPER_KEEPER";
         deploy();
@@ -253,8 +309,14 @@ contract Deploy is Script {
             deployed = deploysUSDaiPT(getPTsUSDaiArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_KATANA")) {
             deployed = deployLST(getLSTKatana());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("MORPHO_LBTC_WBTC_MAINNET")) {
+            deployed = deployMorphoLBTCWBTC(getMorphoLBTCWBTCMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_LBTC_WBTC_MAINNET")) {
+            deployed = deployAave(getAaveLBTCWBTCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("APR_ORACLE")) {
             deployed = deployAprOracle();
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_APR_ORACLE")) {
+            deployed = deployAaveAprOracle();
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LOOPER_KEEPER")) {
             deployed = deployLooperKeeper();
         } else {
@@ -380,6 +442,55 @@ contract Deploy is Script {
         return address(looper);
     }
 
+    function deployMorphoLBTCWBTC(
+        BaseConfig memory cfg
+    ) internal returns (address) {
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
+                WETH_MAINNET
+            );
+        MorphoLooper looper = new MorphoLooper(
+            cfg.asset,
+            cfg.name,
+            cfg.collateralToken,
+            cfg.morpho,
+            Id.wrap(cfg.marketId),
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+        exchange.setStrategy(address(looper));
+
+        uint24 uniFee = uint24(
+            vm.envOr("MORPHO_LBTC_WBTC_UNI_FEE", uint256(500))
+        );
+        exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
+
+        return address(looper);
+    }
+
+    function deployAave(AaveConfig memory cfg) internal returns (address) {
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
+                cfg.weth
+            );
+        AaveLooper looper = new AaveLooper(
+            cfg.asset,
+            cfg.name,
+            cfg.collateralToken,
+            cfg.addressesProvider,
+            cfg.morpho,
+            cfg.eModeCategoryId,
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+        exchange.setStrategy(address(looper));
+
+        uint24 uniFee = uint24(
+            vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee))
+        );
+        exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
+
+        return address(looper);
+    }
+
     function deployAprOracle() internal returns (address) {
         address governance = vm.envOr("APR_ORACLE_GOV", address(0));
         require(governance != address(0), "APR_ORACLE_GOV");
@@ -387,6 +498,25 @@ contract Deploy is Script {
         bytes32 salt = vm.envOr("APR_ORACLE_SALT", bytes32(0));
         bytes memory initCode = abi.encodePacked(
             type(StrategyAprOracle).creationCode,
+            abi.encode(governance)
+        );
+
+        return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
+    }
+
+    function deployAaveAprOracle() internal returns (address) {
+        address governance = vm.envOr(
+            "AAVE_APR_ORACLE_GOV",
+            vm.envOr("APR_ORACLE_GOV", address(0))
+        );
+        require(governance != address(0), "AAVE_APR_ORACLE_GOV");
+
+        bytes32 salt = vm.envOr(
+            "AAVE_APR_ORACLE_SALT",
+            vm.envOr("APR_ORACLE_SALT", bytes32(0))
+        );
+        bytes memory initCode = abi.encodePacked(
+            type(AaveStrategyAprOracle).creationCode,
             abi.encode(governance)
         );
 

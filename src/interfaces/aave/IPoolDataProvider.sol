@@ -120,4 +120,49 @@ interface IPoolDataProvider {
             address stableDebtTokenAddress,
             address variableDebtTokenAddress
         );
+
+    /**
+     * @notice Returns the reserve data
+     * @param asset The address of the underlying asset of the reserve
+     * @return unbacked The amount of unbacked tokens
+     * @return accruedToTreasuryScaled The scaled amount accrued to treasury
+     * @return totalAToken The total supply of aToken
+     * @return totalStableDebt The total stable debt
+     * @return totalVariableDebt The total variable debt
+     * @return liquidityRate The current liquidity rate (ray)
+     * @return variableBorrowRate The current variable borrow rate (ray)
+     * @return stableBorrowRate The current stable borrow rate (ray)
+     * @return averageStableBorrowRate The average stable borrow rate (ray)
+     * @return liquidityIndex The liquidity index (ray)
+     * @return variableBorrowIndex The variable borrow index (ray)
+     * @return lastUpdateTimestamp Last reserve update timestamp
+     */
+    function getReserveData(
+        address asset
+    )
+        external
+        view
+        returns (
+            uint256 unbacked,
+            uint256 accruedToTreasuryScaled,
+            uint256 totalAToken,
+            uint256 totalStableDebt,
+            uint256 totalVariableDebt,
+            uint256 liquidityRate,
+            uint256 variableBorrowRate,
+            uint256 stableBorrowRate,
+            uint256 averageStableBorrowRate,
+            uint256 liquidityIndex,
+            uint256 variableBorrowIndex,
+            uint40 lastUpdateTimestamp
+        );
+
+    /**
+     * @notice Returns the address of the reserve interest rate strategy
+     * @param asset The address of the underlying asset of the reserve
+     * @return irStrategyAddress The interest rate strategy address
+     */
+    function getInterestRateStrategyAddress(
+        address asset
+    ) external view returns (address irStrategyAddress);
 }
