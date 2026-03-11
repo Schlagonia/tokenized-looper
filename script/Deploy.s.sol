@@ -8,10 +8,13 @@ import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {AaveLooper} from "../src/aave/AaveLooper.sol";
+import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
 import {PTExchange} from "../src/periphery/PTExchange.sol";
 import {sUSDaiPTExchange} from "../src/periphery/sUSDaiPTExchange.sol";
 import {SUSDSUSDTExchange} from "../src/periphery/SUSDSUSDTExchange.sol";
 import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupExchange} from "../src/periphery/SyrupExchange.sol";
+import {FluidExchange} from "../src/periphery/FluidExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 import {AaveStrategyAprOracle} from "../src/periphery/AaveStrategyAprOracle.sol";
@@ -31,8 +34,8 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string public DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    string public DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev Global looper governance used by all looper deployments in this script run.
@@ -67,7 +70,14 @@ contract Deploy is Script {
     struct SyrupConfig {
         BaseConfig base;
         address weth;
+        address syrupRouter;
         bytes32 assetCollateralV4PoolId;
+    }
+
+    struct SyrupArbConfig {
+        BaseConfig base;
+        address weth;
+        address fluidDex;
     }
 
     struct AaveConfig {
@@ -79,6 +89,12 @@ contract Deploy is Script {
         uint8 eModeCategoryId;
         address weth;
         uint24 uniFee;
+    }
+
+    struct AaveSyrupConfig {
+        AaveConfig base;
+        address syrupRouter;
+        bytes32 assetCollateralV4PoolId;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -149,6 +165,7 @@ contract Deploy is Script {
                 marketId: 0x729badf297ee9f2f6b3f717b96fd355fc6ec00422284ce1968e76647b258cf44
             }),
             weth: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, // WETH
+            syrupRouter: 0x134cCaaA4F1e4552eC8aEcb9E4A2360dDcF8df76,
             assetCollateralV4PoolId: 0xcdb422a853a4fa2deb364317db92ad76d1cb7a8e1b82a32219bcb41720a90228
         });
     }
@@ -167,6 +184,28 @@ contract Deploy is Script {
         });
     }
 
+    // ===== AAVE syrupUSDT/USDT MAINNET =====
+    function getAaveSyrupUSDTMainnet()
+        internal
+        pure
+        returns (AaveSyrupConfig memory)
+    {
+        return AaveSyrupConfig({
+            base: AaveConfig({
+                asset: 0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
+                name: "syrupUSDT Aave Looper",
+                collateralToken: 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D, // syrupUSDT
+                addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+                morpho: MORPHO_MAINNET,
+                eModeCategoryId: 0,
+                weth: WETH_MAINNET,
+                uniFee: 0
+            }),
+            syrupRouter: 0xF007476Bb27430795138C511F18F821e8D1e5Ee2,
+            assetCollateralV4PoolId: 0xd861038a98942312d1495dd1313fb66c7e7de48f549a15edf3a45decf7338e1d
+        });
+    }
+
     // ===== MORPHO LBTC/WBTC MAINNET =====
     function getMorphoLBTCWBTCMainnet()
         internal
@@ -175,7 +214,7 @@ contract Deploy is Script {
     {
         return BaseConfig({
             asset: WBTC_MAINNET,
-            name: "lBTC/WBTC Morpho Looper",
+            name: "LBTC/WBTC Morpho Looper",
             collateralToken: LBTC_MAINNET,
             morpho: MORPHO_MAINNET,
             marketId: 0xf6a056627a51e511ec7f48332421432ea6971fc148d8f3c451e14ea108026549
@@ -232,6 +271,12 @@ contract Deploy is Script {
     // Morpho Blue Arbitrum
     address constant MORPHO_ARBITRUM = 0x6c247b1F6182318877311737BaC0844bAa518F5e;
 
+    // Arbitrum core addresses
+    address constant WETH_ARBITRUM = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+    address constant USDC_ARBITRUM = 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
+    address constant SYRUP_USDC_ARBITRUM = 0x41CA7586cC1311807B4605fBB748a3B8862b42b5;
+    address constant FLUID_DEX_SYRUP_USDC_USDC_ARBITRUM = 0xc800b0e15c40a1Ff0539218100c86F4c1BAC8D9C;
+
     // ===== PT sUSDai ARBITRUM =====
     function getPTsUSDaiArbitrum() internal pure returns (PTConfig memory) {
         return PTConfig({
@@ -247,44 +292,31 @@ contract Deploy is Script {
         });
     }
 
+    // ===== syrupUSDC/USDC ARBITRUM =====
+    function getSyrupUSDCArbitrum()
+        internal
+        pure
+        returns (SyrupArbConfig memory)
+    {
+        return SyrupArbConfig({
+            base: BaseConfig({
+                asset: USDC_ARBITRUM,
+                name: "syrupUSDC/USDC Morpho Looper",
+                collateralToken: SYRUP_USDC_ARBITRUM,
+                morpho: MORPHO_ARBITRUM,
+                marketId: 0xf86f3edd6f16cd8211f4d206866dc4ecd41be6211063ac11f8508e1b7112ef40
+            }),
+            weth: WETH_ARBITRUM,
+            fluidDex: FLUID_DEX_SYRUP_USDC_USDC_ARBITRUM
+        });
+    }
+
     /*//////////////////////////////////////////////////////////////
                             DEPLOYMENT
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = "AAVE_LBTC_WBTC_MAINNET";
-        deploy();
-        return;
-        if (block.chainid == 1) {
-            DEPLOY_CONFIG = "PT_SIUSD_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "INFINIFI_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "LST_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "SUSDS_USDT_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "PT_CUSD_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "MORPHO_LBTC_WBTC_MAINNET";
-            deploy();
-            DEPLOY_CONFIG = "AAVE_LBTC_WBTC_MAINNET";
-            deploy();
-        }
-        if (block.chainid == 42161) {
-            DEPLOY_CONFIG = "PT_SUSDAI_ARB";
-            deploy();
-        }
-        if (block.chainid == 747474) {
-            DEPLOY_CONFIG = "LST_KATANA";
-            deploy();
-        }
-
-        DEPLOY_CONFIG = "APR_ORACLE";
-        deploy();
-        DEPLOY_CONFIG = "AAVE_APR_ORACLE";
-        deploy();
-        DEPLOY_CONFIG = "LOOPER_KEEPER";
+        DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
         deploy();
     }
 
@@ -301,6 +333,10 @@ contract Deploy is Script {
             deployed = deploySUSDSUSDT(getSUSDSUSDTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_MAINNET")) {
             deployed = deploySyrup(getSyrupUSDCMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SYRUP_USDT_MAINNET")) {
+            deployed = deployAaveSyrup(getAaveSyrupUSDTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_ARB")) {
+            deployed = deploySyrupArbitrum(getSyrupUSDCArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
             deployed = deployPT(getPTcUSDMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SIUSD_MAINNET")) {
@@ -377,9 +413,13 @@ contract Deploy is Script {
     }
 
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
-        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
-                cfg.weth
-            );
+        SyrupExchange exchange = new SyrupExchange(
+            cfg.weth,
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.syrupRouter
+        );
+
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -395,6 +435,30 @@ contract Deploy is Script {
             cfg.base.asset,
             cfg.base.collateralToken,
             cfg.assetCollateralV4PoolId
+        );
+
+        return address(looper);
+    }
+
+    function deploySyrupArbitrum(
+        SyrupArbConfig memory cfg
+    ) internal returns (address) {
+        FluidExchange exchange = new FluidExchange(cfg.weth);
+        MorphoLooper looper = new MorphoLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.morpho,
+            Id.wrap(cfg.base.marketId),
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+        exchange.setStrategy(address(looper));
+        exchange.setBase(cfg.base.asset);
+        exchange.setFluidDex(
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.fluidDex
         );
 
         return address(looper);
@@ -487,6 +551,48 @@ contract Deploy is Script {
             vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee))
         );
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
+
+        return address(looper);
+    }
+
+    function deployAaveSyrup(
+        AaveSyrupConfig memory cfg
+    ) internal returns (address) {
+        SyrupExchange exchange = new SyrupExchange(
+            cfg.base.weth,
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.syrupRouter
+        );
+        SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.addressesProvider,
+            cfg.base.morpho,
+            cfg.base.eModeCategoryId,
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+        exchange.setStrategy(address(looper));
+        exchange.setBase(cfg.base.asset);
+        exchange.setV4Pool(
+            cfg.base.asset,
+            cfg.base.collateralToken,
+            cfg.assetCollateralV4PoolId
+        );
+        exchange.setMint(vm.envOr("SYRUP_MAINNET_USE_MINT", true));
+
+        uint24 uniFee = uint24(
+            vm.envOr("AAVE_SYRUP_USDT_UNI_FEE", uint256(cfg.base.uniFee))
+        );
+        if (uniFee != 0) {
+            exchange.setUniFees(
+                cfg.base.asset,
+                cfg.base.collateralToken,
+                uniFee
+            );
+        }
 
         return address(looper);
     }

@@ -7,12 +7,15 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
+import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
+import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
-    UniswapUniversalRouterExchange public exchange;
+    SyrupExchange public exchange;
+    bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -24,6 +27,8 @@ contract SetupAaveSyrupUSDT is Setup {
     address public constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address public constant SYRUP_USDT =
         0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D;
+    address public constant SYRUP_USDT_ROUTER =
+        0xF007476Bb27430795138C511F18F821e8D1e5Ee2;
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // Use category 0 unless strategy-specific eMode is confirmed for this pair.
@@ -67,7 +72,12 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalRouterExchange(WETH);
+        exchange = new SyrupExchange(
+            WETH,
+            address(asset),
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER
+        );
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),
@@ -87,9 +97,15 @@ contract SetupAaveSyrupUSDT is Setup {
         vm.prank(management);
         _strategy.acceptManagement();
 
+        bool useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", true);
+        if (useMint) {
+            _authorizeExchangeForSyrupDeposit();
+        }
+
         vm.startPrank(management);
         exchange.setBase(address(asset));
         exchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
+        exchange.setMint(useMint);
 
         // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
         uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
@@ -115,5 +131,33 @@ contract SetupAaveSyrupUSDT is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 500) / 10_000);
+    }
+
+    function _authorizeExchangeForSyrupDeposit() internal {
+        address router = exchange.SYRUP_ROUTER();
+        address poolManager = ISyrupRouter(router).poolManager();
+        address permissionManager = ISyrupRouter(router)
+            .poolPermissionManager();
+
+        address[] memory lenders = new address[](1);
+        lenders[0] = address(exchange);
+        bool[] memory isAllowed = new bool[](1);
+        isAllowed[0] = true;
+
+        vm.prank(IPoolPermissionManager(permissionManager).admin());
+        IPoolPermissionManager(permissionManager).setLenderAllowlist(
+            poolManager,
+            lenders,
+            isAllowed
+        );
+
+        assertTrue(
+            IPoolPermissionManager(permissionManager).hasPermission(
+                poolManager,
+                address(exchange),
+                MAPLE_DEPOSIT_PERMISSION
+            ),
+            "!deposit permission"
+        );
     }
 }

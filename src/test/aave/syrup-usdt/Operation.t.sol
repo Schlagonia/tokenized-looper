@@ -5,7 +5,7 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAaveSyrupUSDT} from "./Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @notice Aave syrupUSDT operation tests
@@ -45,9 +45,12 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
-        UniswapUniversalRouterExchange newExchange = new UniswapUniversalRouterExchange(
-                WETH
-            );
+        SyrupExchange newExchange = new SyrupExchange(
+            WETH,
+            USDT,
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER
+        );
 
         vm.prank(user);
         vm.expectRevert("!governance");
@@ -58,7 +61,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_setV4Pool_onlyManagement() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
 
         vm.prank(user);
         vm.expectRevert("!management");
@@ -69,7 +72,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_setUniFees_onlyManagement() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
 
         vm.prank(user);
         vm.expectRevert("!management");
@@ -80,7 +83,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_swap_onlyStrategy() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
 
         vm.prank(user);
         vm.expectRevert("!strategy");
@@ -88,7 +91,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_setBase_onlyManagement() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
 
         vm.prank(user);
         vm.expectRevert("!management");
@@ -98,8 +101,48 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         syrupExchange.setBase(WETH);
     }
 
+    function test_exchange_router_isConfiguredInConstructor() public view {
+        SyrupExchange syrupExchange = exchange;
+        assertEq(syrupExchange.SYRUP_ROUTER(), SYRUP_USDT_ROUTER, "!router");
+    }
+
+    function test_exchange_setMint_onlyManagement() public {
+        SyrupExchange syrupExchange = exchange;
+
+        vm.prank(user);
+        vm.expectRevert("!management");
+        syrupExchange.setMint(false);
+
+        vm.prank(management);
+        syrupExchange.setMint(false);
+
+        assertFalse(syrupExchange.mint(), "!mint");
+    }
+
+    function test_exchange_directMint_worksWhenMapleAuthorized() public {
+        uint256 amount = 10_000e6;
+
+        _authorizeExchangeForSyrupDeposit();
+
+        vm.prank(management);
+        exchange.setMint(true);
+
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        uint256 collateralBefore = ERC20(SYRUP_USDT).balanceOf(
+            address(strategy)
+        );
+        vm.prank(address(strategy));
+        exchange.exchange(USDT, SYRUP_USDT, amount, 0);
+        uint256 collateralAfter = ERC20(SYRUP_USDT).balanceOf(
+            address(strategy)
+        );
+
+        assertGt(collateralAfter, collateralBefore, "!collateral minted");
+    }
+
     function test_exchange_sweep_onlyGovernance() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
         address gov = management;
 
         deal(USDT, address(syrupExchange), 1_000e6);
@@ -117,7 +160,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_sweep_ethNotSupported() public {
-        UniswapUniversalRouterExchange syrupExchange = exchange;
+        SyrupExchange syrupExchange = exchange;
         address gov = management;
 
         vm.prank(gov);

@@ -7,13 +7,16 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
+import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
+import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests
 contract SetupSyrupMorpho is Setup {
-    UniswapUniversalRouterExchange public exchange;
+    SyrupExchange public exchange;
+    bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
 
     // Provided market id (syrupUSDC/USDC)
     Id public constant SYRUP_USDC_MARKET_ID =
@@ -26,6 +29,8 @@ contract SetupSyrupMorpho is Setup {
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant SYRUP_USDC =
         0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
+    address public constant SYRUP_USDC_ROUTER =
+        0x134cCaaA4F1e4552eC8aEcb9E4A2360dDcF8df76;
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     bytes32 public constant SYRUP_USDC_USDC_V4_POOL_ID =
         0xcdb422a853a4fa2deb364317db92ad76d1cb7a8e1b82a32219bcb41720a90228;
@@ -58,7 +63,12 @@ contract SetupSyrupMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new UniswapUniversalRouterExchange(WETH);
+        exchange = new SyrupExchange(
+            WETH,
+            address(asset),
+            SYRUP_USDC,
+            SYRUP_USDC_ROUTER
+        );
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -77,6 +87,11 @@ contract SetupSyrupMorpho is Setup {
         vm.prank(management);
         _strategy.acceptManagement();
 
+        bool useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", false);
+        if (useMint) {
+            _authorizeExchangeForSyrupDeposit();
+        }
+
         vm.startPrank(management);
         exchange.setBase(address(asset));
         exchange.setV4Pool(
@@ -84,6 +99,7 @@ contract SetupSyrupMorpho is Setup {
             SYRUP_USDC,
             SYRUP_USDC_USDC_V4_POOL_ID
         );
+        exchange.setMint(useMint);
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -100,5 +116,33 @@ contract SetupSyrupMorpho is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 300) / 10_000);
+    }
+
+    function _authorizeExchangeForSyrupDeposit() internal {
+        address router = exchange.SYRUP_ROUTER();
+        address poolManager = ISyrupRouter(router).poolManager();
+        address permissionManager = ISyrupRouter(router)
+            .poolPermissionManager();
+
+        address[] memory lenders = new address[](1);
+        lenders[0] = address(exchange);
+        bool[] memory isAllowed = new bool[](1);
+        isAllowed[0] = true;
+
+        vm.prank(IPoolPermissionManager(permissionManager).admin());
+        IPoolPermissionManager(permissionManager).setLenderAllowlist(
+            poolManager,
+            lenders,
+            isAllowed
+        );
+
+        assertTrue(
+            IPoolPermissionManager(permissionManager).hasPermission(
+                poolManager,
+                address(exchange),
+                MAPLE_DEPOSIT_PERMISSION
+            ),
+            "!deposit permission"
+        );
     }
 }
