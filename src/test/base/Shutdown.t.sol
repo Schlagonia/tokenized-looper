@@ -14,7 +14,7 @@ abstract contract ShutdownTest is Setup {
 
     function _maxUnwindCollateralDust(
         uint256 collateralBeforeUnwind
-    ) internal pure returns (uint256) {
+    ) internal pure virtual returns (uint256) {
         uint256 relativeDust = collateralBeforeUnwind /
             (10_000 / UNWIND_COLLATERAL_DUST_BPS);
         return

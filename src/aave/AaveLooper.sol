@@ -182,7 +182,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         );
 
         // Enable as collateral (idempotent - safe to call multiple times)
-        IPool(POOL).setUserUseReserveAsCollateral(collateralToken, true);
+        //IPool(POOL).setUserUseReserveAsCollateral(collateralToken, true);
     }
 
     function _withdrawCollateral(uint256 amount) internal override {
