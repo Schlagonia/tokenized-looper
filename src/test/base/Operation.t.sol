@@ -38,6 +38,10 @@ abstract contract OperationTest is Setup {
         return idle > 0 ? idle : 1;
     }
 
+    function _warningLTV() internal view returns (uint256) {
+        return 1e18 - (1e36 / strategy.maxLeverageRatio());
+    }
+
     function test_setupStrategyOK() public virtual {
         console2.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
@@ -112,6 +116,108 @@ abstract contract OperationTest is Setup {
         strategy.redeem(_amount, user, user);
 
         assertGt(asset.balanceOf(user), _amount, "!profit not realized");
+    }
+
+    function test_report_aboveWarningLTV_onlyDelevers() public {
+        uint256 equity = _baseTestAmount();
+        _createAboveWarningLTVPosition(equity);
+
+        uint256 ltvBefore = strategy.getCurrentLTV();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        uint256 ltvAfter = strategy.getCurrentLTV();
+        uint256 debtAfter = strategy.balanceOfDebt();
+
+        assertLt(ltvAfter, ltvBefore, "!should delever on report");
+        assertLt(debtAfter, debtBefore, "!debt should decrease on report");
+        assertGt(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should update"
+        );
+        assertEq(strategy.lastTend(), block.timestamp, "!lastTend timestamp");
+    }
+
+    function test_report_overTargetBelowWarning_doesNotDelever() public {
+        uint256 equity = _baseTestAmount();
+        _createOverLeveragedPosition(equity);
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
+        uint256 warningLTV = _warningLTV();
+        uint256 upperBound = strategy.targetLeverageRatio() +
+            strategy.leverageBuffer();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        assertLe(
+            strategy.getCurrentLTV(),
+            warningLTV,
+            "!should be below warning ltv"
+        );
+        assertGt(
+            strategy.getCurrentLeverageRatio(),
+            upperBound,
+            "!should be above target band"
+        );
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        assertGt(strategy.balanceOfAsset(), 0, "!idle asset should remain");
+        assertEq(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should not move"
+        );
+        assertLe(
+            strategy.getCurrentLTV(),
+            warningLTV,
+            "!should stay below warning ltv"
+        );
+    }
+
+    function test_report_underLeveraged_doesNotLeverUp() public {
+        uint256 equity = _baseTestAmount();
+        _createUnderLeveragedPosition(equity);
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
+        uint256 lowerBound = strategy.targetLeverageRatio() -
+            strategy.leverageBuffer();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
+        assertLt(leverageAfter, lowerBound, "!should stay under-leveraged");
+        assertGt(strategy.balanceOfAsset(), 0, "!idle asset should remain");
+        assertEq(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should not move"
+        );
     }
 
     function test_tendTrigger(uint256 _amount) public {
@@ -648,6 +754,31 @@ abstract contract OperationTest is Setup {
             currentLeverage,
             upperBound,
             "position should be over-leveraged"
+        );
+        assertLe(
+            strategy.getCurrentLTV(),
+            _warningLTV(),
+            "position should be below warning ltv"
+        );
+    }
+
+    /// @notice Helper to create a position above the warning LTV by lowering max leverage after build
+    /// @param equity The equity amount to use for the position
+    function _createAboveWarningLTVPosition(uint256 equity) internal {
+        vm.prank(management);
+        strategy.setLeverageParams(4e18, 0.25e18, 5e18);
+
+        mintAndDepositIntoStrategy(strategy, user, equity);
+        vm.prank(keeper);
+        strategy.tend();
+
+        vm.prank(management);
+        strategy.setLeverageParams(3e18, 0.25e18, 3.5e18);
+
+        assertGt(
+            strategy.getCurrentLTV(),
+            _warningLTV(),
+            "position should be above warning ltv"
         );
     }
 

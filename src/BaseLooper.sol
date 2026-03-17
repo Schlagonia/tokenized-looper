@@ -295,8 +295,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     /// @notice Harvest rewards and report total assets
-    /// @dev Override to customize harvesting behavior. Default claims rewards, levers up idle assets,
-    ///      and reports total assets. Called during strategy reports.
+    /// @dev Override to customize harvesting behavior. Default claims rewards, only delevers when above
+    ///      `maxLeverageRatio`, and reports total assets. Called during strategy reports.
     /// @return _totalAssets The total assets held by the strategy
     function _harvestAndReport()
         internal
@@ -306,10 +306,9 @@ abstract contract BaseLooper is BaseHealthCheck {
         returns (uint256 _totalAssets)
     {
         _claimAndSellRewards();
-
-        _lever(
-            Math.min(balanceOfAsset(), availableDepositLimit(address(this)))
-        );
+        if (getCurrentLeverageRatio() > maxLeverageRatio) {
+            _lever(balanceOfAsset());
+        }
 
         _totalAssets = estimatedTotalAssets();
     }
@@ -389,7 +388,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @param _totalIdle The total idle assets available for deployment
     function _tend(uint256 _totalIdle) internal virtual override accrue {
         _lever(_totalIdle);
-        lastTend = block.timestamp;
     }
 
     /// @notice Check if the position needs rebalancing
@@ -440,6 +438,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Adjust position to target leverage ratio
     /// @dev Handles three cases: lever up, delever, or just deploy _amount
     function _lever(uint256 _amount) internal virtual {
+        lastTend = block.timestamp;
         (uint256 currentCollateralValue, uint256 currentDebt) = position();
         uint256 currentEquity = currentCollateralValue - currentDebt + _amount;
         (, uint256 targetDebt) = getTargetPosition(currentEquity);
