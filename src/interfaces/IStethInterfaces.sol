@@ -28,6 +28,11 @@ interface IQueue {
         address _owner
     ) external returns (uint256[] memory requestIds);
 
+    function claimWithdrawals(
+        uint256[] calldata _requestIds,
+        uint256[] calldata _hints
+    ) external;
+
     function safeTransferFrom(
         address _from,
         address _to,

@@ -48,7 +48,7 @@ contract SetupAavesUSDeUSDC is Setup {
         decimals = asset.decimals();
 
         // Keep fork tests in a range that won't bully thinner side liquidity.
-        maxFuzzAmount = 50_000e6;
+        maxFuzzAmount = 500_000e6;
         minFuzzAmount = 100e6;
 
         strategy = IStrategyInterface(setUpStrategy());

@@ -126,7 +126,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function version() public pure virtual returns (string memory) {
-        return "1.0.1";
+        return "1.0.2";
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -520,6 +520,11 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             // Cap flashloan by available liquidity
             debtToRepay = Math.min(debtToRepay, maxFlashloan());
+
+            // Cap delever swap size when requested.
+            if (maxAmountToSwap != type(uint256).max) {
+                debtToRepay = Math.min(debtToRepay, maxAmountToSwap);
+            }
 
             if (debtToRepay == 0) return;
 

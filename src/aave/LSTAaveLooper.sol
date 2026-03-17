@@ -133,4 +133,16 @@ contract LSTAaveLooper is AaveLooper {
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
         pendingRedemptions = 0;
     }
+
+    /// @dev Only needed if the hint and batch ID are too far from each other.
+    function manualClaimWithdrawals(
+        uint256[] calldata _requestIds,
+        uint256[] calldata _hints,
+        bool _zeroRedemptions
+    ) external onlyEmergencyAuthorized {
+        WITHDRAWAL_QUEUE.claimWithdrawals(_requestIds, _hints);
+        if (_zeroRedemptions) {
+            pendingRedemptions = 0;
+        }
+    }
 }
