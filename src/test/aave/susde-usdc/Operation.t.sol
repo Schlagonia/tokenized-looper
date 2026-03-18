@@ -97,6 +97,57 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         looper.zeroPendingRedemptions();
     }
 
+    function test_estimatedTotalAssets_countsPendingCooldownSharesInAssetTerms()
+        public
+    {
+        uint256 depositAmount = _baseTestAmount();
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
+
+        uint256 withdrawShares = looper.balanceOfCollateral() / 20;
+        assertGt(withdrawShares, 0, "!withdrawShares");
+
+        vm.prank(emergencyAdmin);
+        looper.manualWithdrawCollateral(withdrawShares);
+
+        uint256 looseShares = looper.balanceOfCollateralToken();
+        assertGt(looseShares, 0, "!looseShares");
+
+        uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
+
+        vm.prank(emergencyAdmin);
+        looper.initiateCooldown(looseShares);
+
+        assertEq(
+            looper.pendingRedemptions(),
+            looseShares,
+            "!pendingRedemptions"
+        );
+        assertEq(looper.balanceOfCollateralToken(), 0, "!looseShares cleared");
+
+        uint256 estimatedAfterCooldown = looper.estimatedTotalAssets();
+        (uint256 collateralValueAfter, uint256 debtAfter) = looper.position();
+        uint256 estimatedWithoutPending = looper.balanceOfAsset() +
+            collateralValueAfter -
+            debtAfter;
+
+        assertApproxEqAbs(
+            estimatedAfterCooldown,
+            estimatedBeforeCooldown,
+            1,
+            "!estimatedTotalAssets"
+        );
+        assertGt(
+            estimatedAfterCooldown,
+            estimatedWithoutPending,
+            "!pendingRedemptions not counted"
+        );
+    }
+
     function test_exchange_sweep_onlyGovernance() public {
         deal(USDC, address(exchange), 1_000e6);
 

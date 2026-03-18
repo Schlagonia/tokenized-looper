@@ -38,6 +38,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
         )
     {}
 
+    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 pendingAssets;
         if (pendingRedemptionShares > 0) {

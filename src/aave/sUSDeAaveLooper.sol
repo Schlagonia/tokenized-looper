@@ -44,7 +44,9 @@ contract sUSDeAaveLooper is AaveLooper {
     receive() external payable {}
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return super.estimatedTotalAssets() + pendingRedemptions;
+        return
+            super.estimatedTotalAssets() +
+            _collateralToAsset(pendingRedemptions);
     }
 
     function _harvestAndReport()

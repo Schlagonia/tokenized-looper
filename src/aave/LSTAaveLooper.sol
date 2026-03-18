@@ -144,5 +144,7 @@ contract LSTAaveLooper is AaveLooper {
         if (_zeroRedemptions) {
             pendingRedemptions = 0;
         }
+
+        IWETH(address(asset)).deposit{value: address(this).balance}();
     }
 }
