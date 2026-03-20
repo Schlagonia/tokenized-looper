@@ -7,7 +7,7 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAavesUSDeUSDC} from "./Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {sUSDeExchange} from "../../../periphery/sUSDeExchange.sol";
+import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 
 contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     uint256 internal constant SUSDE_UNWIND_DUST_BPS = 5; // 0.05%
@@ -46,12 +46,18 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         assertEq(exchange.COLLATERAL(), SUSDE, "!collateral");
         assertEq(exchange.UNDERLYING(), USDE, "!underlying");
         assertEq(exchange.base(), USDT, "!base");
-        assertTrue(exchange.mint(), "!mint");
+        assertTrue(exchange.deposit(), "!deposit");
+        assertFalse(exchange.redeem(), "!redeem");
     }
 
     function test_setExchange_onlyGovernance() public {
         sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-        sUSDeExchange newExchange = new sUSDeExchange(WETH, USDT, USDC, SUSDE);
+        ERC4626FluidExchange newExchange = new ERC4626FluidExchange(
+            WETH,
+            USDT,
+            USDC,
+            SUSDE
+        );
 
         vm.prank(user);
         vm.expectRevert("!governance");
@@ -61,14 +67,25 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         looper.setExchange(address(newExchange));
     }
 
-    function test_exchange_setMint_onlyManagement() public {
+    function test_exchange_setVaultRoutes_onlyManagement() public {
         vm.prank(user);
         vm.expectRevert("!management");
-        exchange.setMint(false);
+        exchange.setDeposit(false);
 
         vm.prank(management);
-        exchange.setMint(false);
-        assertFalse(exchange.mint(), "!mint");
+        exchange.setDeposit(false);
+        assertFalse(exchange.deposit(), "!deposit");
+
+        vm.prank(user);
+        vm.expectRevert("!management");
+        exchange.setRedeem(true);
+
+        vm.startPrank(management);
+        exchange.setDeposit(true);
+        exchange.setRedeem(true);
+        vm.stopPrank();
+        assertTrue(exchange.deposit(), "!deposit");
+        assertTrue(exchange.redeem(), "!redeem");
     }
 
     function test_exchange_setFluidDex_onlyManagement() public {

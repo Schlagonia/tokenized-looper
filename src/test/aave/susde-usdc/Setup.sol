@@ -5,12 +5,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {sUSDeExchange} from "../../../periphery/sUSDeExchange.sol";
+import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
-    sUSDeExchange public exchange;
+    ERC4626FluidExchange public exchange;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -67,7 +67,7 @@ contract SetupAavesUSDeUSDC is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new sUSDeExchange(WETH, USDT, address(asset), SUSDE);
+        exchange = new ERC4626FluidExchange(WETH, USDT, address(asset), SUSDE);
 
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             address(asset),
@@ -87,7 +87,7 @@ contract SetupAavesUSDeUSDC is Setup {
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        exchange.setMint(true);
+        exchange.setDeposit(true);
         exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         exchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
         exchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);

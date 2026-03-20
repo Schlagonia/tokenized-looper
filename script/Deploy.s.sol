@@ -8,22 +8,23 @@ import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {AaveLooper} from "../src/aave/AaveLooper.sol";
+import {LSTAaveLooper} from "../src/aave/LSTAaveLooper.sol";
 import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
+import {sUSDeAaveLooper} from "../src/aave/sUSDeAaveLooper.sol";
 import {PTExchange} from "../src/periphery/PTExchange.sol";
 import {sUSDaiPTExchange} from "../src/periphery/sUSDaiPTExchange.sol";
 import {SUSDSUSDTExchange} from "../src/periphery/SUSDSUSDTExchange.sol";
 import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
 import {SyrupExchange} from "../src/periphery/SyrupExchange.sol";
 import {FluidExchange} from "../src/periphery/FluidExchange.sol";
+import {ERC4626FluidExchange} from "../src/periphery/ERC4626FluidExchange.sol";
+import {WETHWstETHExchange} from "../src/periphery/WETHWstETHExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 import {AaveStrategyAprOracle} from "../src/periphery/AaveStrategyAprOracle.sol";
 
 interface ICreateXDeployer {
-    function deployCreate2(
-        bytes32 salt,
-        bytes memory initCode
-    ) external payable returns (address newContract);
+    function deployCreate2(bytes32 salt, bytes memory initCode) external payable returns (address newContract);
 }
 
 /// @title Deploy Script for Morpho Loopers
@@ -35,7 +36,7 @@ contract Deploy is Script {
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
     string public DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_WSTETH_WETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev Global looper governance used by all looper deployments in this script run.
@@ -97,6 +98,15 @@ contract Deploy is Script {
         bytes32 assetCollateralV4PoolId;
     }
 
+    struct AaveFluid4626Config {
+        AaveConfig base;
+        address baseToken;
+        address underlyingToken;
+        address assetBaseFluidDex;
+        address underlyingBaseFluidDex;
+        address collateralBaseFluidDex;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         MAINNET CONFIGURATIONS
     //////////////////////////////////////////////////////////////*/
@@ -112,17 +122,29 @@ contract Deploy is Script {
     address constant WBTC_MAINNET = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
     address constant LBTC_MAINNET = 0x8236a87084f8B84306f72007F36F2618A5634494;
 
+    // Mainnet ETH / stable assets
+    address constant WSTETH_MAINNET = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
+    address constant USDC_MAINNET = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant USDT_MAINNET = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+    address constant USDE_MAINNET = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
+    address constant SUSDE_MAINNET = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
+
+    // Mainnet Fluid DEX pools
+    address constant FLUID_USDC_USDT_MAINNET = 0x667701e51B4D1Ca244F17C78F7aB8744B4C99F9B;
+    address constant FLUID_USDE_USDT_MAINNET = 0xf063BD202E45d6b2843102cb4EcE339026645D4a;
+    address constant FLUID_SUSDE_USDT_MAINNET = 0x1DD125C32e4B5086c63CC13B3cA02C4A2a61Fa9b;
+
     // Morpho Katana Mainnet
     address constant MORPHO_KATANA = 0xD50F2DffFd62f94Ee4AEd9ca05C61d0753268aBc;
 
     // ===== INFINIFI MAINNET (USDC/sIUSD) =====
     function getInfinifiMainnet() internal pure returns (BaseConfig memory) {
         return BaseConfig({
-                asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-                name: "Infinifi sIUSD Morpho Looper",
-                collateralToken: 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB, // sIUSD
-                morpho: MORPHO_MAINNET,
-                marketId: 0xbbf7ce1b40d32d3e3048f5cf27eeaa6de8cb27b80194690aab191a63381d8c99
+            asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
+            name: "Infinifi sIUSD Morpho Looper",
+            collateralToken: 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB, // sIUSD
+            morpho: MORPHO_MAINNET,
+            marketId: 0xbbf7ce1b40d32d3e3048f5cf27eeaa6de8cb27b80194690aab191a63381d8c99
         });
     }
 
@@ -185,11 +207,7 @@ contract Deploy is Script {
     }
 
     // ===== AAVE syrupUSDT/USDT MAINNET =====
-    function getAaveSyrupUSDTMainnet()
-        internal
-        pure
-        returns (AaveSyrupConfig memory)
-    {
+    function getAaveSyrupUSDTMainnet() internal pure returns (AaveSyrupConfig memory) {
         return AaveSyrupConfig({
             base: AaveConfig({
                 asset: 0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
@@ -206,12 +224,43 @@ contract Deploy is Script {
         });
     }
 
+    // ===== AAVE sUSDe/USDC MAINNET =====
+    function getAaveSUSDeUSDCMainnet() internal pure returns (AaveFluid4626Config memory) {
+        return AaveFluid4626Config({
+            base: AaveConfig({
+                asset: USDC_MAINNET,
+                name: "sUSDe/USDC Aave Looper",
+                collateralToken: SUSDE_MAINNET,
+                addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+                morpho: MORPHO_MAINNET,
+                eModeCategoryId: 2,
+                weth: WETH_MAINNET,
+                uniFee: 0
+            }),
+            baseToken: USDT_MAINNET,
+            underlyingToken: USDE_MAINNET,
+            assetBaseFluidDex: FLUID_USDC_USDT_MAINNET,
+            underlyingBaseFluidDex: FLUID_USDE_USDT_MAINNET,
+            collateralBaseFluidDex: FLUID_SUSDE_USDT_MAINNET
+        });
+    }
+
+    // ===== AAVE wstETH/WETH MAINNET =====
+    function getAaveWstETHWETHMainnet() internal pure returns (AaveConfig memory) {
+        return AaveConfig({
+            asset: WETH_MAINNET,
+            name: "wstETH/WETH Aave Looper",
+            collateralToken: WSTETH_MAINNET,
+            addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+            morpho: MORPHO_MAINNET,
+            eModeCategoryId: 1,
+            weth: WETH_MAINNET,
+            uniFee: 0
+        });
+    }
+
     // ===== MORPHO LBTC/WBTC MAINNET =====
-    function getMorphoLBTCWBTCMainnet()
-        internal
-        pure
-        returns (BaseConfig memory)
-    {
+    function getMorphoLBTCWBTCMainnet() internal pure returns (BaseConfig memory) {
         return BaseConfig({
             asset: WBTC_MAINNET,
             name: "LBTC/WBTC Morpho Looper",
@@ -293,11 +342,7 @@ contract Deploy is Script {
     }
 
     // ===== syrupUSDC/USDC ARBITRUM =====
-    function getSyrupUSDCArbitrum()
-        internal
-        pure
-        returns (SyrupArbConfig memory)
-    {
+    function getSyrupUSDCArbitrum() internal pure returns (SyrupArbConfig memory) {
         return SyrupArbConfig({
             base: BaseConfig({
                 asset: USDC_ARBITRUM,
@@ -316,7 +361,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
+        DEPLOY_CONFIG = vm.envOr("DEPLOY_CONFIG", DEPLOY_CONFIG);
         deploy();
     }
 
@@ -335,6 +380,10 @@ contract Deploy is Script {
             deployed = deploySyrup(getSyrupUSDCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SYRUP_USDT_MAINNET")) {
             deployed = deployAaveSyrup(getAaveSyrupUSDTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDC_MAINNET")) {
+            deployed = deployAaveSUSDe(getAaveSUSDeUSDCMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_WSTETH_WETH_MAINNET")) {
+            deployed = deployAaveLST(getAaveWstETHWETHMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_ARB")) {
             deployed = deploySyrupArbitrum(getSyrupUSDCArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
@@ -365,22 +414,16 @@ contract Deploy is Script {
         console.log("Config:", DEPLOY_CONFIG);
     }
 
-
     function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
-        return address(new InfinifiMorphoLooper(
-            cfg.asset,
-            cfg.name,
-            cfg.collateralToken,
-            cfg.morpho,
-            Id.wrap(cfg.marketId),
-            LOOPER_GOVERNANCE
-        ));
+        return address(
+            new InfinifiMorphoLooper(
+                cfg.asset, cfg.name, cfg.collateralToken, cfg.morpho, Id.wrap(cfg.marketId), LOOPER_GOVERNANCE
+            )
+        );
     }
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
-        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
-                cfg.base.asset
-            );
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(cfg.base.asset);
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -413,12 +456,7 @@ contract Deploy is Script {
     }
 
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
-        SyrupExchange exchange = new SyrupExchange(
-            cfg.weth,
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.syrupRouter
-        );
+        SyrupExchange exchange = new SyrupExchange(cfg.weth, cfg.base.asset, cfg.base.collateralToken, cfg.syrupRouter);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             cfg.base.asset,
@@ -431,18 +469,12 @@ contract Deploy is Script {
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
-        exchange.setV4Pool(
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.assetCollateralV4PoolId
-        );
+        exchange.setV4Pool(cfg.base.asset, cfg.base.collateralToken, cfg.assetCollateralV4PoolId);
 
         return address(looper);
     }
 
-    function deploySyrupArbitrum(
-        SyrupArbConfig memory cfg
-    ) internal returns (address) {
+    function deploySyrupArbitrum(SyrupArbConfig memory cfg) internal returns (address) {
         FluidExchange exchange = new FluidExchange(cfg.weth);
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
@@ -455,22 +487,14 @@ contract Deploy is Script {
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
-        exchange.setFluidDex(
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.fluidDex
-        );
+        exchange.setFluidDex(cfg.base.asset, cfg.base.collateralToken, cfg.fluidDex);
 
         return address(looper);
     }
 
     function deployPT(PTConfig memory cfg) internal returns (address) {
-        PTExchange exchange = new PTExchange(
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.pendleMarket,
-            cfg.pendleToken
-        );
+        PTExchange exchange =
+            new PTExchange(cfg.base.asset, cfg.base.collateralToken, cfg.pendleMarket, cfg.pendleToken);
 
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
@@ -486,12 +510,8 @@ contract Deploy is Script {
     }
 
     function deploysUSDaiPT(PTConfig memory cfg) internal returns (address) {
-        sUSDaiPTExchange exchange = new sUSDaiPTExchange(
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.pendleMarket,
-            cfg.pendleToken
-        );
+        sUSDaiPTExchange exchange =
+            new sUSDaiPTExchange(cfg.base.asset, cfg.base.collateralToken, cfg.pendleMarket, cfg.pendleToken);
 
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
@@ -506,12 +526,8 @@ contract Deploy is Script {
         return address(looper);
     }
 
-    function deployMorphoLBTCWBTC(
-        BaseConfig memory cfg
-    ) internal returns (address) {
-        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
-                WETH_MAINNET
-            );
+    function deployMorphoLBTCWBTC(BaseConfig memory cfg) internal returns (address) {
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(WETH_MAINNET);
         MorphoLooper looper = new MorphoLooper(
             cfg.asset,
             cfg.name,
@@ -523,18 +539,14 @@ contract Deploy is Script {
         );
         exchange.setStrategy(address(looper));
 
-        uint24 uniFee = uint24(
-            vm.envOr("MORPHO_LBTC_WBTC_UNI_FEE", uint256(500))
-        );
+        uint24 uniFee = uint24(vm.envOr("MORPHO_LBTC_WBTC_UNI_FEE", uint256(500)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
 
         return address(looper);
     }
 
     function deployAave(AaveConfig memory cfg) internal returns (address) {
-        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(
-                cfg.weth
-            );
+        UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(cfg.weth);
         AaveLooper looper = new AaveLooper(
             cfg.asset,
             cfg.name,
@@ -547,23 +559,54 @@ contract Deploy is Script {
         );
         exchange.setStrategy(address(looper));
 
-        uint24 uniFee = uint24(
-            vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee))
-        );
+        uint24 uniFee = uint24(vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
 
         return address(looper);
     }
 
-    function deployAaveSyrup(
-        AaveSyrupConfig memory cfg
-    ) internal returns (address) {
-        SyrupExchange exchange = new SyrupExchange(
-            cfg.base.weth,
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.syrupRouter
+    function deployAaveLST(AaveConfig memory cfg) internal returns (address) {
+        WETHWstETHExchange exchange = new WETHWstETHExchange();
+        LSTAaveLooper looper = new LSTAaveLooper(
+            cfg.asset,
+            cfg.name,
+            cfg.collateralToken,
+            cfg.addressesProvider,
+            cfg.morpho,
+            cfg.eModeCategoryId,
+            address(exchange),
+            LOOPER_GOVERNANCE
         );
+        exchange.setStrategy(address(looper));
+
+        return address(looper);
+    }
+
+    function deployAaveSUSDe(AaveFluid4626Config memory cfg) internal returns (address) {
+        ERC4626FluidExchange exchange =
+            new ERC4626FluidExchange(cfg.base.weth, cfg.baseToken, cfg.base.asset, cfg.base.collateralToken);
+        sUSDeAaveLooper looper = new sUSDeAaveLooper(
+            cfg.base.asset,
+            cfg.base.name,
+            cfg.base.collateralToken,
+            cfg.base.addressesProvider,
+            cfg.base.morpho,
+            cfg.base.eModeCategoryId,
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+        exchange.setStrategy(address(looper));
+        exchange.setDeposit(true);
+        exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
+        exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
+        exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
+
+        return address(looper);
+    }
+
+    function deployAaveSyrup(AaveSyrupConfig memory cfg) internal returns (address) {
+        SyrupExchange exchange =
+            new SyrupExchange(cfg.base.weth, cfg.base.asset, cfg.base.collateralToken, cfg.syrupRouter);
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -576,22 +619,12 @@ contract Deploy is Script {
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
-        exchange.setV4Pool(
-            cfg.base.asset,
-            cfg.base.collateralToken,
-            cfg.assetCollateralV4PoolId
-        );
+        exchange.setV4Pool(cfg.base.asset, cfg.base.collateralToken, cfg.assetCollateralV4PoolId);
         exchange.setMint(vm.envOr("SYRUP_MAINNET_USE_MINT", true));
 
-        uint24 uniFee = uint24(
-            vm.envOr("AAVE_SYRUP_USDT_UNI_FEE", uint256(cfg.base.uniFee))
-        );
+        uint24 uniFee = uint24(vm.envOr("AAVE_SYRUP_USDT_UNI_FEE", uint256(cfg.base.uniFee)));
         if (uniFee != 0) {
-            exchange.setUniFees(
-                cfg.base.asset,
-                cfg.base.collateralToken,
-                uniFee
-            );
+            exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, uniFee);
         }
 
         return address(looper);
@@ -602,48 +635,27 @@ contract Deploy is Script {
         require(governance != address(0), "APR_ORACLE_GOV");
 
         bytes32 salt = vm.envOr("APR_ORACLE_SALT", bytes32(0));
-        bytes memory initCode = abi.encodePacked(
-            type(StrategyAprOracle).creationCode,
-            abi.encode(governance)
-        );
+        bytes memory initCode = abi.encodePacked(type(StrategyAprOracle).creationCode, abi.encode(governance));
 
         return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
     }
 
     function deployAaveAprOracle() internal returns (address) {
-        address governance = vm.envOr(
-            "AAVE_APR_ORACLE_GOV",
-            vm.envOr("APR_ORACLE_GOV", address(0))
-        );
+        address governance = vm.envOr("AAVE_APR_ORACLE_GOV", vm.envOr("APR_ORACLE_GOV", address(0)));
         require(governance != address(0), "AAVE_APR_ORACLE_GOV");
 
-        bytes32 salt = vm.envOr(
-            "AAVE_APR_ORACLE_SALT",
-            vm.envOr("APR_ORACLE_SALT", bytes32(0))
-        );
-        bytes memory initCode = abi.encodePacked(
-            type(AaveStrategyAprOracle).creationCode,
-            abi.encode(governance)
-        );
+        bytes32 salt = vm.envOr("AAVE_APR_ORACLE_SALT", vm.envOr("APR_ORACLE_SALT", bytes32(0)));
+        bytes memory initCode = abi.encodePacked(type(AaveStrategyAprOracle).creationCode, abi.encode(governance));
 
         return ICreateXDeployer(CREATE_X).deployCreate2(salt, initCode);
     }
 
     function deployLooperKeeper() internal returns (address) {
-        address publicAllocator = vm.envOr(
-            "EXECUTOR_PUBLIC_ALLOCATOR",
-            address(0)
-        );
-        address governance = vm.envOr(
-            "EXECUTOR_GOVERNANCE",
-            address(0)
-        );
+        address publicAllocator = vm.envOr("EXECUTOR_PUBLIC_ALLOCATOR", address(0));
+        address governance = vm.envOr("EXECUTOR_GOVERNANCE", address(0));
         require(publicAllocator != address(0), "EXECUTOR_PUBLIC_ALLOCATOR");
         require(governance != address(0), "EXECUTOR_GOVERNANCE");
 
-        return address(new LooperKeeper(
-            governance,
-            publicAllocator
-        ));
+        return address(new LooperKeeper(governance, publicAllocator));
     }
 }

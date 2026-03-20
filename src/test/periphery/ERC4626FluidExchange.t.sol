@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 
 import {IExchange} from "../../interfaces/IExchange.sol";
-import {sUSDeExchange} from "../../periphery/sUSDeExchange.sol";
+import {ERC4626FluidExchange} from "../../periphery/ERC4626FluidExchange.sol";
 import {IFluidDexT1} from "@periphery/interfaces/Fluid/IFluidDexV2Router.sol";
 
 interface IMintableToken {
@@ -113,7 +113,7 @@ contract MockStrategyForExchange {
     }
 }
 
-contract sUSDeExchangeTest is Test {
+contract ERC4626FluidExchangeTest is Test {
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     MockERC20 internal asset;
@@ -125,7 +125,7 @@ contract sUSDeExchangeTest is Test {
     MockFluidDex internal underlyingBridgeDex;
     MockFluidDex internal collateralBridgeDex;
 
-    sUSDeExchange internal exchange;
+    ERC4626FluidExchange internal exchange;
     MockStrategyForExchange internal strategy;
 
     address internal governance = makeAddr("governance");
@@ -147,7 +147,7 @@ contract sUSDeExchangeTest is Test {
             address(bridge)
         );
 
-        exchange = new sUSDeExchange(
+        exchange = new ERC4626FluidExchange(
             WETH,
             address(bridge),
             address(asset),
@@ -165,6 +165,11 @@ contract sUSDeExchangeTest is Test {
         );
         strategy.approveToken(
             address(collateral),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(underlying),
             address(exchange),
             type(uint256).max
         );
@@ -191,34 +196,42 @@ contract sUSDeExchangeTest is Test {
         assertEq(exchange.COLLATERAL(), address(collateral), "!collateral");
         assertEq(exchange.UNDERLYING(), address(underlying), "!underlying");
         assertEq(exchange.base(), address(bridge), "!base");
+        assertFalse(exchange.deposit(), "!deposit");
+        assertFalse(exchange.redeem(), "!redeem");
     }
 
     function test_setters_onlyManagement() public {
         vm.prank(stranger);
         vm.expectRevert("!management");
-        exchange.setMint(true);
+        exchange.setDeposit(true);
+
+        vm.prank(stranger);
+        vm.expectRevert("!management");
+        exchange.setRedeem(true);
 
         vm.prank(stranger);
         vm.expectRevert("!management");
         exchange.setBase(address(asset));
 
-        vm.prank(stranger);
-        vm.expectRevert("!management");
-        exchange.setMinAmountToSell(1e18);
-
-        exchange.setMint(true);
+        exchange.setDeposit(true);
+        exchange.setDeposit(false);
+        exchange.setRedeem(true);
         exchange.setBase(address(asset));
-        exchange.setMinAmountToSell(1e18);
 
-        assertTrue(exchange.mint(), "!mint");
+        assertFalse(exchange.deposit(), "!deposit");
+        assertTrue(exchange.redeem(), "!redeem");
         assertEq(exchange.base(), address(asset), "!base");
         assertEq(exchange.minAmountToSell(), 1e18, "!min");
     }
 
-    function test_exchange_assetToCollateral_usesDepositWhenMintEnabled()
-        public
-    {
-        exchange.setMint(true);
+    function _depositUnderlyingForStrategy(uint256 amount) internal {
+        exchange.setDeposit(true);
+        underlying.mint(address(strategy), amount);
+        strategy.swap(address(underlying), address(collateral), amount, 0);
+    }
+
+    function test_exchange_assetToCollateral_usesDepositWhenEnabled() public {
+        exchange.setDeposit(true);
         assetBridgeDex.setRate0To1(0.9e18);
         underlyingBridgeDex.setRate1To0(0.8e18);
 
@@ -237,6 +250,35 @@ contract sUSDeExchangeTest is Test {
         assertEq(
             underlyingBridgeDex.swapCalls(),
             1,
+            "!underlying bridge calls"
+        );
+        assertEq(
+            collateralBridgeDex.swapCalls(),
+            0,
+            "!collateral bridge calls"
+        );
+    }
+
+    function test_exchange_underlyingToCollateral_usesDepositWhenEnabled()
+        public
+    {
+        exchange.setDeposit(true);
+
+        underlying.mint(address(strategy), 100e18);
+
+        uint256 amountOut = strategy.swap(
+            address(underlying),
+            address(collateral),
+            100e18,
+            0
+        );
+
+        assertEq(amountOut, 100e18, "!amountOut");
+        assertEq(collateral.balanceOf(address(strategy)), 100e18, "!shares");
+        assertEq(assetBridgeDex.swapCalls(), 0, "!asset bridge calls");
+        assertEq(
+            underlyingBridgeDex.swapCalls(),
+            0,
             "!underlying bridge calls"
         );
         assertEq(
@@ -277,7 +319,6 @@ contract sUSDeExchangeTest is Test {
     }
 
     function test_exchange_collateralToAsset_usesMarketLiquidity() public {
-        exchange.setMint(true);
         collateralBridgeDex.setRate0To1(0.5e18);
         assetBridgeDex.setRate1To0(0.8e18);
 
@@ -305,8 +346,69 @@ contract sUSDeExchangeTest is Test {
         );
     }
 
-    function test_exchange_mintPathRespectsFinalMinAmountOut() public {
-        exchange.setMint(true);
+    function test_exchange_collateralToAsset_usesRedeemWhenEnabled() public {
+        exchange.setRedeem(true);
+        underlyingBridgeDex.setRate0To1(0.5e18);
+        assetBridgeDex.setRate1To0(0.8e18);
+
+        _depositUnderlyingForStrategy(100e18);
+
+        uint256 amountOut = strategy.swap(
+            address(collateral),
+            address(asset),
+            100e18,
+            0
+        );
+
+        assertEq(amountOut, 40e18, "!amountOut");
+        assertEq(asset.balanceOf(address(strategy)), 40e18, "!assetOut");
+        assertEq(assetBridgeDex.swapCalls(), 1, "!asset bridge calls");
+        assertEq(
+            underlyingBridgeDex.swapCalls(),
+            1,
+            "!underlying bridge calls"
+        );
+        assertEq(
+            collateralBridgeDex.swapCalls(),
+            0,
+            "!collateral bridge calls"
+        );
+    }
+
+    function test_exchange_collateralToUnderlying_usesRedeemWhenEnabled()
+        public
+    {
+        exchange.setRedeem(true);
+        _depositUnderlyingForStrategy(100e18);
+
+        uint256 amountOut = strategy.swap(
+            address(collateral),
+            address(underlying),
+            100e18,
+            0
+        );
+
+        assertEq(amountOut, 100e18, "!amountOut");
+        assertEq(
+            underlying.balanceOf(address(strategy)),
+            100e18,
+            "!underlying"
+        );
+        assertEq(assetBridgeDex.swapCalls(), 0, "!asset bridge calls");
+        assertEq(
+            underlyingBridgeDex.swapCalls(),
+            0,
+            "!underlying bridge calls"
+        );
+        assertEq(
+            collateralBridgeDex.swapCalls(),
+            0,
+            "!collateral bridge calls"
+        );
+    }
+
+    function test_exchange_depositPathRespectsFinalMinAmountOut() public {
+        exchange.setDeposit(true);
         assetBridgeDex.setRate0To1(0.9e18);
         underlyingBridgeDex.setRate1To0(0.8e18);
 
@@ -314,5 +416,16 @@ contract sUSDeExchangeTest is Test {
 
         vm.expectRevert("!amountOut");
         strategy.swap(address(asset), address(collateral), 100e18, 73e18);
+    }
+
+    function test_exchange_redeemPathRespectsFinalMinAmountOut() public {
+        exchange.setRedeem(true);
+        underlyingBridgeDex.setRate0To1(0.5e18);
+        assetBridgeDex.setRate1To0(0.8e18);
+
+        _depositUnderlyingForStrategy(100e18);
+
+        vm.expectRevert(bytes("!min"));
+        strategy.swap(address(collateral), address(asset), 100e18, 41e18);
     }
 }
