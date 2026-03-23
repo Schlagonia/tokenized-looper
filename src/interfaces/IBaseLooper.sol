@@ -12,6 +12,10 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function exchange() external view returns (address);
 
+    function swapAuction() external view returns (address);
+
+    function swapMode() external view returns (uint8);
+
     /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
     function targetLeverageRatio() external view returns (uint256);
 
@@ -59,6 +63,10 @@ interface IBaseLooper is IBaseHealthCheck {
     function setMaxAmountToSwap(uint256 _maxAmountToSwap) external;
 
     function setExchange(address _exchange) external;
+
+    function setSwapAuction(address _swapAuction) external;
+
+    function setSwapMode(uint8 _swapMode) external;
 
     function estimatedTotalAssets() external view returns (uint256);
 

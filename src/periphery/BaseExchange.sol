@@ -61,6 +61,22 @@ abstract contract BaseExchange is IExchange {
         ERC20(to).safeTransfer(strategy, amountOut);
     }
 
+    function exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        bytes calldata data
+    ) external onlyStrategy returns (uint256 amountOut) {
+        if (amountIn == 0) return 0;
+
+        ERC20(from).safeTransferFrom(strategy, address(this), amountIn);
+        amountOut = _exchange(from, to, amountIn, amountOutMin, data);
+        require(amountOut >= amountOutMin, "!amountOut");
+
+        ERC20(to).safeTransfer(strategy, amountOut);
+    }
+
     function sweep(address token, uint256 amount) external onlyGovernance {
         require(token != address(0), "!token");
 
@@ -80,4 +96,14 @@ abstract contract BaseExchange is IExchange {
         uint256 amountIn,
         uint256 amountOutMin
     ) internal virtual returns (uint256 amountOut);
+
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        bytes memory
+    ) internal virtual returns (uint256 amountOut) {
+        return _exchange(from, to, amountIn, amountOutMin);
+    }
 }
