@@ -341,7 +341,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         if (_isSupplyPaused() || _isBorrowPaused()) return 0;
 
-        if (targetLeverageRatio <= WAD) return 0;
+        if (targetLeverageRatio < WAD) return 0;
 
         uint256 _depositLimit = depositLimit;
         if (_depositLimit == type(uint256).max) {
