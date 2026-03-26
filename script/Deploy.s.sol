@@ -415,11 +415,12 @@ contract Deploy is Script {
     }
 
     function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
-        return address(
+        address looper = address(
             new InfinifiMorphoLooper(
                 cfg.asset, cfg.name, cfg.collateralToken, cfg.morpho, Id.wrap(cfg.marketId), LOOPER_GOVERNANCE
             )
         );
+        return looper;
     }
 
     function deployLST(LSTConfig memory cfg) internal returns (address) {
@@ -430,12 +431,10 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, 100);
-
         return address(looper);
     }
 
@@ -447,11 +446,9 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
-
         return address(looper);
     }
 
@@ -464,13 +461,11 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
         exchange.setV4Pool(cfg.base.asset, cfg.base.collateralToken, cfg.assetCollateralV4PoolId);
-
         return address(looper);
     }
 
@@ -482,13 +477,11 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
         exchange.setFluidDex(cfg.base.asset, cfg.base.collateralToken, cfg.fluidDex);
-
         return address(looper);
     }
 
@@ -502,10 +495,10 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
+        looper.setPendleMarket(cfg.pendleMarket);
         return address(looper);
     }
 
@@ -519,10 +512,10 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
+        looper.setPendleMarket(cfg.pendleMarket);
         return address(looper);
     }
 
@@ -534,14 +527,12 @@ contract Deploy is Script {
             cfg.collateralToken,
             cfg.morpho,
             Id.wrap(cfg.marketId),
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
 
         uint24 uniFee = uint24(vm.envOr("MORPHO_LBTC_WBTC_UNI_FEE", uint256(500)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
-
         return address(looper);
     }
 
@@ -554,14 +545,12 @@ contract Deploy is Script {
             cfg.addressesProvider,
             cfg.morpho,
             cfg.eModeCategoryId,
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
 
         uint24 uniFee = uint24(vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
-
         return address(looper);
     }
 
@@ -574,11 +563,9 @@ contract Deploy is Script {
             cfg.addressesProvider,
             cfg.morpho,
             cfg.eModeCategoryId,
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
-
         return address(looper);
     }
 
@@ -592,7 +579,6 @@ contract Deploy is Script {
             cfg.base.addressesProvider,
             cfg.base.morpho,
             cfg.base.eModeCategoryId,
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
@@ -600,7 +586,6 @@ contract Deploy is Script {
         exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
         exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
         exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
-
         return address(looper);
     }
 
@@ -614,7 +599,6 @@ contract Deploy is Script {
             cfg.base.addressesProvider,
             cfg.base.morpho,
             cfg.base.eModeCategoryId,
-            address(exchange),
             LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
@@ -626,7 +610,6 @@ contract Deploy is Script {
         if (uniFee != 0) {
             exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, uniFee);
         }
-
         return address(looper);
     }
 

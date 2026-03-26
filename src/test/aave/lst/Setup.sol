@@ -70,7 +70,6 @@ contract SetupAaveLST is Setup {
             AAVE_ADDRESSES_PROVIDER,
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
-            address(exchange),
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
@@ -85,7 +84,6 @@ contract SetupAaveLST is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);

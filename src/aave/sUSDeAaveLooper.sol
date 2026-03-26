@@ -26,7 +26,6 @@ contract sUSDeAaveLooper is AaveLooper {
         address _addressesProvider,
         address _morpho,
         uint8 _eModeCategoryId,
-        address _exchange,
         address _governance
     )
         AaveLooper(
@@ -36,12 +35,9 @@ contract sUSDeAaveLooper is AaveLooper {
             _addressesProvider,
             _morpho,
             _eModeCategoryId,
-            _exchange,
             _governance
         )
     {}
-
-    receive() external payable {}
 
     function estimatedTotalAssets() public view override returns (uint256) {
         return
@@ -54,7 +50,7 @@ contract sUSDeAaveLooper is AaveLooper {
         override
         returns (uint256 _totalAssets)
     {
-        require(pendingRedemptions == 0, "pending redemptions");
+        require(pendingRedemptions == 0, "pending");
         return super._harvestAndReport();
     }
 
@@ -65,7 +61,7 @@ contract sUSDeAaveLooper is AaveLooper {
         uint256 _shares
     ) external onlyEmergencyAuthorized returns (uint256 assets) {
         // New Cooldowns will override existing ones so dont allow till cleared
-        require(pendingRedemptions == 0, "pending redemptions");
+        require(pendingRedemptions == 0, "pending");
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
         assets = IsUSDe(address(collateralToken)).cooldownShares(_shares);

@@ -14,14 +14,13 @@ import {MorphoBalancesLib} from "../libraries/morpho/periphery/MorphoBalancesLib
 import {MorphoLib} from "../libraries/morpho/periphery/MorphoLib.sol";
 import {SharesMathLib} from "../libraries/morpho/SharesMathLib.sol";
 import {IMerklDistributor} from "../interfaces/IMerkleDistributor.sol";
-import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
  * @title MorphoLooper
  * @notice Morpho Blue specific looper implementation.
  *         Exchange conversion logic is inherited from BaseLooper.
  */
-contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
+contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback {
     using SafeERC20 for ERC20;
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
@@ -35,6 +34,8 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
 
     IMorpho public immutable MORPHO;
 
+    address public pendleMarket;
+
     bool internal isFlashloanActive;
 
     MarketParams internal marketParams;
@@ -45,21 +46,22 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         address _collateralToken,
         address _morpho,
         Id _marketId,
-        address _exchange,
         address _governance
-    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
+    ) BaseLooper(_asset, _name, _collateralToken, _governance) {
         MORPHO = IMorpho(_morpho);
         marketId = _marketId;
 
         marketParams = MORPHO.idToMarketParams(_marketId);
-        require(marketParams.loanToken == _asset, "!loanToken");
-        require(
-            marketParams.collateralToken == _collateralToken,
-            "!collateral"
-        );
+        require(marketParams.loanToken == _asset, "!loan");
+        require(marketParams.collateralToken == _collateralToken, "!col");
 
         ERC20(_asset).forceApprove(_morpho, type(uint256).max);
         ERC20(_collateralToken).forceApprove(_morpho, type(uint256).max);
+    }
+
+    function setPendleMarket(address _pendleMarket) external {
+        require(msg.sender == GOVERNANCE, "!gov");
+        pendleMarket = _pendleMarket;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -84,7 +86,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         bytes calldata data
     ) external override {
         require(msg.sender == address(MORPHO), "!morpho");
-        require(isFlashloanActive, "flashloan active");
+        require(isFlashloanActive, "fl");
         // Delegate to parent's generic handler
         _onFlashloanReceived(assets, data);
 
@@ -291,18 +293,4 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     }
 
     function _claimAndSellRewards() internal virtual override {}
-
-    function setAuction(address _auction) external onlyManagement {
-        _setAuction(_auction);
-    }
-
-    function setUseAuction(bool _useAuction) external onlyManagement {
-        _setUseAuction(_useAuction);
-    }
-
-    function kickAuction(
-        address _token
-    ) external override onlyKeepers returns (uint256) {
-        return _kickAuction(_token);
-    }
 }

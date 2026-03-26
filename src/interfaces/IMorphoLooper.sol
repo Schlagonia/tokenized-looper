@@ -15,10 +15,4 @@ interface IMorphoLooper is IBaseLooper {
         uint256[] calldata amounts,
         bytes32[][] calldata proofs
     ) external;
-
-    function setAuction(address _auction) external;
-
-    function setUseAuction(bool _useAuction) external;
-
-    function kickAuction(address _token) external returns (uint256);
 }

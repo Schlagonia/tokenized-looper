@@ -9,13 +9,13 @@ interface IStrategyInterface is IStrategy, IBaseLooper {
         uint256 assets,
         address receiver,
         address owner,
-        bytes[] calldata swapData
+        bytes calldata swapData
     ) external returns (uint256 shares);
 
     function redeem(
         uint256 shares,
         address receiver,
         address owner,
-        bytes[] calldata swapData
+        bytes calldata swapData
     ) external returns (uint256 assets);
 }

@@ -41,25 +41,6 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         looper.zeroPendingRedemptions();
     }
 
-    function test_setExchange_onlyGovernance() public {
-        SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
-            payable(address(strategy))
-        );
-        SyrupExchange newExchange = new SyrupExchange(
-            WETH,
-            USDT,
-            SYRUP_USDT,
-            SYRUP_USDT_ROUTER
-        );
-
-        vm.prank(user);
-        vm.expectRevert("!governance");
-        looper.setExchange(address(newExchange));
-
-        vm.prank(management);
-        looper.setExchange(address(newExchange));
-    }
-
     function test_exchange_setV4Pool_onlyManagement() public {
         SyrupExchange syrupExchange = exchange;
 

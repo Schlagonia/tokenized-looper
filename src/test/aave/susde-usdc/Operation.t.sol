@@ -7,7 +7,6 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAavesUSDeUSDC} from "./Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 
 contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     uint256 internal constant SUSDE_UNWIND_DUST_BPS = 5; // 0.05%
@@ -48,23 +47,6 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         assertEq(exchange.base(), USDT, "!base");
         assertTrue(exchange.deposit(), "!deposit");
         assertFalse(exchange.redeem(), "!redeem");
-    }
-
-    function test_setExchange_onlyGovernance() public {
-        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-        ERC4626FluidExchange newExchange = new ERC4626FluidExchange(
-            WETH,
-            USDT,
-            USDC,
-            SUSDE
-        );
-
-        vm.prank(user);
-        vm.expectRevert("!governance");
-        looper.setExchange(address(newExchange));
-
-        vm.prank(management);
-        looper.setExchange(address(newExchange));
     }
 
     function test_exchange_setVaultRoutes_onlyManagement() public {

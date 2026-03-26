@@ -13,14 +13,13 @@ import {IRewardsController} from "../interfaces/aave/IRewardsController.sol";
 import {IAToken} from "../interfaces/aave/IAToken.sol";
 import {IMorpho} from "../interfaces/morpho/IMorpho.sol";
 import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCallback.sol";
-import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
  * @title AaveLooper
  * @notice Aave V3 specific looper implementation.
  *         Exchange conversion logic is inherited from BaseLooper.
  */
-contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
+contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback {
     using SafeERC20 for ERC20;
 
     /// @notice Interest rate mode: 2 = variable rate
@@ -66,9 +65,8 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         address _addressesProvider,
         address _morpho,
         uint8 _eModeCategoryId,
-        address _exchange,
         address _governance
-    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
+    ) BaseLooper(_asset, _name, _collateralToken, _governance) {
         MORPHO = IMorpho(_morpho);
         POOL = IPoolAddressesProvider(_addressesProvider).getPool();
         DATA_PROVIDER = IPoolDataProvider(
@@ -106,6 +104,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         ERC20(_collateralToken).forceApprove(POOL, type(uint256).max);
         // Approve Morpho for flashloan repayment
         ERC20(_asset).forceApprove(_morpho, type(uint256).max);
+        ERC20(_collateralToken).forceApprove(_morpho, type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -130,7 +129,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         bytes calldata data
     ) external override {
         require(msg.sender == address(MORPHO), "!morpho");
-        require(isFlashloanActive, "!flashloan active");
+        require(isFlashloanActive, "!fl");
 
         _onFlashloanReceived(assets, data);
     }
@@ -305,7 +304,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
             liquidationThreshold = IPool(POOL)
                 .getEModeCategoryData(uint8(userEModeCategory))
                 .liquidationThreshold;
-            require(liquidationThreshold != 0, "bad emode");
+            require(liquidationThreshold != 0, "emode");
         } else {
             (, , liquidationThreshold, , , , , , , ) = DATA_PROVIDER
                 .getReserveConfigurationData(collateralToken);
@@ -343,22 +342,8 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         REWARDS_CONTROLLER.claimAllRewardsToSelf(assets);
     }
 
-    function setAuction(address _auction) external onlyManagement {
-        _setAuction(_auction);
-    }
-
-    function setUseAuction(bool _useAuction) external onlyManagement {
-        _setUseAuction(_useAuction);
-    }
-
     function setEModeCategory(uint8 _eModeCategoryId) external onlyManagement {
         _setEModeCategory(_eModeCategoryId);
-    }
-
-    function kickAuction(
-        address _token
-    ) external override onlyKeepers returns (uint256) {
-        return _kickAuction(_token);
     }
 
     function _setEModeCategory(uint8 _eModeCategoryId) internal {

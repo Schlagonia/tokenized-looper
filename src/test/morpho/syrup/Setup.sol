@@ -76,7 +76,6 @@ contract SetupSyrupMorpho is Setup {
             SYRUP_USDC,
             MORPHO,
             SYRUP_USDC_MARKET_ID,
-            address(exchange),
             management
         );
 

@@ -24,7 +24,6 @@ contract SyrupMorphoLooper is MorphoLooper {
         address _collateralToken,
         address _morpho,
         Id _marketId,
-        address _exchange,
         address _governance
     )
         MorphoLooper(
@@ -33,7 +32,6 @@ contract SyrupMorphoLooper is MorphoLooper {
             _collateralToken,
             _morpho,
             _marketId,
-            _exchange,
             _governance
         )
     {}
@@ -55,7 +53,7 @@ contract SyrupMorphoLooper is MorphoLooper {
         returns (uint256 _totalAssets)
     {
         // Don't allow reports since we cannot guarantee the pending redemption shares are filled or not
-        require(pendingRedemptionShares == 0, "pending redemptions");
+        require(pendingRedemptionShares == 0, "pending");
         return super._harvestAndReport();
     }
 

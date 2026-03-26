@@ -64,7 +64,6 @@ contract SetupSUSDSUSDT is Setup {
             SUSDS,
             MORPHO,
             SUSDS_USDT_MARKET_ID,
-            address(exchange),
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
@@ -74,7 +73,6 @@ contract SetupSUSDSUSDT is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);

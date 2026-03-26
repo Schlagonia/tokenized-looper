@@ -23,7 +23,6 @@ contract SyrupUSDTAaveLooper is AaveLooper {
         address _addressesProvider,
         address _morpho,
         uint8 _eModeCategoryId,
-        address _exchange,
         address _governance
     )
         AaveLooper(
@@ -33,7 +32,6 @@ contract SyrupUSDTAaveLooper is AaveLooper {
             _addressesProvider,
             _morpho,
             _eModeCategoryId,
-            _exchange,
             _governance
         )
     {}

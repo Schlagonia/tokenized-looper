@@ -65,7 +65,6 @@ contract SetupLST is Setup {
                     WSTETH,
                     MORPHO,
                     LST_MARKET_ID,
-                    address(exchange),
                     management
                 )
             )
@@ -76,7 +75,6 @@ contract SetupLST is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);

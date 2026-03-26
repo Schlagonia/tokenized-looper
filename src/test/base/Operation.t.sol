@@ -1238,6 +1238,51 @@ abstract contract OperationTest is Setup {
         assertEq(strategy.slippage(), MAX_BPS - 1, "!slippage should be max");
     }
 
+    function test_setAuctionStepDecayRate() public {
+        assertEq(
+            strategy.auctionStepDecayRate(),
+            1,
+            "!default auctionStepDecayRate"
+        );
+
+        vm.prank(management);
+        strategy.setAuctionStepDecayRate(25);
+        assertEq(
+            strategy.auctionStepDecayRate(),
+            25,
+            "!auctionStepDecayRate should update"
+        );
+    }
+
+    function test_setAuctionStepDecayRate_onlyManagement() public {
+        vm.prank(user);
+        vm.expectRevert("!management");
+        strategy.setAuctionStepDecayRate(2);
+
+        vm.prank(keeper);
+        vm.expectRevert("!management");
+        strategy.setAuctionStepDecayRate(2);
+    }
+
+    function test_setAuctionStepDecayRate_boundsValidation() public {
+        vm.startPrank(management);
+
+        vm.expectRevert("decay");
+        strategy.setAuctionStepDecayRate(0);
+
+        strategy.setAuctionStepDecayRate(9_999);
+        assertEq(
+            strategy.auctionStepDecayRate(),
+            9_999,
+            "!auctionStepDecayRate should be 9_999"
+        );
+
+        vm.expectRevert("decay");
+        strategy.setAuctionStepDecayRate(10_000);
+
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                     REPORT BUFFER TESTS
     //////////////////////////////////////////////////////////////*/

@@ -262,20 +262,6 @@ contract StrategyAprOracle is AprOracleBase {
             pendleMarket = _readAddress(_strategy, "PENDLE_MARKET()");
         }
 
-        // Refactored path: strategy uses an exchange contract that exposes market metadata.
-        if (pendleMarket == address(0)) {
-            address strategyExchange = IBaseLooper(_strategy).exchange();
-            if (strategyExchange != address(0)) {
-                pendleMarket = _readAddress(strategyExchange, "pendleMarket()");
-                if (pendleMarket == address(0)) {
-                    pendleMarket = _readAddress(
-                        strategyExchange,
-                        "PENDLE_MARKET()"
-                    );
-                }
-            }
-        }
-
         isPt = pendleMarket != address(0);
     }
 

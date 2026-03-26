@@ -78,7 +78,6 @@ contract SetupSyrupUsdcArbMorpho is Setup {
             ARB_SYRUP_USDC,
             ARB_MORPHO,
             SYRUP_USDC_MARKET_ID,
-            address(exchange),
             management
         );
 

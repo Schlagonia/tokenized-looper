@@ -80,7 +80,6 @@ contract SetupPT is Setup {
                     PT_TOKEN, // PT as collateral
                     MORPHO,
                     PT_MARKET_ID,
-                    address(exchange),
                     management
                 )
             )
@@ -91,6 +90,7 @@ contract SetupPT is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
+        MorphoLooper(address(_strategy)).setPendleMarket(PENDLE_MARKET);
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);

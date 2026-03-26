@@ -39,7 +39,6 @@ contract InfinifiMorphoLooper is MorphoLooper {
             _collateralToken,
             _morpho,
             _marketId,
-            address(0),
             _governance
         )
     {
@@ -56,37 +55,21 @@ contract InfinifiMorphoLooper is MorphoLooper {
                             CONVERSIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Convert USDC to sIUSD (staked iUSD) via Infinifi Gateway
-    /// @dev Uses gateway.mintAndStake to atomically mint iUSD from USDC and stake it to sIUSD.
-    ///      The amountOutMin parameter is unused since Infinifi provides 1:1 minting.
-    /// @param amount The amount of USDC to convert
-    /// @return The amount of sIUSD received
-    function _convertAssetToCollateral(
+    function _executeSwap(
+        address from,
+        address to,
         uint256 amount,
-        uint256
+        uint256 amountOutMin,
+        bytes memory swapData
     ) internal override returns (uint256) {
-        if (amount == 0) return 0;
-        // Gateway mints iUSD and stakes directly to sIUSD for this contract.
-        uint256 collateralBalance = balanceOfCollateralToken();
-        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
-        return balanceOfCollateralToken() - collateralBalance;
-    }
-
-    /// @notice Convert sIUSD (staked iUSD) back to USDC via Infinifi Gateway
-    /// @dev First unstakes sIUSD to iUSD, then redeems iUSD for USDC via the gateway.
-    /// @param amount The amount of sIUSD to convert
-    /// @param amountOutMin The minimum amount of USDC to receive (slippage protection)
-    /// @return The amount of USDC received
-    function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
-    ) internal override returns (uint256) {
+        if (from != collateralToken || to != address(asset)) {
+            return super._executeSwap(from, to, amount, amountOutMin, swapData);
+        }
         if (amount == 0) return 0;
         uint256 iusdBalance = IInfiniFiGatewayV1(GATEWAY).unstake(
             address(this),
             amount
         );
-        // Gateway handles unstake + redemption back to USDC.
         return
             IInfiniFiGatewayV1(GATEWAY).redeem(
                 address(this),

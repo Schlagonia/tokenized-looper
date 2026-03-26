@@ -86,7 +86,6 @@ contract SetupAaveSyrupUSDT is Setup {
             AAVE_ADDRESSES_PROVIDER,
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
-            address(exchange),
             management
         );
 

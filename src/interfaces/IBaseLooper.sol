@@ -10,12 +10,6 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function GOVERNANCE() external view returns (address);
 
-    function exchange() external view returns (address);
-
-    function swapAuction() external view returns (address);
-
-    function swapMode() external view returns (uint8);
-
     /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
     function targetLeverageRatio() external view returns (uint256);
 
@@ -32,6 +26,8 @@ interface IBaseLooper is IBaseHealthCheck {
     function minTendInterval() external view returns (uint256);
 
     function slippage() external view returns (uint64);
+
+    function auctionStepDecayRate() external view returns (uint64);
 
     function reportBuffer() external view returns (uint256);
 
@@ -54,6 +50,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setSlippage(uint256 _slippage) external;
 
+    function setAuctionStepDecayRate(uint256 _auctionStepDecayRate) external;
+
     function setReportBuffer(uint256 _reportBuffer) external;
 
     function setMinAmountToBorrow(uint256 _minAmountToBorrow) external;
@@ -62,13 +60,19 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setMaxAmountToSwap(uint256 _maxAmountToSwap) external;
 
-    function setExchange(address _exchange) external;
-
-    function setSwapAuction(address _swapAuction) external;
-
-    function setSwapMode(uint8 _swapMode) external;
-
     function estimatedTotalAssets() external view returns (uint256);
+
+    function getAmountNeeded(
+        address _from,
+        uint256 _amountToTake
+    ) external view returns (uint256);
+
+    function take(
+        address _from,
+        uint256 _maxAmount,
+        address _takerReceiver,
+        bytes calldata _data
+    ) external returns (uint256);
 
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() external view returns (uint256);

@@ -76,7 +76,6 @@ contract SetupAavesUSDeUSDC is Setup {
             AAVE_ADDRESSES_PROVIDER,
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
-            address(exchange),
             management
         );
 
@@ -86,7 +85,6 @@ contract SetupAavesUSDeUSDC is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-
         exchange.setDeposit(true);
         exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         exchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
