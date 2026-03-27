@@ -35,8 +35,8 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string public DEPLOY_CONFIG = "SYRUP_USDC_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_WSTETH_WETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    string public DEPLOY_CONFIG = "AAVE_SUSDE_USDC_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_SUSDE_USDE_MAINNET, AAVE_WSTETH_WETH_MAINNET, AAVE_WSTETH_ETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev Global looper governance used by all looper deployments in this script run.
@@ -128,6 +128,7 @@ contract Deploy is Script {
     address constant USDT_MAINNET = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address constant USDE_MAINNET = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
     address constant SUSDE_MAINNET = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
+    address constant SYRUP_USDT_MAINNET = 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D;
 
     // Mainnet Fluid DEX pools
     address constant FLUID_USDC_USDT_MAINNET = 0x667701e51B4D1Ca244F17C78F7aB8744B4C99F9B;
@@ -212,7 +213,7 @@ contract Deploy is Script {
             base: AaveConfig({
                 asset: 0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
                 name: "syrupUSDT Aave Looper",
-                collateralToken: 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D, // syrupUSDT
+                collateralToken: SYRUP_USDT_MAINNET, // syrupUSDT
                 addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
                 morpho: MORPHO_MAINNET,
                 eModeCategoryId: 0,
@@ -241,6 +242,48 @@ contract Deploy is Script {
             underlyingToken: USDE_MAINNET,
             assetBaseFluidDex: FLUID_USDC_USDT_MAINNET,
             underlyingBaseFluidDex: FLUID_USDE_USDT_MAINNET,
+            collateralBaseFluidDex: FLUID_SUSDE_USDT_MAINNET
+        });
+    }
+
+    // ===== AAVE sUSDe/USDT MAINNET =====
+    function getAaveSUSDeUSDTMainnet() internal pure returns (AaveFluid4626Config memory) {
+        return AaveFluid4626Config({
+            base: AaveConfig({
+                asset: USDT_MAINNET,
+                name: "sUSDe/USDT Aave Looper",
+                collateralToken: SUSDE_MAINNET,
+                addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+                morpho: MORPHO_MAINNET,
+                eModeCategoryId: 2,
+                weth: WETH_MAINNET,
+                uniFee: 0
+            }),
+            baseToken: USDT_MAINNET,
+            underlyingToken: USDE_MAINNET,
+            assetBaseFluidDex: address(0),
+            underlyingBaseFluidDex: FLUID_USDE_USDT_MAINNET,
+            collateralBaseFluidDex: FLUID_SUSDE_USDT_MAINNET
+        });
+    }
+
+    // ===== AAVE sUSDe/USDe MAINNET =====
+    function getAaveSUSDeUSDeMainnet() internal pure returns (AaveFluid4626Config memory) {
+        return AaveFluid4626Config({
+            base: AaveConfig({
+                asset: USDE_MAINNET,
+                name: "sUSDe/USDe Aave Looper",
+                collateralToken: SUSDE_MAINNET,
+                addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+                morpho: MORPHO_MAINNET,
+                eModeCategoryId: 2,
+                weth: WETH_MAINNET,
+                uniFee: 0
+            }),
+            baseToken: USDT_MAINNET,
+            underlyingToken: USDE_MAINNET,
+            assetBaseFluidDex: FLUID_USDE_USDT_MAINNET,
+            underlyingBaseFluidDex: address(0),
             collateralBaseFluidDex: FLUID_SUSDE_USDT_MAINNET
         });
     }
@@ -382,6 +425,10 @@ contract Deploy is Script {
             deployed = deployAaveSyrup(getAaveSyrupUSDTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDC_MAINNET")) {
             deployed = deployAaveSUSDe(getAaveSUSDeUSDCMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDT_MAINNET")) {
+            deployed = deployAaveSUSDe(getAaveSUSDeUSDTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDE_MAINNET")) {
+            deployed = deployAaveSUSDe(getAaveSUSDeUSDeMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_WSTETH_WETH_MAINNET")) {
             deployed = deployAaveLST(getAaveWstETHWETHMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_ARB")) {
@@ -595,13 +642,27 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
-        exchange.setDeposit(true);
-        exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
-        exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
-        exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
+        _configureERC4626FluidExchange(exchange, address(looper), cfg);
 
         return address(looper);
+    }
+
+    function _configureERC4626FluidExchange(
+        ERC4626FluidExchange exchange,
+        address strategy,
+        AaveFluid4626Config memory cfg
+    ) internal {
+        exchange.setStrategy(strategy);
+        exchange.setDeposit(true);
+        if (cfg.assetBaseFluidDex != address(0) && cfg.base.asset != cfg.baseToken) {
+            exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
+        }
+
+        if (cfg.underlyingBaseFluidDex != address(0) && cfg.underlyingToken != cfg.base.asset) {
+            exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
+        }
+
+        exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
     }
 
     function deployAaveSyrup(AaveSyrupConfig memory cfg) internal returns (address) {

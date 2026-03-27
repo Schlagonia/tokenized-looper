@@ -110,6 +110,10 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         vm.expectRevert("!emergency authorized");
         looper.zeroPendingRedemptions();
 
+        vm.prank(user);
+        vm.expectRevert("!emergency authorized");
+        looper.convertUnderlyingToAsset(0);
+
         vm.prank(emergencyAdmin);
         looper.zeroPendingRedemptions();
     }
@@ -137,11 +141,11 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
 
         vm.prank(emergencyAdmin);
-        looper.initiateCooldown(looseShares);
+        uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertEq(
             looper.pendingRedemptions(),
-            looseShares,
+            cooldownAssets,
             "!pendingRedemptions"
         );
         assertEq(looper.balanceOfCollateralToken(), 0, "!looseShares cleared");
@@ -163,6 +167,51 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
             estimatedWithoutPending,
             "!pendingRedemptions not counted"
         );
+    }
+
+    function test_convertUnderlyingToAsset_afterCooldown_clampsAndClaimsUSDeToUSDC()
+        public
+    {
+        uint256 depositAmount = _baseTestAmount();
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
+
+        uint256 withdrawShares = looper.balanceOfCollateral() / 20;
+        assertGt(withdrawShares, 0, "!withdrawShares");
+
+        vm.prank(emergencyAdmin);
+        looper.manualWithdrawCollateral(withdrawShares);
+
+        uint256 looseShares = looper.balanceOfCollateralToken();
+        assertGt(looseShares, 0, "!looseShares");
+
+        vm.prank(emergencyAdmin);
+        uint256 cooldownAssets = looper.initiateCooldown(looseShares);
+
+        assertGt(cooldownAssets, 0, "!cooldownAssets");
+        assertEq(looper.pendingRedemptions(), cooldownAssets, "!pending");
+
+        skip(8 days);
+
+        vm.prank(emergencyAdmin);
+        looper.claimCooldown();
+
+        uint256 underlyingBalance = looper.balanceOfUnderlying();
+        uint256 assetBefore = looper.balanceOfAsset();
+
+        assertGt(underlyingBalance, 0, "!underlying");
+        assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
+
+        vm.prank(emergencyAdmin);
+        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+
+        assertGt(amountOut, 0, "!amountOut");
+        assertEq(looper.balanceOfUnderlying(), 0, "!underlying cleared");
+        assertEq(looper.balanceOfAsset(), assetBefore + amountOut, "!asset");
     }
 
     function test_exchange_sweep_onlyGovernance() public {

@@ -3,18 +3,21 @@ pragma solidity ^0.8.18;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
-import {AaveLooper} from "./AaveLooper.sol";
+import {AaveLooper, ERC20} from "./AaveLooper.sol";
 import {IsUSDe} from "../interfaces/IsUSDe.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
+
 /**
  * @title sUSDeAaveLooper
- * @notice Aave V3 looper that uses sUSDe as collateral to
- *         leverage loop against its underlying asset.
- *         It uses Uniswap V3 to swap the collateral to the underlying asset and back.
- * @dev Example: Use sUSDe as collateral, borrow USDe/USDC, swap to sUSDe, repeat.
+ * @notice Aave V3 looper that uses sUSDe as collateral to Leverage loop
+ * @dev Example: Use sUSDe as collateral, borrow USDT/USDC, swap to sUSDe, repeat.
  */
 contract sUSDeAaveLooper is AaveLooper {
     using SafeERC20 for *;
+
+    address public immutable UNDERLYING;
 
     /// @notice Shares queued for cooldowns.
     uint256 public pendingRedemptions;
@@ -39,14 +42,24 @@ contract sUSDeAaveLooper is AaveLooper {
             _exchange,
             _governance
         )
-    {}
+    {
+        UNDERLYING = IERC4626(address(collateralToken)).asset();
+    }
 
     receive() external payable {}
 
     function estimatedTotalAssets() public view override returns (uint256) {
         return
             super.estimatedTotalAssets() +
-            _collateralToAsset(pendingRedemptions);
+            _collateralToAsset(
+                IERC4626(address(collateralToken)).convertToShares(
+                    pendingRedemptions + balanceOfUnderlying()
+                )
+            );
+    }
+
+    function balanceOfUnderlying() public view returns (uint256) {
+        return ERC20(UNDERLYING).balanceOf(address(this));
     }
 
     function _harvestAndReport()
@@ -69,7 +82,7 @@ contract sUSDeAaveLooper is AaveLooper {
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
         assets = IsUSDe(address(collateralToken)).cooldownShares(_shares);
-        pendingRedemptions += _shares;
+        pendingRedemptions += assets;
     }
 
     /// @notice Claim cooldowned assets
@@ -82,5 +95,24 @@ contract sUSDeAaveLooper is AaveLooper {
     /// @dev Only may be called by governance.
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
         pendingRedemptions = 0;
+    }
+
+    function convertUnderlyingToAsset(
+        uint256 amount
+    ) public onlyEmergencyAuthorized returns (uint256) {
+        amount = Math.min(amount, balanceOfUnderlying());
+
+        ERC20(UNDERLYING).forceApprove(exchange, amount);
+
+        return
+            IExchange(exchange).exchange(
+                UNDERLYING,
+                address(asset),
+                amount,
+                _getAmountOut(
+                    IERC4626(address(collateralToken)).convertToShares(amount),
+                    false
+                )
+            );
     }
 }

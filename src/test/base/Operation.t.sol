@@ -479,14 +479,20 @@ abstract contract OperationTest is Setup {
                     AVAILABLE DEPOSIT LIMIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_availableDepositLimit_zeroWhenLeverageAtOrBelowOne() public {
+    function test_availableDepositLimit_zeroWhenLeverageBelowOne() public {
         // Set leverage ratio to exactly 1x (no leverage)
         vm.prank(management);
         strategy.setLeverageParams(1e18, 0.01e18, 5e18);
 
         // Available deposit limit should be 0 when targetLeverageRatio <= WAD
         uint256 limit = strategy.availableDepositLimit(user);
-        assertEq(limit, 0, "!limit should be 0 when leverage <= 1x");
+        assertGt(limit, 0, "!limit should be > 0 when leverage = 1x");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        limit = strategy.availableDepositLimit(user);
+        assertEq(limit, 0, "!limit should be 0 when leverage < 1x");
     }
 
     function test_availableDepositLimit_respectsTargetLeverageRatio(
