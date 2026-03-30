@@ -99,7 +99,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         ASSET_DECIMALS = ERC20(_asset).decimals();
 
         // Set E-Mode category for better capital efficiency on correlated assets
-        _setEModeCategory(_eModeCategoryId);
+        IPool(POOL).setUserEMode(_eModeCategoryId);
 
         // Approve pool for asset and collateral
         ERC20(_asset).forceApprove(POOL, type(uint256).max);
@@ -334,7 +334,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Claim all rewards from Aave incentives controller
-    function _claimAndSellRewards() internal virtual override {
+    function claimRewards() external virtual onlyKeepers {
         address[] memory assets = new address[](2);
         assets[0] = A_TOKEN;
         assets[1] = VARIABLE_DEBT_TOKEN;
@@ -342,6 +342,8 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         // Claim all rewards to this contract
         REWARDS_CONTROLLER.claimAllRewardsToSelf(assets);
     }
+
+    function _claimAndSellRewards() internal virtual override {}
 
     function setAuction(address _auction) external onlyManagement {
         _setAuction(_auction);
@@ -352,16 +354,13 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     }
 
     function setEModeCategory(uint8 _eModeCategoryId) external onlyManagement {
-        _setEModeCategory(_eModeCategoryId);
+        IPool(POOL).setUserEMode(_eModeCategoryId);
     }
 
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
+        require(_token != address(asset) && _token != A_TOKEN, "!token");
         return _kickAuction(_token);
-    }
-
-    function _setEModeCategory(uint8 _eModeCategoryId) internal {
-        IPool(POOL).setUserEMode(_eModeCategoryId);
     }
 }

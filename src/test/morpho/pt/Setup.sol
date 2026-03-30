@@ -11,27 +11,24 @@ import {PTExchange} from "../../../periphery/PTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
-/// @notice Setup for PT (Pendle PT/USDC) Morpho Looper tests
+/// @notice Setup for PT iUSD/USDC Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupPT is Setup {
     PTExchange public exchange;
 
-    // PT-siUSD/USDC market
+    // PT-iUSD/USDC market
     Id public constant PT_MARKET_ID =
         Id.wrap(
-            //0x802ec6e878dc9fe6905b8a0a18962dcca10440a87fa2242fbf4a0461c7b0c789 // cUSD market
-            0xaac3ffcdf8a75919657e789fa72ab742a7bbfdf5bb0b87e4bbeb3c29bbbbb05c // siUSD market
+            0xdf034d0351a4c0af947e1a37ecd5ccbce60d72eac90de6fcad48c74e2869d14c
         );
 
     // PT token (collateral)
     address public constant PT_TOKEN =
-        //0x545A490f9ab534AdF409A2E682bc4098f49952e3; // cUSD token
-        0xaF76B3AF3477E4a2cD0B7F80c3152108c19a25e5; // siUSD token
+        0x5DbF246B37E1b9ac5D08bb38233d71322AE7D166; // PT-iUSD-25JUN2026
 
     // Pendle market for PT swaps
     address public constant PENDLE_MARKET =
-        //0x307c15f808914Df5a5DbE17E5608f84953fFa023; //  cUSD market
-        0x564f279B0226f60a40f1E4b8C596Feb87c383BFA; // siUSD market
+        0x517e54f58B5c587726c577ABBcAb3E74aA51161E;
 
     address public PENDLE_TOKEN;
 
@@ -45,7 +42,7 @@ contract SetupPT is Setup {
         decimals = asset.decimals();
 
         // Fuzz amounts for 6 decimal token (USDC)
-        maxFuzzAmount = 10_000e6; // up to 10,000 USDC
+        maxFuzzAmount = 10e6; // keep generic lever fuzz dormant; live market is too thin
         minFuzzAmount = 10e6; // 100 USDC
 
         // Deploy strategy and set variables
@@ -76,7 +73,7 @@ contract SetupPT is Setup {
             address(
                 new MorphoLooper(
                     address(asset), // USDC
-                    "PT Morpho Looper",
+                    "PT iUSD Jun 25 Morpho Looper",
                     PT_TOKEN, // PT as collateral
                     MORPHO,
                     PT_MARKET_ID,
@@ -102,9 +99,6 @@ contract SetupPT is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
-        // Use Pendle's unbounded approximation range to avoid guess overflow.
-        exchange.setGuessMaxMultiplier(0);
-
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);
 
@@ -114,10 +108,10 @@ contract SetupPT is Setup {
     }
 
     /// @notice Override accrueYield - airdrop profit instead of skipping time
-    /// @dev The cUSD oracle becomes stale after time skip, so we simulate yield via airdrop
+    /// @dev PT price/oracle paths can get grumpy after large time skips, so we simulate yield via airdrop
     function accrueYield(uint256 _amount) public virtual override {
-        // Don't skip time - the cUSD oracle has staleness checks that will revert
-        // Instead, simulate yield by airdropping some profit
+        // Don't skip time. Pendle/Morpho pricing starts throwing chairs when the clock jumps.
+        // Simulate yield by airdropping some profit instead.
         airdrop(asset, address(strategy), _amount / 30);
     }
 }

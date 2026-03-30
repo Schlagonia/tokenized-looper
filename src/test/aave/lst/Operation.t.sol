@@ -228,4 +228,32 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
             "!lt should increase after emode set"
         );
     }
+
+    function test_claimRewards_onlyKeepers() public {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+
+        vm.prank(user);
+        vm.expectRevert("!keeper");
+        looper.claimRewards();
+    }
+
+    function test_claimRewards_keeperCanCall() public {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+
+        vm.prank(keeper);
+        looper.claimRewards();
+    }
+
+    function test_kickAuction_rejectsAssetAndAToken() public {
+        AaveLooper looper = AaveLooper(payable(address(strategy)));
+        address aToken = looper.A_TOKEN();
+
+        vm.prank(keeper);
+        vm.expectRevert("!token");
+        looper.kickAuction(address(asset));
+
+        vm.prank(keeper);
+        vm.expectRevert("!token");
+        looper.kickAuction(aToken);
+    }
 }

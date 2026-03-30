@@ -35,8 +35,8 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string public DEPLOY_CONFIG = "AAVE_SUSDE_USDC_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_SUSDE_USDE_MAINNET, AAVE_WSTETH_WETH_MAINNET, AAVE_WSTETH_ETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_SIUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    string public DEPLOY_CONFIG = "PT_IUSD_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_SUSDE_USDE_MAINNET, AAVE_WSTETH_WETH_MAINNET, AAVE_WSTETH_ETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_IUSD_MAINNET, PT_SUSDAI_ARB, LST_KATANA, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     /// @dev Global looper governance used by all looper deployments in this script run.
@@ -267,27 +267,6 @@ contract Deploy is Script {
         });
     }
 
-    // ===== AAVE sUSDe/USDe MAINNET =====
-    function getAaveSUSDeUSDeMainnet() internal pure returns (AaveFluid4626Config memory) {
-        return AaveFluid4626Config({
-            base: AaveConfig({
-                asset: USDE_MAINNET,
-                name: "sUSDe/USDe Aave Looper",
-                collateralToken: SUSDE_MAINNET,
-                addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
-                morpho: MORPHO_MAINNET,
-                eModeCategoryId: 2,
-                weth: WETH_MAINNET,
-                uniFee: 0
-            }),
-            baseToken: USDT_MAINNET,
-            underlyingToken: USDE_MAINNET,
-            assetBaseFluidDex: FLUID_USDE_USDT_MAINNET,
-            underlyingBaseFluidDex: address(0),
-            collateralBaseFluidDex: FLUID_SUSDE_USDT_MAINNET
-        });
-    }
-
     // ===== AAVE wstETH/WETH MAINNET =====
     function getAaveWstETHWETHMainnet() internal pure returns (AaveConfig memory) {
         return AaveConfig({
@@ -341,17 +320,17 @@ contract Deploy is Script {
         });
     }
 
-    // ===== PT siUSD MAINNET =====
-    function getPTsiUSDMainnet() internal pure returns (PTConfig memory) {
+    // ===== PT iUSD MAINNET =====
+    function getPTiUSDMainnet() internal pure returns (PTConfig memory) {
         return PTConfig({
             base: BaseConfig({
                 asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-                name: "PT siUSD March 25 Morpho Looper",
-                collateralToken: 0xaF76B3AF3477E4a2cD0B7F80c3152108c19a25e5, // PT-siUSD
+                name: "PT iUSD Jun 25 Morpho Looper",
+                collateralToken: 0x5DbF246B37E1b9ac5D08bb38233d71322AE7D166, // PT-iUSD-25JUN2026
                 morpho: MORPHO_MAINNET,
-                marketId: 0xaac3ffcdf8a75919657e789fa72ab742a7bbfdf5bb0b87e4bbeb3c29bbbbb05c
+                marketId: 0xdf034d0351a4c0af947e1a37ecd5ccbce60d72eac90de6fcad48c74e2869d14c
             }),
-            pendleMarket: 0x564f279B0226f60a40f1E4b8C596Feb87c383BFA,
+            pendleMarket: 0x517e54f58B5c587726c577ABBcAb3E74aA51161E,
             pendleToken: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 // USDC (same as asset)
         });
     }
@@ -404,7 +383,9 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = vm.envOr("DEPLOY_CONFIG", DEPLOY_CONFIG);
+        DEPLOY_CONFIG = "AAVE_SUSDE_USDT_MAINNET";
+        deploy();
+        DEPLOY_CONFIG = "AAVE_WSTETH_WETH_MAINNET";
         deploy();
     }
 
@@ -427,16 +408,14 @@ contract Deploy is Script {
             deployed = deployAaveSUSDe(getAaveSUSDeUSDCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDT_MAINNET")) {
             deployed = deployAaveSUSDe(getAaveSUSDeUSDTMainnet());
-        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SUSDE_USDE_MAINNET")) {
-            deployed = deployAaveSUSDe(getAaveSUSDeUSDeMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_WSTETH_WETH_MAINNET")) {
             deployed = deployAaveLST(getAaveWstETHWETHMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_ARB")) {
             deployed = deploySyrupArbitrum(getSyrupUSDCArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
             deployed = deployPT(getPTcUSDMainnet());
-        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SIUSD_MAINNET")) {
-            deployed = deployPT(getPTsiUSDMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_IUSD_MAINNET")) {
+            deployed = deployPT(getPTiUSDMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_SUSDAI_ARB")) {
             deployed = deploysUSDaiPT(getPTsUSDaiArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_KATANA")) {

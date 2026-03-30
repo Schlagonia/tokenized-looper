@@ -2,7 +2,6 @@
 pragma solidity ^0.8.18;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {AaveLooper} from "./AaveLooper.sol";
 import {ISteth, IQueue, IWETH, IwstETH} from "../interfaces/IStethInterfaces.sol";
@@ -54,11 +53,7 @@ contract LSTAaveLooper is AaveLooper {
         return super.estimatedTotalAssets() + pendingRedemptions;
     }
 
-    function _harvestAndReport()
-        internal
-        override
-        returns (uint256 _totalAssets)
-    {
+    function _harvestAndReport() internal override returns (uint256) {
         require(pendingRedemptions == 0, "pending redemptions");
         return super._harvestAndReport();
     }
@@ -68,39 +63,19 @@ contract LSTAaveLooper is AaveLooper {
     /// @return nftId Withdrawal ID number from the withdrawal request
     function initiateLSTWithdrawal(
         uint256 _amount
-    ) external onlyEmergencyAuthorized returns (uint256 nftId) {
-        _amount = Math.min(_amount, balanceOfCollateralToken());
+    ) external onlyEmergencyAuthorized returns (uint256) {
+        uint256 collateralBalance = balanceOfCollateralToken();
+        if (_amount > collateralBalance) _amount = collateralBalance;
         uint256 stETHAmount = IwstETH(address(collateralToken)).unwrap(_amount);
-
-        require(
-            stETHAmount > WITHDRAWAL_QUEUE.MIN_STETH_WITHDRAWAL_AMOUNT(),
-            "!minimum"
-        ); // minimum amount to withdraw
-        require(
-            stETHAmount <= WITHDRAWAL_QUEUE.MAX_STETH_WITHDRAWAL_AMOUNT(),
-            "!maximum"
-        ); // maximum amount to withdraw in one request
 
         pendingRedemptions += stETHAmount;
 
-        return _initiateLSTWithdrawal(stETHAmount)[0];
-    }
+        STETH.forceApprove(address(WITHDRAWAL_QUEUE), stETHAmount);
 
-    /// @notice Initiate stETH withdrawal through Lido queue for 1:1 redemption
-    /// @param _amount Amount of LST to queue for withdrawal
-    /// @return requestIds Array of NFT IDs we created via our withdrawal
-    function _initiateLSTWithdrawal(
-        uint256 _amount
-    ) internal returns (uint256[] memory requestIds) {
-        STETH.forceApprove(address(WITHDRAWAL_QUEUE), _amount);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = stETHAmount;
 
-        uint256[] memory _amounts = new uint256[](1);
-        _amounts[0] = _amount;
-
-        requestIds = WITHDRAWAL_QUEUE.requestWithdrawals(
-            _amounts,
-            address(this)
-        );
+        return WITHDRAWAL_QUEUE.requestWithdrawals(amounts, address(this))[0];
     }
 
     /// @notice Claim ETH from completed Lido withdrawal request
@@ -108,30 +83,23 @@ contract LSTAaveLooper is AaveLooper {
     /// @return _redeemedAmount Amount of LST redeemed
     function claimLSTWithdrawal(
         uint256 _claimId
-    ) external onlyEmergencyAuthorized returns (uint256 _redeemedAmount) {
-        _redeemedAmount = _claimLSTWithdrawal(_claimId);
-        pendingRedemptions = _redeemedAmount >= pendingRedemptions
-            ? 0
-            : pendingRedemptions - _redeemedAmount;
-    }
-
-    /// @notice Claim ETH from completed Lido withdrawal request
-    /// @param _claimId The claim ID from the withdrawal request
-    function _claimLSTWithdrawal(
-        uint256 _claimId
-    ) internal returns (uint256 _redeemedAmount) {
+    ) external onlyEmergencyAuthorized returns (uint256) {
         uint256 preBalance = address(this).balance;
         WITHDRAWAL_QUEUE.claimWithdrawal(_claimId);
-        _redeemedAmount = address(this).balance - preBalance;
-
-        // Convert received ETH to WETH
-        IWETH(address(asset)).deposit{value: address(this).balance}();
+        uint256 redeemedAmount = address(this).balance - preBalance;
+        if (redeemedAmount >= pendingRedemptions) {
+            delete pendingRedemptions;
+        } else {
+            pendingRedemptions -= redeemedAmount;
+        }
+        _wrapEthBalance();
+        return redeemedAmount;
     }
 
     /// @notice Manually zero the pending redemptions in case of significant dust or a Lido slashing event.
     /// @dev Only may be called by governance.
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
-        pendingRedemptions = 0;
+        delete pendingRedemptions;
     }
 
     /// @dev Only needed if the hint and batch ID are too far from each other.
@@ -142,9 +110,13 @@ contract LSTAaveLooper is AaveLooper {
     ) external onlyEmergencyAuthorized {
         WITHDRAWAL_QUEUE.claimWithdrawals(_requestIds, _hints);
         if (_zeroRedemptions) {
-            pendingRedemptions = 0;
+            delete pendingRedemptions;
         }
 
+        _wrapEthBalance();
+    }
+
+    function _wrapEthBalance() private {
         IWETH(address(asset)).deposit{value: address(this).balance}();
     }
 }
