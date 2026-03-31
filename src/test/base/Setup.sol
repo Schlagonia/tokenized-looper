@@ -5,8 +5,9 @@ import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {InfinifiMorphoLooper} from "../../InfinifiMorphoLooper.sol";
+import {InfinifiMorphoLooper} from "../../morpho/InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
@@ -23,6 +24,8 @@ interface IFactory {
 }
 
 contract Setup is Test, IEvents {
+    using SafeERC20 for ERC20;
+
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
@@ -90,7 +93,8 @@ contract Setup is Test, IEvents {
                     "Morpho Looper",
                     SIUSD,
                     MORPHO,
-                    MARKET_ID
+                    MARKET_ID,
+                    management
                 )
             )
         );
@@ -121,7 +125,7 @@ contract Setup is Test, IEvents {
         uint256 _amount
     ) public {
         vm.prank(_user);
-        asset.approve(address(_strategy), _amount);
+        asset.forceApprove(address(_strategy), _amount);
 
         vm.prank(_user);
         _strategy.deposit(_amount, _user);
@@ -162,9 +166,10 @@ contract Setup is Test, IEvents {
 
     function accrueYield(uint256 _amount) public virtual {
         skip(1 days);
-        deal(address(asset), address(this), 1e6);
-        asset.approve(address(GATEWAY), 1e6);
-        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), 1e6);
+        _amount = (_amount * 300) / 10_000;
+        deal(address(asset), address(this), _amount);
+        asset.approve(address(GATEWAY), _amount);
+        IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(strategy), _amount);
     }
 
     function setFees(uint16 _protocolFee, uint16 _performanceFee) public {

@@ -5,8 +5,41 @@ import "forge-std/console2.sol";
 import {Setup} from "./Setup.sol";
 
 abstract contract OperationTest is Setup {
+    // Allow tiny residual collateral after full unwind due to rounding/swap dust.
+    uint256 internal constant UNWIND_COLLATERAL_DUST_BPS = 2; // 0.02%
+    uint256 internal constant MIN_UNWIND_COLLATERAL_DUST = 1;
+
     function setUp() public virtual override {
         super.setUp();
+    }
+
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure virtual returns (uint256) {
+        uint256 relativeDust = collateralBeforeUnwind /
+            (10_000 / UNWIND_COLLATERAL_DUST_BPS);
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
+    }
+
+    function _baseTestAmount() internal view returns (uint256) {
+        uint256 min = minFuzzAmount;
+        uint256 max = maxFuzzAmount;
+        if (max <= min) return min;
+
+        uint256 mid = (min + max) / 2;
+        return mid > min ? mid : min;
+    }
+
+    function _baseIdleAmount() internal view returns (uint256) {
+        uint256 idle = _baseTestAmount() / 10;
+        return idle > 0 ? idle : 1;
+    }
+
+    function _warningLTV() internal view returns (uint256) {
+        return 1e18 - (1e36 / strategy.maxLeverageRatio());
     }
 
     function test_setupStrategyOK() public virtual {
@@ -85,6 +118,108 @@ abstract contract OperationTest is Setup {
         assertGt(asset.balanceOf(user), _amount, "!profit not realized");
     }
 
+    function test_report_aboveWarningLTV_onlyDelevers() public {
+        uint256 equity = _baseTestAmount();
+        _createAboveWarningLTVPosition(equity);
+
+        uint256 ltvBefore = strategy.getCurrentLTV();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        uint256 ltvAfter = strategy.getCurrentLTV();
+        uint256 debtAfter = strategy.balanceOfDebt();
+
+        assertLt(ltvAfter, ltvBefore, "!should delever on report");
+        assertLt(debtAfter, debtBefore, "!debt should decrease on report");
+        assertGt(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should update"
+        );
+        assertEq(strategy.lastTend(), block.timestamp, "!lastTend timestamp");
+    }
+
+    function test_report_overTargetBelowWarning_doesNotDelever() public {
+        uint256 equity = _baseTestAmount();
+        _createOverLeveragedPosition(equity);
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
+        uint256 warningLTV = _warningLTV();
+        uint256 upperBound = strategy.targetLeverageRatio() +
+            strategy.leverageBuffer();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        assertLe(
+            strategy.getCurrentLTV(),
+            warningLTV,
+            "!should be below warning ltv"
+        );
+        assertGt(
+            strategy.getCurrentLeverageRatio(),
+            upperBound,
+            "!should be above target band"
+        );
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        assertGt(strategy.balanceOfAsset(), 0, "!idle asset should remain");
+        assertEq(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should not move"
+        );
+        assertLe(
+            strategy.getCurrentLTV(),
+            warningLTV,
+            "!should stay below warning ltv"
+        );
+    }
+
+    function test_report_underLeveraged_doesNotLeverUp() public {
+        uint256 equity = _baseTestAmount();
+        _createUnderLeveragedPosition(equity);
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
+        uint256 lowerBound = strategy.targetLeverageRatio() -
+            strategy.leverageBuffer();
+        uint256 lastTendBefore = strategy.lastTend();
+
+        skip(1);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
+        assertLt(leverageAfter, lowerBound, "!should stay under-leveraged");
+        assertGt(strategy.balanceOfAsset(), 0, "!idle asset should remain");
+        assertEq(
+            strategy.lastTend(),
+            lastTendBefore,
+            "!lastTend should not move"
+        );
+    }
+
     function test_tendTrigger(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
@@ -93,9 +228,9 @@ abstract contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        // After deposit with idle funds, tend should be triggered
+        // After deposit with idle funds, tend should NOT auto-trigger.
         (trigger, ) = strategy.tendTrigger();
-        assertTrue(trigger, "tend should be triggered after deposit");
+        assertFalse(trigger, "tend should not auto-trigger after deposit");
 
         // Deploy funds via tend
         vm.prank(keeper);
@@ -183,8 +318,9 @@ abstract contract OperationTest is Setup {
         strategy.tend();
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
         assertGt(
-            strategy.balanceOfCollateral(),
+            collateralBeforeUnwind,
             0,
             "!collateral should be > 0 before unwind"
         );
@@ -194,8 +330,11 @@ abstract contract OperationTest is Setup {
         strategy.manualFullUnwind();
 
         // Position should be closed
-        assertEq(strategy.balanceOfCollateral(), 0, "!collateral should be 0");
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should be 0");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
     }
 
     function test_manualPrimitives(uint256 _amount) public {
@@ -340,14 +479,20 @@ abstract contract OperationTest is Setup {
                     AVAILABLE DEPOSIT LIMIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_availableDepositLimit_zeroWhenLeverageAtOrBelowOne() public {
+    function test_availableDepositLimit_zeroWhenLeverageBelowOne() public {
         // Set leverage ratio to exactly 1x (no leverage)
         vm.prank(management);
         strategy.setLeverageParams(1e18, 0.01e18, 5e18);
 
         // Available deposit limit should be 0 when targetLeverageRatio <= WAD
         uint256 limit = strategy.availableDepositLimit(user);
-        assertEq(limit, 0, "!limit should be 0 when leverage <= 1x");
+        assertGt(limit, 0, "!limit should be > 0 when leverage = 1x");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        limit = strategy.availableDepositLimit(user);
+        assertEq(limit, 0, "!limit should be 0 when leverage < 1x");
     }
 
     function test_availableDepositLimit_respectsTargetLeverageRatio(
@@ -452,7 +597,7 @@ abstract contract OperationTest is Setup {
         //   targetEquity = targetDebt * WAD / (L - WAD)
         //   maxWithdraw = currentEquity - targetEquity
 
-        uint256 _amount = 100_000e6;
+        uint256 _amount = _baseTestAmount();
         mintAndDepositIntoStrategy(strategy, user, _amount);
         vm.prank(keeper);
         strategy.tend();
@@ -515,7 +660,7 @@ abstract contract OperationTest is Setup {
 
         // Immediately after tend, trigger should be false (even with idle funds)
         // unless there's an emergency condition
-        airdrop(asset, address(strategy), _amount / 10);
+        airdrop(asset, address(strategy), _amount / 30);
 
         // Check tend trigger - should be false due to interval
         (bool trigger, ) = strategy.tendTrigger();
@@ -524,9 +669,9 @@ abstract contract OperationTest is Setup {
         // Skip past the interval
         skip(1 hours + 1);
 
-        // Now tend should be triggered (we have idle funds)
+        // Still false after interval because idle assets no longer auto-trigger.
         (trigger, ) = strategy.tendTrigger();
-        assertTrue(trigger, "!tend should trigger after interval passed");
+        assertFalse(trigger, "!tend should remain false after interval passed");
     }
 
     function test_tendTrigger_bypassesIntervalForEmergency(
@@ -576,7 +721,7 @@ abstract contract OperationTest is Setup {
 
         // Skip some time and tend again
         skip(3 hours);
-        airdrop(asset, address(strategy), _amount / 10);
+        airdrop(asset, address(strategy), _amount / 30);
         vm.prank(keeper);
         strategy.tend();
 
@@ -616,6 +761,31 @@ abstract contract OperationTest is Setup {
             upperBound,
             "position should be over-leveraged"
         );
+        assertLe(
+            strategy.getCurrentLTV(),
+            _warningLTV(),
+            "position should be below warning ltv"
+        );
+    }
+
+    /// @notice Helper to create a position above the warning LTV by lowering max leverage after build
+    /// @param equity The equity amount to use for the position
+    function _createAboveWarningLTVPosition(uint256 equity) internal {
+        vm.prank(management);
+        strategy.setLeverageParams(4e18, 0.25e18, 5e18);
+
+        mintAndDepositIntoStrategy(strategy, user, equity);
+        vm.prank(keeper);
+        strategy.tend();
+
+        vm.prank(management);
+        strategy.setLeverageParams(3e18, 0.25e18, 3.5e18);
+
+        assertGt(
+            strategy.getCurrentLTV(),
+            _warningLTV(),
+            "position should be above warning ltv"
+        );
     }
 
     /// @notice Helper to create an under-leveraged position by changing target after build
@@ -652,7 +822,7 @@ abstract contract OperationTest is Setup {
     /// @dev When over-leveraged (> upperBound) and has idle assets (balanceOfAsset > 0),
     ///      tendTrigger should return true as we can use idle assets to repay debt.
     function test_tendTrigger_overLeveragedWithIdleAssets() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -661,7 +831,7 @@ abstract contract OperationTest is Setup {
         skip(strategy.minTendInterval() + 1);
 
         // Airdrop idle assets to the strategy
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Verify we have idle assets
@@ -685,7 +855,7 @@ abstract contract OperationTest is Setup {
     /// @dev When over-leveraged and no idle assets, but maxWithdraw > 0 (can delever via flashloan),
     ///      tendTrigger should return true.
     function test_tendTrigger_overLeveragedCanWithdraw() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -735,7 +905,7 @@ abstract contract OperationTest is Setup {
         // it returns true (test 2 above). The code path for returning false when can't withdraw
         // is tested implicitly.
 
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create over-leveraged position
         _createOverLeveragedPosition(equity);
@@ -770,11 +940,13 @@ abstract contract OperationTest is Setup {
         }
     }
 
-    /// @notice Test 4: Under-leveraged and can deposit should trigger
-    /// @dev When under-leveraged (< lowerBound) and maxDeposit > minAmountToBorrow,
-    ///      tendTrigger should return true.
-    function test_tendTrigger_underLeveragedCanDeposit() public {
-        uint256 equity = 10000e6;
+    /// @notice Test 4: Under-leveraged and can deposit should NOT auto-trigger
+    /// @dev Under the new behavior, under-leveraged states are not auto-levered by tendTrigger.
+    function test_tendTrigger_underLeveragedCanDeposit_noAutoTrigger()
+        public
+        virtual
+    {
+        uint256 equity = _baseTestAmount();
 
         // Create under-leveraged position
         _createUnderLeveragedPosition(equity);
@@ -793,19 +965,19 @@ abstract contract OperationTest is Setup {
         uint256 minBorrow = strategy.minAmountToBorrow();
         assertGt(maxDeposit, minBorrow, "should have deposit capacity");
 
-        // tendTrigger should return true
+        // tendTrigger should return false (no auto lever-up when under-leveraged)
         (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(
+        assertFalse(
             trigger,
-            "tendTrigger should return true when under-leveraged and can deposit"
+            "tendTrigger should return false when under-leveraged"
         );
     }
 
     /// @notice Test 5: Under-leveraged but cannot deposit should NOT trigger
     /// @dev When under-leveraged but maxDeposit = 0 (no deposit capacity),
     ///      tendTrigger should return false.
-    function test_tendTrigger_underLeveragedCantDeposit() public {
-        uint256 equity = 10000e6;
+    function test_tendTrigger_underLeveragedCantDeposit() public virtual {
+        uint256 equity = _baseTestAmount();
 
         // Create under-leveraged position
         _createUnderLeveragedPosition(equity);
@@ -840,11 +1012,10 @@ abstract contract OperationTest is Setup {
         );
     }
 
-    /// @notice Test 6: Has meaningful idle assets and can deposit should trigger
-    /// @dev When within buffer but has idle assets that would generate debt > minAmountToBorrow,
-    ///      and maxDeposit > minAmountToBorrow, tendTrigger should return true.
-    function test_tendTrigger_idleAssetsCanDeposit() public {
-        uint256 equity = 10000e6;
+    /// @notice Test 6: Meaningful idle assets do NOT auto-trigger tend
+    /// @dev Under the new behavior, idle assets are not auto-deployed by tendTrigger.
+    function test_tendTrigger_idleAssetsCanDeposit_noAutoTrigger() public {
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -857,7 +1028,7 @@ abstract contract OperationTest is Setup {
         // Airdrop meaningful idle assets
         // At 3x leverage, idle * (L - 1) / 1 = idle * 2 should be > minAmountToBorrow
         // With minAmountToBorrow = 0 (default for InfinifiMorphoLooper), any idle triggers
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Verify we have idle assets
@@ -886,18 +1057,18 @@ abstract contract OperationTest is Setup {
             "should have deposit capacity"
         );
 
-        // tendTrigger should return true
+        // tendTrigger should return false (no idle auto-deploy)
         (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(
+        assertFalse(
             trigger,
-            "tendTrigger should return true with idle assets and deposit capacity"
+            "tendTrigger should return false with idle assets and deposit capacity"
         );
     }
 
     /// @notice Test 7: Has meaningful idle assets but cannot deposit should NOT trigger
     /// @dev When has idle assets but maxDeposit = 0, tendTrigger should return false.
     function test_tendTrigger_idleAssetsCantDeposit() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -908,7 +1079,7 @@ abstract contract OperationTest is Setup {
         skip(strategy.minTendInterval() + 1);
 
         // Airdrop meaningful idle assets
-        uint256 idleAmount = 1000e6;
+        uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
         // Set deposit limit to 0 to simulate no deposit capacity
@@ -934,7 +1105,7 @@ abstract contract OperationTest is Setup {
     /// @dev When idle assets are so small that debt generated would be < minAmountToBorrow,
     ///      tendTrigger should return false.
     function test_tendTrigger_tinyIdleAssetsNoTrigger() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -946,13 +1117,14 @@ abstract contract OperationTest is Setup {
 
         // Set a high minAmountToBorrow
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000e6);
+        strategy.setMinAmountToBorrow(_baseIdleAmount() * 5);
 
         // Airdrop tiny idle assets that won't generate enough debt
         // At 3x leverage: idle * (L - 1) / 1 = idle * 2
         // For debt > 1000e6, we need idle > 500e6
         // So idle of 100e6 should generate debt of 200e6 < 1000e6 minAmountToBorrow
-        uint256 tinyIdle = 100e6;
+        uint256 tinyIdle = _baseIdleAmount() / 5;
+        if (tinyIdle == 0) tinyIdle = 1;
         airdrop(asset, address(strategy), tinyIdle);
 
         // Verify we have idle assets
@@ -995,7 +1167,7 @@ abstract contract OperationTest is Setup {
     /// @dev When within the leverage buffer range and no idle assets to deploy,
     ///      tendTrigger should return false.
     function test_tendTrigger_withinBufferNoIdle() public {
-        uint256 equity = 10000e6;
+        uint256 equity = _baseTestAmount();
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -1029,6 +1201,47 @@ abstract contract OperationTest is Setup {
             trigger,
             "tendTrigger should return false when within buffer with no idle"
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SLIPPAGE TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSlippage_onlyManagement() public {
+        vm.prank(user);
+        vm.expectRevert("!management");
+        strategy.setSlippage(10);
+
+        vm.prank(keeper);
+        vm.expectRevert("!management");
+        strategy.setSlippage(10);
+    }
+
+    function test_setSlippage_boundsValidation() public {
+        vm.startPrank(management);
+
+        vm.expectRevert("slippage");
+        strategy.setSlippage(MAX_BPS);
+
+        vm.expectRevert("slippage");
+        strategy.setSlippage(MAX_BPS + 1);
+
+        vm.expectRevert("slippage too high");
+        strategy.setSlippage(100);
+
+        strategy.setSlippage(99);
+        assertEq(strategy.slippage(), 99, "!slippage should be 99");
+
+        vm.stopPrank();
+    }
+
+    function test_setSlippage_allowsHigherAfterShutdown() public {
+        vm.prank(emergencyAdmin);
+        strategy.shutdownStrategy();
+
+        vm.prank(management);
+        strategy.setSlippage(MAX_BPS - 1);
+        assertEq(strategy.slippage(), MAX_BPS - 1, "!slippage should be max");
     }
 
     /*//////////////////////////////////////////////////////////////

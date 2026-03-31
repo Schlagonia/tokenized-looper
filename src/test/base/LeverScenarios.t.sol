@@ -138,6 +138,38 @@ abstract contract LeverScenariosTest is Setup {
         (collateral, debt) = strategy.position();
     }
 
+    /// @notice Setup an over-leveraged position with no idle asset
+    /// @dev This forces Case 2b during tend so flashloan deleveraging is actually exercised.
+    function _setupOverLeveragedPositionWithoutIdle(
+        uint256 equity
+    ) internal returns (uint256 collateral, uint256 debt) {
+        mintAndDepositIntoStrategy(strategy, user, equity);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
+        uint256 currentEquity = currentCollateral - currentDebt;
+        uint256 targetLeverage = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        uint256 overLeverage = targetLeverage + buffer + 0.3e18;
+
+        uint256 desiredCollateral = (currentEquity * overLeverage) / WAD;
+        uint256 desiredDebt = desiredCollateral - currentEquity;
+
+        vm.startPrank(management);
+        if (desiredDebt > currentDebt) {
+            strategy.manualBorrow(desiredDebt - currentDebt);
+            strategy.convertAssetToCollateral(type(uint256).max);
+            strategy.manualSupplyCollateral(type(uint256).max);
+        }
+        vm.stopPrank();
+
+        assertLe(strategy.balanceOfAsset(), 1, "idle asset too high");
+
+        (collateral, debt) = strategy.position();
+    }
+
     /// @notice Setup a position at exactly target leverage
     /// @param equity The equity amount to use for the position
     /// @return collateral The collateral value created
@@ -554,6 +586,93 @@ abstract contract LeverScenariosTest is Setup {
             leverageAfter,
             target + buffer + 0.1e18,
             "leverage should be near target"
+        );
+    }
+
+    /// @notice Case 2b should cap deleveraging flashloan size by maxAmountToSwap
+    function test_lever_overLeveraged_maxAmountToSwap_capsDeleverage(
+        uint256 equityAmount
+    ) public {
+        vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
+
+        (
+            uint256 collateralBefore,
+            uint256 debtBefore
+        ) = _setupOverLeveragedPositionWithoutIdle(equityAmount);
+
+        uint256 target = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(leverageBefore, target + buffer, "should be over-leveraged");
+
+        uint256 currentEquity = collateralBefore - debtBefore;
+        (, uint256 targetDebt) = _getTargetPosition(currentEquity);
+        uint256 debtToRepay = debtBefore - targetDebt;
+        vm.assume(debtToRepay > 0);
+
+        uint256 maxSwap = debtToRepay / 4;
+        vm.assume(maxSwap > 0);
+
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(maxSwap);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 debtAfter = strategy.balanceOfDebt();
+        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
+        uint256 debtReduction = debtBefore - debtAfter;
+
+        assertGt(debtReduction, 0, "should repay some debt");
+        assertLe(
+            debtReduction,
+            maxSwap,
+            "delever should respect maxAmountToSwap"
+        );
+        assertLt(leverageAfter, leverageBefore, "leverage should improve");
+        assertGt(
+            leverageAfter,
+            target + buffer,
+            "position should still be over target"
+        );
+    }
+
+    /// @notice Case 2b should do nothing when maxAmountToSwap is zero
+    function test_lever_overLeveraged_zeroMaxAmountToSwap_skipsDeleverage(
+        uint256 equityAmount
+    ) public {
+        vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
+
+        _setupOverLeveragedPositionWithoutIdle(equityAmount);
+
+        uint256 target = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(leverageBefore, target + buffer, "should be over-leveraged");
+
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(0);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertEq(strategy.balanceOfDebt(), debtBefore, "!debt");
+        assertEq(
+            strategy.getCurrentLeverageRatio(),
+            leverageBefore,
+            "!leverage"
+        );
+        assertGt(
+            strategy.getCurrentLeverageRatio(),
+            target + buffer,
+            "should stay over-leveraged"
         );
     }
 
@@ -1077,7 +1196,9 @@ abstract contract LeverScenariosTest is Setup {
     }
 
     /// @notice Test lever with increasing target leverage
-    function test_lever_afterIncreasingTargetLeverage(uint256 _amount) public {
+    function test_lever_afterIncreasingTargetLeverage(
+        uint256 _amount
+    ) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // 1. Setup: Lower initial target
