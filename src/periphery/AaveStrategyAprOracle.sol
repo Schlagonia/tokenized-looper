@@ -26,7 +26,9 @@ contract AaveStrategyAprOracle is AprOracleBase {
 
     struct BorrowSnapshot {
         uint256 unbacked;
-        uint256 totalDebt;
+        uint256 totalStableDebt;
+        uint256 totalVariableDebt;
+        uint256 averageStableBorrowRate;
         uint256 reserveFactor;
         bool usingVirtualBalance;
         uint256 virtualUnderlyingBalance;
@@ -38,12 +40,6 @@ contract AaveStrategyAprOracle is AprOracleBase {
         address _governance
     ) AprOracleBase("Aave Looper Strategy Apr Oracle", _governance) {}
 
-    /**
-     * @notice Will return the expected Apr of a strategy post a debt change.
-     * @param _strategy The strategy to get the apr for.
-     * @param _delta The equity change in asset units.
-     * @return The expected apr represented as 1e18.
-     */
     function aprAfterDebtChange(
         address _strategy,
         int256 _delta
@@ -138,15 +134,15 @@ contract AaveStrategyAprOracle is AprOracleBase {
             snapshot.interestRateStrategyAddress == address(0)
         ) return (0, 0);
 
-        uint256 adjustedTotalDebt = snapshot.totalDebt;
+        uint256 adjustedTotalVariableDebt = snapshot.totalVariableDebt;
         if (totalDebtDelta >= 0) {
-            adjustedTotalDebt += uint256(totalDebtDelta);
+            adjustedTotalVariableDebt += uint256(totalDebtDelta);
         } else {
             uint256 debtReduction = uint256(-totalDebtDelta);
-            if (debtReduction > adjustedTotalDebt) {
-                debtReduction = adjustedTotalDebt;
+            if (debtReduction > adjustedTotalVariableDebt) {
+                debtReduction = adjustedTotalVariableDebt;
             }
-            adjustedTotalDebt -= debtReduction;
+            adjustedTotalVariableDebt -= debtReduction;
         }
 
         uint256 liquidityAdded;
@@ -157,24 +153,16 @@ contract AaveStrategyAprOracle is AprOracleBase {
             liquidityTaken = uint256(-liquidityDelta);
         }
 
-        IReserveInterestRateStrategy.CalculateInterestRatesParams
-            memory params = IReserveInterestRateStrategy
-                .CalculateInterestRatesParams({
-                    unbacked: snapshot.unbacked,
-                    liquidityAdded: liquidityAdded,
-                    liquidityTaken: liquidityTaken,
-                    totalDebt: adjustedTotalDebt,
-                    reserveFactor: snapshot.reserveFactor,
-                    reserve: reserve,
-                    usingVirtualBalance: snapshot.usingVirtualBalance,
-                    virtualUnderlyingBalance: snapshot.virtualUnderlyingBalance
-                });
-
         (
             uint256 liquidityRateRay,
             uint256 variableBorrowRateRay
-        ) = IReserveInterestRateStrategy(snapshot.interestRateStrategyAddress)
-                .calculateInterestRates(params);
+        ) = _calculateInterestRates(
+                snapshot,
+                reserve,
+                liquidityAdded,
+                liquidityTaken,
+                adjustedTotalVariableDebt
+            );
 
         liquidityApr = liquidityRateRay / RAY_TO_WAD;
         variableBorrowApr = variableBorrowRateRay / RAY_TO_WAD;
@@ -187,19 +175,98 @@ contract AaveStrategyAprOracle is AprOracleBase {
     ) internal view returns (BorrowSnapshot memory snapshot) {
         (, , , , snapshot.reserveFactor, , , , , ) = dataProvider
             .getReserveConfigurationData(asset);
-        (snapshot.unbacked, , , , , , , , , , , ) = dataProvider.getReserveData(
-            asset
-        );
+        (
+            snapshot.unbacked,
+            snapshot.totalStableDebt,
+            snapshot.totalVariableDebt,
+            snapshot.averageStableBorrowRate
+        ) = _getReserveRateInputs(dataProvider, asset);
         (snapshot.aTokenAddress, , ) = dataProvider.getReserveTokensAddresses(
             asset
         );
 
         snapshot.interestRateStrategyAddress = dataProvider
             .getInterestRateStrategyAddress(asset);
-        snapshot.totalDebt = dataProvider.getTotalDebt(asset);
-        snapshot.virtualUnderlyingBalance = IPool(pool)
-            .getVirtualUnderlyingBalance(asset);
+        snapshot.virtualUnderlyingBalance = _getVirtualUnderlyingBalanceOrZero(
+            pool,
+            asset
+        );
         snapshot.usingVirtualBalance = snapshot.virtualUnderlyingBalance > 0;
+    }
+
+    function _getReserveRateInputs(
+        IPoolDataProvider dataProvider,
+        address asset
+    )
+        internal
+        view
+        returns (
+            uint256 unbacked,
+            uint256 totalStableDebt,
+            uint256 totalVariableDebt,
+            uint256 averageStableBorrowRate
+        )
+    {
+        (bool success, bytes memory data) = address(dataProvider).staticcall(
+            abi.encodeWithSelector(
+                IPoolDataProvider.getReserveData.selector,
+                asset
+            )
+        );
+        require(success && data.length >= 32 * 12, "bad reserve data");
+
+        assembly {
+            unbacked := mload(add(data, 0x20))
+            totalStableDebt := mload(add(data, 0x80))
+            totalVariableDebt := mload(add(data, 0xa0))
+            averageStableBorrowRate := mload(add(data, 0x120))
+        }
+    }
+
+    function _getVirtualUnderlyingBalanceOrZero(
+        address pool,
+        address asset
+    ) internal view returns (uint256 virtualUnderlyingBalance) {
+        (bool success, bytes memory data) = pool.staticcall(
+            abi.encodeWithSelector(
+                IPool.getVirtualUnderlyingBalance.selector,
+                asset
+            )
+        );
+
+        if (!success || data.length < 32) return 0;
+        return abi.decode(data, (uint256));
+    }
+
+    function _calculateInterestRates(
+        BorrowSnapshot memory snapshot,
+        address reserve,
+        uint256 liquidityAdded,
+        uint256 liquidityTaken,
+        uint256 adjustedTotalVariableDebt
+    )
+        internal
+        view
+        virtual
+        returns (uint256 liquidityRateRay, uint256 variableBorrowRateRay)
+    {
+        IReserveInterestRateStrategy.CalculateInterestRatesParams
+            memory params = IReserveInterestRateStrategy
+                .CalculateInterestRatesParams({
+                    unbacked: snapshot.unbacked,
+                    liquidityAdded: liquidityAdded,
+                    liquidityTaken: liquidityTaken,
+                    totalDebt: snapshot.totalStableDebt +
+                        adjustedTotalVariableDebt,
+                    reserveFactor: snapshot.reserveFactor,
+                    reserve: reserve,
+                    usingVirtualBalance: snapshot.usingVirtualBalance,
+                    virtualUnderlyingBalance: snapshot.virtualUnderlyingBalance
+                });
+
+        return
+            IReserveInterestRateStrategy(snapshot.interestRateStrategyAddress)
+                .calculateInterestRates(params);
     }
 
     function _assetToCollateralDelta(
