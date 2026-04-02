@@ -32,7 +32,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_SLIPPAGE = 100;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
-    uint256 internal constant AUCTION_STEP_DURATION = 5;
+    uint256 internal constant AUCTION_STEP_DURATION = 60;
     uint256 internal constant AUCTION_LENGTH = 1 days;
 
     /// @notice Flashloan operation types
@@ -48,7 +48,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount; // Amount to deploy or free (in asset terms)
         address sender;
         address receiver;
-        uint256 auxiliaryAmount;
+        uint256 amountOut;
         bytes swapData;
     }
 
@@ -57,7 +57,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         bytes data;
     }
 
-    struct LeverageAuctionState {
+    struct AuctionState {
         uint64 kicked;
         uint64 stepDecayRate;
         uint128 initialAvailable;
@@ -73,17 +73,12 @@ abstract contract BaseLooper is BaseHealthCheck {
     uint64 public slippage;
 
     /// @notice Dutch auction price decay per step in basis points.
-    uint64 public auctionStepDecayRate;
+    uint64 public stepDecayRate;
 
-    LeverageAuctionState internal assetToCollateralAuctionInfo;
+    mapping(address => AuctionState) internal auctionStates;
 
-    LeverageAuctionState internal collateralToAssetAuctionInfo;
-
-    LeverageAuctionState internal genericAuctionInfo;
-
-    address internal genericAuctionToken;
-
-    address internal genericAuctionWant;
+    /// @notice Tracks the most recently kicked auction token to enforce single-auction activity.
+    address internal activeAuctionToken;
 
     /// @notice The timestamp of the last tend.
     uint256 public lastTend;
@@ -147,8 +142,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         minTendInterval = 2 hours;
         maxAmountToSwap = type(uint256).max;
         maxGasPriceToTend = 50 * 1e9;
-        slippage = 30;
-        auctionStepDecayRate = 1;
+        slippage = 10;
+        stepDecayRate = 1;
 
         _setLossLimitRatio(10);
         _setProfitLimitRatio(500);
@@ -245,15 +240,15 @@ abstract contract BaseLooper is BaseHealthCheck {
         slippage = uint64(_slippage);
     }
 
-    function setAuctionStepDecayRate(
-        uint256 _auctionStepDecayRate
+    function setstepDecayRate(
+        uint256 _stepDecayRate
     ) external onlyManagement {
         require(
-            _auctionStepDecayRate > 0 && _auctionStepDecayRate < 10_000,
+            _stepDecayRate > 0 && _stepDecayRate < 10_000,
             "dec"
         );
         require(!_hasActiveLeverageAuction(), "active");
-        auctionStepDecayRate = uint64(_auctionStepDecayRate);
+        stepDecayRate = uint64(_stepDecayRate);
     }
 
     /// @notice Set the report buffer used when accounting for assets.
@@ -516,7 +511,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                 totalSwap = maxSwap;
             }
 
-            _kickLeverageAuction(true, totalSwap);
+            _kickAuction(address(asset), collateralToken, totalSwap);
             return;
         }
 
@@ -527,10 +522,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                 _repay(debtToRepay);
                 _amount -= debtToRepay;
                 if (_amount > 0) {
-                    _kickLeverageAuction(
-                        true,
-                        Math.min(_amount, maxAmountToSwap)
-                    );
+                    _kickAuction(address(asset), collateralToken, _amount);
                 }
                 return;
             }
@@ -547,7 +539,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
                 (MAX_BPS + slippage)) / MAX_BPS;
-            _kickLeverageAuction(false, collateralToWithdraw);
+            _kickAuction(collateralToken, address(asset), collateralToWithdraw);
             return;
         }
     }
@@ -595,7 +587,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                 amount: collateralToWithdraw,
                 sender: address(0),
                 receiver: address(0),
-                auxiliaryAmount: 0,
+                amountOut: 0,
                 swapData: _forcedExitSwapData
             })
         );
@@ -610,43 +602,65 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual {
         FlashLoanData memory params = abi.decode(data, (FlashLoanData));
 
-        if (params.operation == FlashLoanOperation.DELEVERAGE) {
+        if (params.operation == FlashLoanOperation.AUCTION_LEVERAGE) {
+            _executeAuctionLeverageCallback(assets, params);
+            return;
+        } else if (params.operation == FlashLoanOperation.AUCTION_DELEVERAGE) {
+            _executeAuctionDeleverageCallback(assets, params);
+            return;
+        } else if (params.operation == FlashLoanOperation.DELEVERAGE) {
             _executeDeleverageCallback(assets, params);
             return;
         }
-
-        if (
-            params.operation == FlashLoanOperation.AUCTION_LEVERAGE ||
-            params.operation == FlashLoanOperation.AUCTION_DELEVERAGE
-        ) {
-            _executeAuctionCallback(
-                params.operation == FlashLoanOperation.AUCTION_LEVERAGE
-                    ? address(asset)
-                    : collateralToken,
-                params.operation == FlashLoanOperation.AUCTION_LEVERAGE
-                    ? collateralToken
-                    : address(asset),
-                params.amount,
-                params.sender,
-                params.receiver,
-                params.auxiliaryAmount,
-                params.swapData
-            );
-
-            if (params.operation == FlashLoanOperation.AUCTION_LEVERAGE) {
-                _supplyCollateral(params.auxiliaryAmount);
-                _borrow(assets);
-
-                require(getCurrentLeverageRatio() < maxLeverageRatio, "lev");
-                return;
-            } else {
-                _repay(Math.min(params.auxiliaryAmount, balanceOfDebt()));
-                _withdrawCollateral(assets);
-                return;
-            }
-        }
-
         revert("op");
+    }
+
+    function _executeAuctionLeverageCallback(
+        uint256 assets,
+        FlashLoanData memory params
+    ) internal virtual {
+        _executeAuctionCallback(
+            address(asset),
+            collateralToken,
+            params.amount,
+            params.sender,
+            params.receiver,
+            params.amountOut,
+            params.swapData
+        );
+
+        _supplyCollateral(params.amountOut);
+        _borrow(assets);
+
+        require(getCurrentLeverageRatio() < targetLeverageRatio + leverageBuffer, "lev");
+    }
+    
+    function _executeAuctionDeleverageCallback(
+        uint256 assets,
+        FlashLoanData memory params
+    ) internal virtual {
+        uint256 initialLeverage = getCurrentLeverageRatio();
+
+        _executeAuctionCallback(
+            collateralToken,
+            address(asset),
+            params.amount,
+            params.sender,
+            params.receiver,
+            params.amountOut,
+            params.swapData
+        );
+
+        _repay(Math.min(params.amountOut, balanceOfDebt()));
+        _withdrawCollateral(assets);
+
+        // Sanity check
+        uint256 finalLeverage = getCurrentLeverageRatio();
+        // Make sure the leverage is within the bounds, or at least improved.
+        require(
+            finalLeverage < maxLeverageRatio || finalLeverage < initialLeverage,
+            "lev"
+        );
     }
 
     function _executeDeleverageCallback(
@@ -710,10 +724,52 @@ abstract contract BaseLooper is BaseHealthCheck {
                             AUCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    function want() public view returns (address) {
+        return address(asset);
+    }
+
+    function want(address _from) public view returns (address) {
+        if (_from == address(asset)) return collateralToken;
+        return address(asset);
+    }
+
+    function kicked(address _from) public view returns (uint256) {
+        return auctionStates[_from].kicked;
+    }
+
+    function available(address _from) public view returns (uint256) {
+        if (!isActive(_from)) return 0;
+        return auctionStates[_from].remaining;
+    }
+
+    function isActive(address _from) public view returns (bool) {
+        return _isAuctionActive(auctionStates[_from], block.timestamp);
+    }
+
+    function activeAuction() public view returns (address) {
+        address from = activeAuctionToken;
+        if (from == address(0) || !isActive(from)) return address(0);
+        return from;
+    }
+
+    function price(address _from) public view returns (uint256) {
+        AuctionState storage auction = auctionStates[_from];
+        uint256 amountOut = _getAuctionAmountOut(auction, block.timestamp);
+        if (amountOut == 0 || auction.initialAvailable == 0) return 0;
+
+        return
+            Math.mulDiv(
+                10 ** ERC20(_from).decimals(),
+                amountOut,
+                auction.initialAvailable
+            );
+    }
+
     function getAmountNeeded(
         address _from,
         uint256 _amountToTake
     ) external view returns (uint256) {
+        if (_amountToTake == 0) return 0;
         return _getAmountNeeded(_from, _amountToTake, block.timestamp);
     }
 
@@ -723,10 +779,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         address _takerReceiver,
         bytes calldata _data
     ) external accrue returns (uint256 amountTaken) {
-        require(_takerReceiver != address(0), "!receiver");
-
-        LeverageAuctionState storage auction = _getAuctionState(_from);
-        address want = _getAuctionWant(_from);
+        AuctionState storage auction = auctionStates[_from];
+        address wantToken = want(_from);
         amountTaken = Math.min(auction.remaining, _maxAmount);
 
         uint256 amountNeeded = _getAmountNeeded(
@@ -737,6 +791,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         require(amountNeeded != 0, "need0");
 
         uint256 currentBalance = ERC20(_from).balanceOf(address(this));
+
+        // If we don't have enough balance, we need to flashloan the difference.
         if (currentBalance < amountTaken) {
             require(
                 _from == address(asset) || _from == collateralToken,
@@ -753,7 +809,7 @@ abstract contract BaseLooper is BaseHealthCheck {
                         amount: amountTaken,
                         sender: msg.sender,
                         receiver: _takerReceiver,
-                        auxiliaryAmount: amountNeeded,
+                        amountOut: amountNeeded,
                         swapData: _data
                     })
                 )
@@ -761,7 +817,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         } else {
             _executeAuctionCallback(
                 _from,
-                want,
+                wantToken,
                 amountTaken,
                 msg.sender,
                 _takerReceiver,
@@ -779,18 +835,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         emit AuctionTaken(_from, amountTaken);
     }
 
-    function _kickLeverageAuction(
-        bool _isAssetToCollateral,
-        uint256 _amount
-    ) internal virtual returns (bool) {
-        return
-            _kickAuction(
-                _isAssetToCollateral ? address(asset) : collateralToken,
-                _isAssetToCollateral ? collateralToken : address(asset),
-                _amount
-            );
-    }
-
     function _kickAuction(
         address _from,
         address _want,
@@ -798,11 +842,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual returns (bool) {
         if (_amount == 0) return false;
         require(!_hasActiveLeverageAuction(), "active");
-
-        LeverageAuctionState storage auction = _getAuctionStateForKick(
-            _from,
-            _want
-        );
+        require(_want == want(_from), "!want");
 
         (
             uint256 startingAmountOut,
@@ -814,12 +854,17 @@ abstract contract BaseLooper is BaseHealthCheck {
             "auc"
         );
 
-        auction.kicked = uint64(block.timestamp);
-        auction.stepDecayRate = uint64(stepDecayRate);
-        auction.initialAvailable = uint128(_amount);
-        auction.remaining = uint128(_amount);
-        auction.startingAmountOut = uint128(startingAmountOut);
-        auction.minimumAmountOut = uint128(minimumAmountOut);
+        AuctionState memory auction = AuctionState({
+            kicked: uint64(block.timestamp),
+            stepDecayRate: uint64(stepDecayRate),
+            initialAvailable: uint128(_amount),
+            remaining: uint128(_amount),
+            startingAmountOut: uint128(startingAmountOut),
+            minimumAmountOut: uint128(minimumAmountOut)
+        });
+
+        auctionStates[_from] = auction;
+        activeAuctionToken = _from;
 
         lastTend = block.timestamp;
         emit AuctionKicked(_from, _amount);
@@ -827,10 +872,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function _hasActiveLeverageAuction() internal view returns (bool) {
-        return
-            _isAuctionActive(assetToCollateralAuctionInfo, block.timestamp) ||
-            _isAuctionActive(collateralToAssetAuctionInfo, block.timestamp) ||
-            _isAuctionActive(genericAuctionInfo, block.timestamp);
+        return activeAuction() != address(0);
     }
 
     function _getAmountNeeded(
@@ -840,7 +882,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal view returns (uint256) {
         if (_amountToTake == 0) return 0;
 
-        LeverageAuctionState storage auction = _getAuctionState(_from);
+        AuctionState storage auction = auctionStates[_from];
         uint256 amountOut = _getAuctionAmountOut(auction, _timestamp);
         if (amountOut == 0 || auction.initialAvailable == 0) return 0;
 
@@ -855,83 +897,47 @@ abstract contract BaseLooper is BaseHealthCheck {
         internal
         view
         returns (
-            uint256 startingAmountOut,
-            uint256 minimumAmountOut,
-            uint256 stepDecayRate
+            uint256 _startingAmountOut,
+            uint256 _minimumAmountOut,
+            uint256 _stepDecayRate
         )
     {
         if (_from != address(asset) && _from != collateralToken) {
-            startingAmountOut = 1_000_000 * (10 ** ERC20(_want).decimals());
-            minimumAmountOut = 1;
+            _startingAmountOut = 1_000_000 * (10 ** ERC20(_want).decimals());
+            _minimumAmountOut = 1;
             stepDecayRate = 50;
-            return (startingAmountOut, minimumAmountOut, stepDecayRate);
+            return (_startingAmountOut, _minimumAmountOut, stepDecayRate);
         }
 
         uint256 quotedAmountOut = _from == address(asset)
             ? _assetToCollateral(_amount)
             : _collateralToAsset(_amount);
 
+        // Buffer should be at least 5 BPS
         uint256 startBuffer = Math.max(uint256(5), uint256(slippage));
-        startingAmountOut =
-            (quotedAmountOut * (MAX_BPS + startBuffer)) /
+
+        _startingAmountOut =
+            (quotedAmountOut * (MAX_BPS + slippage)) /
             MAX_BPS;
-        minimumAmountOut = (quotedAmountOut * (MAX_BPS - slippage)) / MAX_BPS;
-        stepDecayRate = auctionStepDecayRate;
-    }
-
-    function _getAuctionStateForKick(
-        address _from,
-        address _want
-    ) internal returns (LeverageAuctionState storage auction) {
-        if (_from == address(asset)) {
-            delete assetToCollateralAuctionInfo;
-            return assetToCollateralAuctionInfo;
-        }
-
-        if (_from == collateralToken) {
-            delete collateralToAssetAuctionInfo;
-            return collateralToAssetAuctionInfo;
-        }
-
-        require(_want != address(0), "!want");
-        delete genericAuctionInfo;
-        genericAuctionToken = _from;
-        genericAuctionWant = _want;
-        return genericAuctionInfo;
-    }
-
-    function _getAuctionState(
-        address _from
-    ) internal view returns (LeverageAuctionState storage auction) {
-        if (_from == address(asset)) return assetToCollateralAuctionInfo;
-        if (_from == collateralToken) return collateralToAssetAuctionInfo;
-        require(_from == genericAuctionToken, "!auction");
-        return genericAuctionInfo;
-    }
-
-    function _getAuctionWant(address _from) internal view returns (address) {
-        if (_from == address(asset)) return collateralToken;
-        if (_from == collateralToken) return address(asset);
-        require(_from == genericAuctionToken, "!auction");
-        return genericAuctionWant;
+        _minimumAmountOut = (quotedAmountOut * (MAX_BPS - slippage)) / MAX_BPS;
+        _stepDecayRate = stepDecayRate;
     }
 
     function _isAuctionActive(
-        LeverageAuctionState storage auction,
+        AuctionState storage auction,
         uint256 _timestamp
     ) internal view returns (bool) {
         return _getAuctionAmountOut(auction, _timestamp) != 0;
     }
 
     function _getAuctionAmountOut(
-        LeverageAuctionState storage auction,
+        AuctionState storage auction,
         uint256 _timestamp
     ) internal view returns (uint256) {
         if (
             auction.kicked == 0 ||
             auction.initialAvailable == 0 ||
-            auction.remaining == 0 ||
-            _timestamp < auction.kicked
+            auction.remaining == 0
         ) return 0;
 
         uint256 secondsElapsed = _timestamp - auction.kicked;
@@ -950,20 +956,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function _clearAuctionState(address _from) internal {
-        if (_from == address(asset)) {
-            delete assetToCollateralAuctionInfo;
-            return;
-        }
-
-        if (_from == collateralToken) {
-            delete collateralToAssetAuctionInfo;
-            return;
-        }
-
-        require(_from == genericAuctionToken, "!auction");
-        delete genericAuctionInfo;
-        genericAuctionToken = address(0);
-        genericAuctionWant = address(0);
+        delete auctionStates[_from];
+        if (activeAuctionToken == _from) activeAuctionToken = address(0);
     }
 
     function _executeSwap(
@@ -1204,6 +1198,12 @@ abstract contract BaseLooper is BaseHealthCheck {
         _withdrawFunds(TokenizedStrategy.totalAssets());
     }
 
+    function settle() external accrue onlyEmergencyAuthorized {
+        address from = activeAuctionToken;
+        require(from != address(0), "!auction");
+        _clearAuctionState(from);
+    }
+
     /// @notice Manual: supply collateral
     function manualSupplyCollateral(
         uint256 amount
@@ -1235,16 +1235,13 @@ abstract contract BaseLooper is BaseHealthCheck {
     function convertCollateralToAsset(
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
-        _kickLeverageAuction(
-            false,
-            Math.min(amount, balanceOfCollateralToken())
-        );
+        _kickAuction(collateralToken, address(asset), Math.min(amount, balanceOfCollateralToken()));
     }
 
     function convertAssetToCollateral(
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
-        _kickLeverageAuction(true, Math.min(amount, balanceOfAsset()));
+        _kickAuction(address(asset), collateralToken, Math.min(amount, balanceOfAsset()));
     }
 
     /*//////////////////////////////////////////////////////////////

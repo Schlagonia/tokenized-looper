@@ -376,6 +376,79 @@ abstract contract OperationTest is Setup {
         assertLt(collateralAfter, collateral, "!collateral should decrease");
     }
 
+    function test_assetAuctionLookupUsesFromToken() public {
+        uint256 amount = _baseTestAmount();
+        uint256 unit = 10 ** asset.decimals();
+        address unknownToken = makeAddr("unknown-token");
+
+        assertEq(strategy.want(), address(asset), "!default want");
+        assertEq(
+            strategy.want(address(asset)),
+            strategy.collateralToken(),
+            "!asset want"
+        );
+        assertEq(
+            strategy.want(strategy.collateralToken()),
+            address(asset),
+            "!collateral want"
+        );
+        assertEq(strategy.want(unknownToken), address(asset), "!unknown want");
+
+        assertEq(strategy.activeAuction(), address(0), "!active auction before");
+        assertFalse(strategy.isActive(address(asset)), "!asset active before");
+        assertEq(strategy.available(address(asset)), 0, "!asset available before");
+        assertEq(strategy.kicked(address(asset)), 0, "!asset kicked before");
+        assertFalse(strategy.isActive(unknownToken), "!unknown active");
+        assertEq(strategy.available(unknownToken), 0, "!unknown available");
+        assertEq(strategy.kicked(unknownToken), 0, "!unknown kicked");
+        assertEq(strategy.price(unknownToken), 0, "!unknown price");
+        assertEq(strategy.getAmountNeeded(unknownToken, amount), 0, "!unknown need");
+
+        airdrop(asset, address(strategy), amount);
+
+        vm.prank(management);
+        strategy.convertAssetToCollateral(amount);
+
+        assertEq(strategy.want(), address(asset), "!default want after");
+        assertEq(strategy.activeAuction(), address(asset), "!active auction after");
+        assertTrue(strategy.isActive(address(asset)), "!asset active after");
+        assertEq(strategy.available(address(asset)), amount, "!asset available");
+        assertEq(strategy.kicked(address(asset)), block.timestamp, "!asset kicked");
+        assertEq(
+            strategy.price(address(asset)),
+            strategy.getAmountNeeded(address(asset), unit),
+            "!asset price"
+        );
+        assertFalse(
+            strategy.isActive(strategy.collateralToken()),
+            "!collateral active"
+        );
+    }
+
+    function test_settle_onlyEmergencyAuthorizedAndClearsAuction() public {
+        uint256 amount = _baseTestAmount();
+
+        airdrop(asset, address(strategy), amount);
+
+        vm.prank(management);
+        strategy.convertAssetToCollateral(amount);
+
+        assertTrue(strategy.isActive(address(asset)), "!asset active after kick");
+
+        vm.prank(user);
+        vm.expectRevert("!emergency authorized");
+        strategy.settle();
+
+        vm.prank(emergencyAdmin);
+        strategy.settle();
+
+        assertEq(strategy.activeAuction(), address(0), "!active auction after settle");
+        assertFalse(strategy.isActive(address(asset)), "!asset active after settle");
+        assertEq(strategy.available(address(asset)), 0, "!asset available after settle");
+        assertEq(strategy.kicked(address(asset)), 0, "!asset kicked after settle");
+        assertEq(strategy.price(address(asset)), 0, "!asset price after settle");
+    }
+
     function test_leverageBoundsValidation() public {
         uint256 lltv = strategy.getLiquidateCollateralFactor();
         console2.log("LLTV:", lltv);

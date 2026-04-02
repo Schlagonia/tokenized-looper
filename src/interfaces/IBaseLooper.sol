@@ -62,6 +62,20 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function estimatedTotalAssets() external view returns (uint256);
 
+    function want() external view returns (address);
+
+    function want(address _from) external view returns (address);
+
+    function kicked(address _from) external view returns (uint256);
+
+    function available(address _from) external view returns (uint256);
+
+    function isActive(address _from) external view returns (bool);
+
+    function activeAuction() external view returns (address);
+
+    function price(address _from) external view returns (uint256);
+
     function getAmountNeeded(
         address _from,
         uint256 _amountToTake
@@ -97,6 +111,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external;
+
+    function settle() external;
 
     /// @notice Manual: supply collateral (converts asset to collateral first)
     function manualSupplyCollateral(uint256 amount) external;
