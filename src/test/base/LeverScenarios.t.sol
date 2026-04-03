@@ -31,8 +31,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
         // 2. Tend to create initial position at default target (3x)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 3. Adjust to desired leverage by borrowing more or repaying
         (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
@@ -49,11 +48,9 @@ abstract contract LeverScenariosTest is Setup {
         uint256 desiredDebt = (currentCollateral * (targetLeverage - WAD)) /
             targetLeverage;
 
-        vm.startPrank(management);
         if (desiredDebt > currentDebt) {
-            // Need more debt - borrow more
-            uint256 borrowMore = desiredDebt - currentDebt;
-            strategy.manualBorrow(borrowMore);
+            vm.prank(management);
+            strategy.manualBorrow(desiredDebt - currentDebt);
         } else if (currentDebt > desiredDebt) {
             // Need less debt - repay some
             // To reduce debt, we need to:
@@ -75,11 +72,15 @@ abstract contract LeverScenariosTest is Setup {
             uint256 collateralToWithdraw = (repayWithSlippage *
                 collateralTokens) / currentCollateral;
 
+            vm.startPrank(management);
             strategy.manualWithdrawCollateral(collateralToWithdraw);
             strategy.convertCollateralToAsset(type(uint256).max);
+            vm.stopPrank();
+            _settleActiveAuction();
 
             // Now repay as much as needed (limited by what we have)
             uint256 looseAsset = strategy.balanceOfAsset();
+            vm.prank(management);
             strategy.manualRepay(
                 looseAsset > repayAmount ? repayAmount : looseAsset
             );
@@ -87,7 +88,6 @@ abstract contract LeverScenariosTest is Setup {
             // Leave any leftover as loose asset to avoid slippage errors during conversion
             // The position will be slightly under-leveraged which is fine for test setup
         }
-        vm.stopPrank();
     }
 
     /// @notice Setup an under-leveraged position (below target - buffer)
@@ -102,8 +102,7 @@ abstract contract LeverScenariosTest is Setup {
     ) internal returns (uint256 collateral, uint256 debt) {
         // 1. Deposit and tend to get a 3x position
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 2. Repay some debt to reduce leverage
         // At 3x: collateral = 3*equity, debt = 2*equity
@@ -145,8 +144,7 @@ abstract contract LeverScenariosTest is Setup {
     ) internal returns (uint256 collateral, uint256 debt) {
         mintAndDepositIntoStrategy(strategy, user, equity);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
@@ -157,13 +155,15 @@ abstract contract LeverScenariosTest is Setup {
         uint256 desiredCollateral = (currentEquity * overLeverage) / WAD;
         uint256 desiredDebt = desiredCollateral - currentEquity;
 
-        vm.startPrank(management);
         if (desiredDebt > currentDebt) {
+            vm.startPrank(management);
             strategy.manualBorrow(desiredDebt - currentDebt);
             strategy.convertAssetToCollateral(type(uint256).max);
+            vm.stopPrank();
+            _settleActiveAuction();
+            vm.prank(management);
             strategy.manualSupplyCollateral(type(uint256).max);
         }
-        vm.stopPrank();
 
         assertLe(strategy.balanceOfAsset(), 1, "idle asset too high");
 
@@ -257,8 +257,7 @@ abstract contract LeverScenariosTest is Setup {
         assertEq(debtBefore, 0, "should have no debt before");
 
         // 3. Execute tend (which calls _lever)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify position was created with leverage
         (uint256 collateralAfter, uint256 debtAfter) = strategy.position();
@@ -284,16 +283,14 @@ abstract contract LeverScenariosTest is Setup {
         assertEq(collateralBefore, 0, "should have no collateral before");
         assertEq(debtBefore, 0, "should have no debt before");
 
-        // 3. Execute tend - should just repay (no debt to repay) and do nothing else
-        // Since there's no debt, the min check should result in no flashloan
+        // 3. Execute tend - async path should only kick an auction here.
         vm.prank(keeper);
         strategy.tend();
 
-        // 4. Verify: Since this is Case 1 with small amount, flashloan skipped
-        // The function should just call _repay(min(_amount, balanceOfDebt))
-        // Since balanceOfDebt = 0, this is effectively a no-op for borrowing
+        // 4. Verify: no position is built until a taker actually fills the auction.
         uint256 debt = strategy.balanceOfDebt();
         assertEq(debt, 0, "should have no debt (flashloan skipped)");
+        assertEq(strategy.activeAuction(), address(asset), "should kick asset auction");
     }
 
     /// @notice Test Case 1: Existing under-leveraged position, add funds and lever up
@@ -322,8 +319,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), _amount);
 
         // 4. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify leverage moved toward target
         _assertLeverageWithinBuffer();
@@ -367,8 +363,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), smallAmount);
 
         // 5. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 6. Since the required flashloan amount is below minAmountToBorrow,
         // the code enters Case 1b: just _repay(min(_amount, balanceOfDebt))
@@ -405,8 +400,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 3. Execute tend with no new funds (rebalance only)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify leverage moved toward target
         _assertLeverageWithinBuffer();
@@ -435,8 +429,7 @@ abstract contract LeverScenariosTest is Setup {
         (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
 
         // 4. Execute tend with no new funds
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify leverage moved toward target (primary assertion)
         _assertLeverageWithinBuffer();
@@ -483,8 +476,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), smallAmount);
 
         // 6. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 7. Verify leverage moved toward target (this is the key assertion)
         _assertLeverageWithinBuffer();
@@ -532,8 +524,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), largeAmount);
 
         // 5. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 6. Verify leverage is within buffer
         // Note: with large amount, the new equity changes target position
@@ -576,8 +567,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), debtToRepay);
 
         // 5. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 6. Verify final state - should be very close to target
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -619,22 +609,29 @@ abstract contract LeverScenariosTest is Setup {
         vm.prank(keeper);
         strategy.tend();
 
-        uint256 debtAfter = strategy.balanceOfDebt();
-        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
-        uint256 debtReduction = debtBefore - debtAfter;
+        address collateralToken = strategy.collateralToken();
+        uint256 auctionAmount = strategy.available(collateralToken);
+        uint256 collateralTokens = strategy.balanceOfCollateral();
+        uint256 expectedMaxAuction = (((maxSwap * collateralTokens) /
+            collateralBefore) * (10_000 + strategy.slippage())) / 10_000;
 
-        assertGt(debtReduction, 0, "should repay some debt");
-        assertLe(
-            debtReduction,
-            maxSwap,
-            "delever should respect maxAmountToSwap"
+        assertEq(
+            strategy.activeAuction(),
+            collateralToken,
+            "should kick collateral auction"
         );
-        assertLt(leverageAfter, leverageBefore, "leverage should improve");
+        assertGt(auctionAmount, 0, "should list collateral for sale");
+        assertLe(
+            auctionAmount,
+            expectedMaxAuction + 2,
+            "auction should respect maxAmountToSwap"
+        );
         assertGt(
-            leverageAfter,
+            strategy.getCurrentLeverageRatio(),
             target + buffer,
             "position should still be over target"
         );
+        assertEq(strategy.balanceOfDebt(), debtBefore, "debt should not change before take");
     }
 
     /// @notice Case 2b should do nothing when maxAmountToSwap is zero
@@ -674,6 +671,7 @@ abstract contract LeverScenariosTest is Setup {
             target + buffer,
             "should stay over-leveraged"
         );
+        assertEq(strategy.activeAuction(), address(0), "!should not kick auction");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -713,8 +711,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), newAmount);
 
         // 4. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify still within buffer (should lever up to maintain target)
         _assertLeverageWithinBuffer();
@@ -763,8 +760,7 @@ abstract contract LeverScenariosTest is Setup {
         (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
 
         // 4. Execute tend with no new funds
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify leverage is still within buffer (main assertion)
         _assertLeverageWithinBuffer();
@@ -805,8 +801,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, maxLeverage, "should be above max leverage");
 
         // 3. Execute tend (should trigger emergency delever)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify leverage came down
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -833,8 +828,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), newAmount);
 
         // 4. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify leverage came down significantly
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -881,8 +875,7 @@ abstract contract LeverScenariosTest is Setup {
         airdrop(asset, address(strategy), mediumAmount);
 
         // 5. Execute tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 6. Verify leverage moved toward target
         _assertLeverageWithinBuffer();
@@ -916,8 +909,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 3. Execute tend with no new funds
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify leverage is within or moving toward buffer after tend
         _assertLeverageWithinBuffer();
@@ -945,8 +937,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 3. Execute tend with no new funds
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify leverage stayed within buffer
         _assertLeverageWithinBuffer();
@@ -963,14 +954,12 @@ abstract contract LeverScenariosTest is Setup {
         // 1. Setup: Normal deposit and tend
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         _assertLeverageWithinBuffer();
 
         // 2. Second tend should maintain leverage
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         _assertLeverageWithinBuffer();
 
@@ -978,8 +967,7 @@ abstract contract LeverScenariosTest is Setup {
         uint256 smallAdd = _amount / 10;
         airdrop(asset, address(strategy), smallAdd);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         _assertLeverageWithinBuffer();
     }
@@ -991,8 +979,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, minAmount);
 
         // 2. Tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 3. Should either achieve target or be handled gracefully
         uint256 leverage = strategy.getCurrentLeverageRatio();
@@ -1012,8 +999,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, maxAmount);
 
         // 2. Tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 3. Verify leverage
         _assertLeverageWithinBuffer();
@@ -1043,8 +1029,7 @@ abstract contract LeverScenariosTest is Setup {
             airdrop(asset, address(strategy), debtToRepay);
 
             // 4. Execute tend
-            vm.prank(keeper);
-            strategy.tend();
+            _keeperTendAndSettle();
 
             // 5. Verify - with exact repayment, position should be close to target
             // The new equity includes the added amount, so target recalculates
@@ -1084,8 +1069,7 @@ abstract contract LeverScenariosTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         (uint256 collateralValue, uint256 debt) = strategy.position();
         uint256 currentLTV = strategy.getCurrentLTV();
@@ -1135,8 +1119,7 @@ abstract contract LeverScenariosTest is Setup {
 
         // 3. Tend - flashloan should be skipped due to minAmountToBorrow
         // Case 1b: flashloanAmount <= minAmountToBorrow, so just _repay and return
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 4. Verify the position was not fully leveraged up
         // Since flashloan was skipped, leverage should remain below target
@@ -1158,8 +1141,7 @@ abstract contract LeverScenariosTest is Setup {
         // 1. Setup: Normal deposit and tend at 3x
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         uint256 leverageBefore = strategy.getCurrentLeverageRatio();
         _assertLeverageWithinBuffer();
@@ -1178,8 +1160,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 4. Tend should delever to new target
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify at new target
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -1207,8 +1188,7 @@ abstract contract LeverScenariosTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         uint256 leverageBefore = strategy.getCurrentLeverageRatio();
         assertGe(leverageBefore, 2e18 - 0.3e18, "should be at 2x target");
@@ -1228,8 +1208,7 @@ abstract contract LeverScenariosTest is Setup {
         );
 
         // 4. Tend should lever up
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 5. Verify at new target
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -1266,8 +1245,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // Tend should respect maxAmountToSwap
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Verify position was created but limited
         (uint256 collateralValue, uint256 debt) = strategy.position();
@@ -1298,8 +1276,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
         // Tend should only swap maxSwap worth
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Position should have limited collateral
         // No debt should be taken since we hit the early return
@@ -1328,8 +1305,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
         // Tend should swap 0 (early return path)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Should have no debt
         assertEq(strategy.balanceOfDebt(), 0, "!should have no debt");
@@ -1350,8 +1326,7 @@ abstract contract LeverScenariosTest is Setup {
 
         // First create a position at target leverage
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Verify at target
         _assertLeverageWithinBuffer();
@@ -1367,8 +1342,7 @@ abstract contract LeverScenariosTest is Setup {
         uint256 collateralBefore = strategy.balanceOfCollateral();
 
         // Tend should only swap smallMax worth
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         uint256 collateralAfter = strategy.balanceOfCollateral();
 
@@ -1398,8 +1372,7 @@ abstract contract LeverScenariosTest is Setup {
 
         // Normal deposit and tend should work without limits
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Should achieve target leverage
         _assertLeverageWithinBuffer();
@@ -1436,8 +1409,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // Tend should execute with reduced flashloan
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Should have some debt (reduced flashloan was above minBorrow)
         uint256 debt = strategy.balanceOfDebt();
@@ -1467,8 +1439,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
         // Tend should skip flashloan (reduced amount below minBorrow)
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Flashloan skipped means Case 1b: just repay(min(_amount, debt))
         // Since no debt exists yet, this is essentially a no-op for debt
@@ -1489,8 +1460,7 @@ abstract contract LeverScenariosTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // First tend - partial position
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         (uint256 collateral1, uint256 debt1) = strategy.position();
         uint256 leverage1 = strategy.getCurrentLeverageRatio();
@@ -1507,8 +1477,7 @@ abstract contract LeverScenariosTest is Setup {
         strategy.setMinTendInterval(0);
 
         // Second tend - should complete the position
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         (uint256 collateral2, uint256 debt2) = strategy.position();
         uint256 leverage2 = strategy.getCurrentLeverageRatio();

@@ -30,8 +30,7 @@ abstract contract ShutdownTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // Deploy funds via tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
 
@@ -46,10 +45,12 @@ abstract contract ShutdownTest is Setup {
 
         // Make sure we can still withdraw the full amount
         uint256 balanceBefore = asset.balanceOf(user);
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
 
         // Withdraw all funds
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        strategy.redeem(_amount, user, user, swapData);
 
         assertApproxEqRel(
             asset.balanceOf(user),
@@ -114,17 +115,16 @@ abstract contract ShutdownTest is Setup {
 
     function test_idleMode_rejectsNonZeroBuffer() public {
         vm.prank(management);
-        vm.expectRevert("buffer must be 0 if target is 0");
+        vm.expectRevert(bytes("buf0"));
         strategy.setLeverageParams(0, 0.1e18, 5e18);
     }
 
-    function test_idleMode_unwindsPosition(uint256 _amount) public {
+    function test_idleMode_unwindsPosition(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Setup leveraged position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Verify position exists
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
@@ -134,10 +134,11 @@ abstract contract ShutdownTest is Setup {
         // Set idle mode
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
 
-        // Unwind position using manualFullUnwind (tend alone doesn't fully unwind)
-        vm.prank(management);
-        strategy.manualFullUnwind();
+        vm.prank(user);
+        strategy.redeem(_amount, address(strategy), user, swapData);
 
         // Verify position is fully unwound
         assertLe(
@@ -147,20 +148,24 @@ abstract contract ShutdownTest is Setup {
         );
     }
 
-    function test_idleMode_tendTriggerFalseAfterUnwind(uint256 _amount) public {
+    function test_idleMode_tendTriggerFalseAfterUnwind(
+        uint256 _amount
+    ) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Setup leveraged position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
-        // Set idle mode and unwind using manualFullUnwind
+        // Set idle mode and unwind back into loose asset held on the strategy.
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        vm.prank(management);
-        strategy.manualFullUnwind();
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
+
+        vm.prank(user);
+        strategy.redeem(_amount, address(strategy), user, swapData);
 
         // Verify position is unwound
         assertLe(
@@ -184,8 +189,7 @@ abstract contract ShutdownTest is Setup {
 
         // Setup leveraged position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Verify position has debt
         assertGt(strategy.balanceOfDebt(), 0, "!debt should exist");
@@ -202,20 +206,22 @@ abstract contract ShutdownTest is Setup {
         assertTrue(trigger, "!tendTrigger should be true with debt");
     }
 
-    function test_idleMode_staysIdle(uint256 _amount) public {
+    function test_idleMode_staysIdle(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Setup leveraged position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
-        // Set idle mode and unwind using manualFullUnwind
+        // Set idle mode and unwind back into loose asset held on the strategy.
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        vm.prank(management);
-        strategy.manualFullUnwind();
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
+
+        vm.prank(user);
+        strategy.redeem(_amount, address(strategy), user, swapData);
 
         // Verify position is unwound
         assertLe(
@@ -239,8 +245,7 @@ abstract contract ShutdownTest is Setup {
         // Note: In idle mode (targetLeverageRatio = 0), calling tend() will hit CASE 3
         // which supplies collateral without borrowing. This is the expected behavior:
         // assets are converted to collateral but no leverage is applied.
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Verify NO DEBT (key assertion for idle mode)
         assertEq(
@@ -254,20 +259,22 @@ abstract contract ShutdownTest is Setup {
         // The key invariant is that debt = 0 (no borrowing in idle mode)
     }
 
-    function test_idleMode_canReenableLeverage(uint256 _amount) public {
+    function test_idleMode_canReenableLeverage(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Setup leveraged position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
 
-        // Set idle mode and unwind using manualFullUnwind
+        // Set idle mode and unwind back into loose asset held on the strategy.
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        vm.prank(management);
-        strategy.manualFullUnwind();
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
+
+        vm.prank(user);
+        strategy.redeem(_amount, address(strategy), user, swapData);
 
         // Verify position is unwound
         assertLe(
@@ -281,8 +288,8 @@ abstract contract ShutdownTest is Setup {
         strategy.setLeverageParams(3e18, 0.5e18, 5e18);
 
         // Rebuild position via tend
-        vm.prank(keeper);
-        strategy.tend();
+        skip(strategy.minTendInterval() + 1);
+        _keeperTendAndSettle();
 
         // Verify position is rebuilt
         assertGt(

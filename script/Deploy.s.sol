@@ -7,7 +7,7 @@ import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
-import {AaveLooper} from "../src/aave/AaveLooper.sol";
+import {AaveLooper} from "./AaveLooper.sol";
 import {LSTAaveLooper} from "../src/aave/LSTAaveLooper.sol";
 import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
 import {sUSDeAaveLooper} from "../src/aave/sUSDeAaveLooper.sol";
@@ -361,7 +361,7 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     function run() external {
-        DEPLOY_CONFIG = vm.envOr("DEPLOY_CONFIG", DEPLOY_CONFIG);
+        DEPLOY_CONFIG = "AAVE_SUSDE_USDC_MAINNET";
         deploy();
     }
 
@@ -570,9 +570,9 @@ contract Deploy is Script {
     }
 
     function deployAaveSUSDe(AaveFluid4626Config memory cfg) internal returns (address) {
-        ERC4626FluidExchange exchange =
-            new ERC4626FluidExchange(cfg.base.weth, cfg.baseToken, cfg.base.asset, cfg.base.collateralToken);
-        sUSDeAaveLooper looper = new sUSDeAaveLooper(
+        //ERC4626FluidExchange exchange =
+        //    new ERC4626FluidExchange(cfg.base.weth, cfg.baseToken, cfg.base.asset, cfg.base.collateralToken);
+        AaveLooper looper = new AaveLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
@@ -581,11 +581,11 @@ contract Deploy is Script {
             cfg.base.eModeCategoryId,
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
-        exchange.setDeposit(true);
-        exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
-        exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
-        exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
+        //exchange.setStrategy(address(looper));
+        //exchange.setDeposit(true);
+        //exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
+        //exchange.setFluidDex(cfg.underlyingToken, cfg.baseToken, cfg.underlyingBaseFluidDex);
+        //exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
         return address(looper);
     }
 

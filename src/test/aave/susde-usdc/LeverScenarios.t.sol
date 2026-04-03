@@ -26,4 +26,22 @@ contract AavesUSDeUSDCLeverScenariosTest is
     ) public override(SetupAavesUSDeUSDC, Setup) {
         SetupAavesUSDeUSDC.accrueYield(_amount);
     }
+
+    function _simulateExitSwapData(
+        uint256 _assetAmountNeeded
+    )
+        internal
+        view
+        override(SetupAavesUSDeUSDC, Setup)
+        returns (bytes memory)
+    {
+        return SetupAavesUSDeUSDC._simulateExitSwapData(_assetAmountNeeded);
+    }
+
+    function _prepareExitSwapRoute()
+        internal
+        override(SetupAavesUSDeUSDC, Setup)
+    {
+        SetupAavesUSDeUSDC._prepareExitSwapRoute();
+    }
 }

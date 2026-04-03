@@ -23,8 +23,25 @@ interface IFactory {
     function set_protocol_fee_recipient(address) external;
 }
 
+contract SimulatedSwapTarget {
+    using SafeERC20 for ERC20;
+
+    function simulateSwap(
+        address _from,
+        address _to,
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) external returns (uint256 amountOut) {
+        ERC20(_from).safeTransferFrom(msg.sender, address(this), _amountIn);
+        ERC20(_to).safeTransfer(msg.sender, _amountOut);
+        return _amountOut;
+    }
+}
+
 contract Setup is Test, IEvents {
     using SafeERC20 for ERC20;
+
+    address internal constant DEFAULT_AUCTION_TAKER = address(0xB0B);
 
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
@@ -51,6 +68,7 @@ contract Setup is Test, IEvents {
 
     // Address of the real deployed Factory
     address public factory;
+    SimulatedSwapTarget public simulatedSwapTarget;
 
     // Integer variables that will be used repeatedly.
     uint256 public decimals;
@@ -73,6 +91,7 @@ contract Setup is Test, IEvents {
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
+        simulatedSwapTarget = new SimulatedSwapTarget();
 
         factory = strategy.FACTORY();
 
@@ -163,6 +182,80 @@ contract Setup is Test, IEvents {
         uint256 balanceBefore = _asset.balanceOf(_to);
         deal(address(_asset), _to, balanceBefore + _amount);
     }
+
+    function _seedAuctionTaker(
+        address _token,
+        address _owner,
+        uint256 _amount
+    ) internal {
+        deal(_token, _owner, _amount);
+
+        vm.prank(_owner);
+        ERC20(_token).forceApprove(address(strategy), type(uint256).max);
+    }
+
+    function _takeActiveAuction(
+        address _taker
+    ) internal returns (address from, uint256 available, uint256 amountNeeded) {
+        from = strategy.activeAuction();
+        if (from == address(0)) return (address(0), 0, 0);
+
+        available = strategy.available(from);
+        amountNeeded = strategy.getAmountNeeded(from, available);
+        address wantToken = strategy.want(from);
+
+        _seedAuctionTaker(wantToken, _taker, amountNeeded);
+
+        vm.prank(_taker);
+        strategy.take(from, available, _taker, "");
+    }
+
+    function _settleActiveAuction() internal returns (bool) {
+        (address from, , ) = _takeActiveAuction(DEFAULT_AUCTION_TAKER);
+        return from != address(0);
+    }
+
+    function _keeperTendAndSettle() internal {
+        vm.prank(keeper);
+        strategy.tend();
+        _settleActiveAuction();
+    }
+
+    function _keeperReportAndSettle() internal {
+        vm.prank(keeper);
+        strategy.report();
+        _settleActiveAuction();
+    }
+
+    function _encodeSimulatedSwapData(
+        address _from,
+        address _to,
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) internal view returns (bytes memory) {
+        return
+            abi.encode(
+                address(simulatedSwapTarget),
+                abi.encodeCall(
+                    SimulatedSwapTarget.simulateSwap,
+                    (_from, _to, _amountIn, _amountOut)
+                )
+            );
+    }
+
+    function _simulateExitSwapData(
+        uint256
+    ) internal view virtual returns (bytes memory) {
+        return bytes("");
+    }
+
+    function _simulateRedeemSwapData(
+        uint256 _shares
+    ) internal view virtual returns (bytes memory) {
+        return _simulateExitSwapData(strategy.previewRedeem(_shares));
+    }
+
+    function _prepareExitSwapRoute() internal virtual {}
 
     function accrueYield(uint256 _amount) public virtual {
         skip(1 days);

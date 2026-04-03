@@ -4,6 +4,12 @@ pragma solidity ^0.8.18;
 import "forge-std/console2.sol";
 import {Setup} from "./Setup.sol";
 
+interface IStepDecaySetter {
+    function setstepDecayRate(uint256 _stepDecayRate) external;
+
+    function stepDecayRate() external view returns (uint64);
+}
+
 abstract contract OperationTest is Setup {
     // Allow tiny residual collateral after full unwind due to rounding/swap dust.
     uint256 internal constant UNWIND_COLLATERAL_DUST_BPS = 2; // 0.02%
@@ -80,8 +86,7 @@ abstract contract OperationTest is Setup {
         strategy.setLossLimitRatio(100);
 
         // Report profit
-        vm.prank(keeper);
-        strategy.report();
+        _keeperReportAndSettle();
 
         skip(strategy.profitMaxUnlockTime());
 
@@ -101,14 +106,13 @@ abstract contract OperationTest is Setup {
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        // Deploy funds via tend
+        // Deploy funds via tend. Keep this idle so redeem works without swapData.
         vm.prank(keeper);
         strategy.tend();
 
         accrueYield(_amount);
 
-        vm.prank(keeper);
-        strategy.report();
+        _keeperReportAndSettle();
 
         skip(strategy.profitMaxUnlockTime());
 
@@ -131,8 +135,7 @@ abstract contract OperationTest is Setup {
         vm.prank(management);
         strategy.setDoHealthCheck(false);
 
-        vm.prank(keeper);
-        strategy.report();
+        _keeperReportAndSettle();
 
         uint256 ltvAfter = strategy.getCurrentLTV();
         uint256 debtAfter = strategy.balanceOfDebt();
@@ -175,8 +178,7 @@ abstract contract OperationTest is Setup {
         vm.prank(management);
         strategy.setDoHealthCheck(false);
 
-        vm.prank(keeper);
-        strategy.report();
+        _keeperReportAndSettle();
 
         assertGt(strategy.balanceOfAsset(), 0, "!idle asset should remain");
         assertEq(
@@ -233,8 +235,7 @@ abstract contract OperationTest is Setup {
         assertFalse(trigger, "tend should not auto-trigger after deposit");
 
         // Deploy funds via tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // After tend, should no longer need to tend (within buffer)
         (trigger, ) = strategy.tendTrigger();
@@ -259,8 +260,7 @@ abstract contract OperationTest is Setup {
         );
 
         // Deploy funds via tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // After tend, should be near target leverage
         uint256 leverageAfter = strategy.getCurrentLeverageRatio();
@@ -288,34 +288,33 @@ abstract contract OperationTest is Setup {
         assertEq(strategy.leverageBuffer(), 0.15e18, "!new buffer");
 
         // Test bounds validation - leverage < 1x
-        vm.expectRevert("leverage < 1x");
+        vm.expectRevert(bytes("lev<1"));
         strategy.setLeverageParams(0.5e18, 0.1e18, 5e18);
 
         // Test bounds validation - buffer too small
-        vm.expectRevert("buffer too small");
+        vm.expectRevert(bytes("buf"));
         strategy.setLeverageParams(2e18, 0.001e18, 5e18);
 
         // Test bounds validation - exceeds LLTV
         // LLTV is ~91.5% which corresponds to max leverage of ~11.76x
         // Setting target + buffer above that should fail
-        vm.expectRevert("exceeds LLTV");
+        vm.expectRevert(bytes("lltv"));
         strategy.setLeverageParams(3e18, 1e18, 40e18); // 11x + 1x = 12x would exceed LLTV
 
         // Test bounds validation - max leverage < target + buffer
-        vm.expectRevert("max leverage < target + buffer");
+        vm.expectRevert(bytes("max"));
         strategy.setLeverageParams(2e18, 0.1e18, 1e18);
 
         vm.stopPrank();
     }
 
-    function test_manualFullUnwind(uint256 _amount) public {
+    function test_redeemFullUnwind_withSwapData(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
         // Deploy funds via tend
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         assertGt(strategy.totalAssets(), 0, "!totalAssets");
         uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
@@ -325,9 +324,12 @@ abstract contract OperationTest is Setup {
             "!collateral should be > 0 before unwind"
         );
 
-        // Full unwind via flashloan
-        vm.prank(management);
-        strategy.manualFullUnwind();
+        _prepareExitSwapRoute();
+        bytes memory swapData = _simulateRedeemSwapData(_amount);
+
+        // Full unwind via redeem path with simulated exit routing.
+        vm.prank(user);
+        strategy.redeem(_amount, user, user, swapData);
 
         // Position should be closed
         assertLe(
@@ -345,6 +347,7 @@ abstract contract OperationTest is Setup {
 
         vm.prank(management);
         strategy.convertAssetToCollateral(type(uint256).max);
+        _settleActiveAuction();
 
         // Manual supply collateral
         vm.prank(management);
@@ -409,7 +412,11 @@ abstract contract OperationTest is Setup {
         vm.prank(management);
         strategy.convertAssetToCollateral(amount);
 
-        assertEq(strategy.want(), address(asset), "!default want after");
+        assertEq(
+            strategy.want(),
+            strategy.collateralToken(),
+            "!default want after"
+        );
         assertEq(strategy.activeAuction(), address(asset), "!active auction after");
         assertTrue(strategy.isActive(address(asset)), "!asset active after");
         assertEq(strategy.available(address(asset)), amount, "!asset available");
@@ -557,9 +564,9 @@ abstract contract OperationTest is Setup {
         vm.prank(management);
         strategy.setLeverageParams(1e18, 0.01e18, 5e18);
 
-        // Available deposit limit should be 0 when targetLeverageRatio <= WAD
+        // At exactly 1x leverage, deposits are still allowed.
         uint256 limit = strategy.availableDepositLimit(user);
-        assertEq(limit, 0, "!limit should be 0 when leverage <= 1x");
+        assertEq(limit, type(uint256).max, "!limit should be max at 1x");
     }
 
     function test_availableDepositLimit_respectsTargetLeverageRatio(
@@ -636,8 +643,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Get current debt
         uint256 debt = strategy.balanceOfDebt();
@@ -666,8 +672,7 @@ abstract contract OperationTest is Setup {
 
         uint256 _amount = _baseTestAmount();
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         uint256 currentDebt = strategy.balanceOfDebt();
         uint256 flashloanAvailable = strategy.maxFlashloan();
@@ -722,8 +727,7 @@ abstract contract OperationTest is Setup {
 
         // Deposit and first tend
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Immediately after tend, trigger should be false (even with idle funds)
         // unless there's an emergency condition
@@ -752,8 +756,7 @@ abstract contract OperationTest is Setup {
 
         // Deposit and first tend
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Get current leverage
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
@@ -779,8 +782,7 @@ abstract contract OperationTest is Setup {
 
         // Deposit and tend
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // lastTend should be updated to current timestamp
         uint256 lastTendAfter = strategy.lastTend();
@@ -789,8 +791,7 @@ abstract contract OperationTest is Setup {
         // Skip some time and tend again
         skip(3 hours);
         airdrop(asset, address(strategy), _amount / 30);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // lastTend should update again
         assertEq(
@@ -809,8 +810,7 @@ abstract contract OperationTest is Setup {
     function _createOverLeveragedPosition(uint256 equity) internal {
         // 1. Deposit and tend to build position at current target (3x)
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 2. Lower the target so current position becomes over-leveraged
         // Current: 3x target, 0.25 buffer => bounds [2.75, 3.25]
@@ -842,8 +842,7 @@ abstract contract OperationTest is Setup {
         strategy.setLeverageParams(4e18, 0.25e18, 5e18);
 
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         vm.prank(management);
         strategy.setLeverageParams(3e18, 0.25e18, 3.5e18);
@@ -864,8 +863,7 @@ abstract contract OperationTest is Setup {
 
         // 2. Deposit and tend to build position at 2x target
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // 3. Raise the target so current position becomes under-leveraged
         // Current: 2x target, 0.25 buffer => bounds [1.75, 2.25]
@@ -1086,8 +1084,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Skip past minTendInterval
         skip(strategy.minTendInterval() + 1);
@@ -1139,8 +1136,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Skip past minTendInterval
         skip(strategy.minTendInterval() + 1);
@@ -1176,8 +1172,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Skip past minTendInterval
         skip(strategy.minTendInterval() + 1);
@@ -1238,8 +1233,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position at target
         mintAndDepositIntoStrategy(strategy, user, equity);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Skip past minTendInterval
         skip(strategy.minTendInterval() + 1);
@@ -1287,13 +1281,13 @@ abstract contract OperationTest is Setup {
     function test_setSlippage_boundsValidation() public {
         vm.startPrank(management);
 
-        vm.expectRevert("slippage");
+        vm.expectRevert(bytes("slip"));
         strategy.setSlippage(MAX_BPS);
 
-        vm.expectRevert("slippage");
+        vm.expectRevert(bytes("slip"));
         strategy.setSlippage(MAX_BPS + 1);
 
-        vm.expectRevert("slippage too high");
+        vm.expectRevert(bytes("slip-hi"));
         strategy.setSlippage(100);
 
         strategy.setSlippage(99);
@@ -1313,15 +1307,15 @@ abstract contract OperationTest is Setup {
 
     function test_setAuctionStepDecayRate() public {
         assertEq(
-            strategy.auctionStepDecayRate(),
+            IStepDecaySetter(address(strategy)).stepDecayRate(),
             1,
             "!default auctionStepDecayRate"
         );
 
         vm.prank(management);
-        strategy.setAuctionStepDecayRate(25);
+        IStepDecaySetter(address(strategy)).setstepDecayRate(25);
         assertEq(
-            strategy.auctionStepDecayRate(),
+            IStepDecaySetter(address(strategy)).stepDecayRate(),
             25,
             "!auctionStepDecayRate should update"
         );
@@ -1330,28 +1324,28 @@ abstract contract OperationTest is Setup {
     function test_setAuctionStepDecayRate_onlyManagement() public {
         vm.prank(user);
         vm.expectRevert("!management");
-        strategy.setAuctionStepDecayRate(2);
+        IStepDecaySetter(address(strategy)).setstepDecayRate(2);
 
         vm.prank(keeper);
         vm.expectRevert("!management");
-        strategy.setAuctionStepDecayRate(2);
+        IStepDecaySetter(address(strategy)).setstepDecayRate(2);
     }
 
     function test_setAuctionStepDecayRate_boundsValidation() public {
         vm.startPrank(management);
 
-        vm.expectRevert("decay");
-        strategy.setAuctionStepDecayRate(0);
+        vm.expectRevert(bytes("dec"));
+        IStepDecaySetter(address(strategy)).setstepDecayRate(0);
 
-        strategy.setAuctionStepDecayRate(9_999);
+        IStepDecaySetter(address(strategy)).setstepDecayRate(9_999);
         assertEq(
-            strategy.auctionStepDecayRate(),
+            IStepDecaySetter(address(strategy)).stepDecayRate(),
             9_999,
             "!auctionStepDecayRate should be 9_999"
         );
 
-        vm.expectRevert("decay");
-        strategy.setAuctionStepDecayRate(10_000);
+        vm.expectRevert(bytes("dec"));
+        IStepDecaySetter(address(strategy)).setstepDecayRate(10_000);
 
         vm.stopPrank();
     }
@@ -1367,8 +1361,7 @@ abstract contract OperationTest is Setup {
 
         // Create a position with collateral
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
+        _keeperTendAndSettle();
 
         // Get estimatedTotalAssets with default reportBuffer (0)
         uint256 estimatedAssetsDefault = strategy.estimatedTotalAssets();
@@ -1427,10 +1420,10 @@ abstract contract OperationTest is Setup {
         vm.startPrank(management);
 
         // Should fail if reportBuffer >= MAX_BPS
-        vm.expectRevert("buffer");
+        vm.expectRevert(bytes("buf"));
         strategy.setReportBuffer(MAX_BPS);
 
-        vm.expectRevert("buffer");
+        vm.expectRevert(bytes("buf"));
         strategy.setReportBuffer(MAX_BPS + 1);
 
         // Should succeed with valid values
