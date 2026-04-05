@@ -42,15 +42,15 @@ contract OracleTest is SetupPT {
 
         // TODO: Uncomment if there are setter functions to test.
         /**
-        vm.expectRevert("!governance");
-        vm.prank(user);
-        oracle.setterFunction(setterVariable);
-
-        vm.prank(management);
-        oracle.setterFunction(setterVariable);
-
-        assertEq(oracle.setterVariable(), setterVariable);
-        */
+         * vm.expectRevert("!governance");
+         *     vm.prank(user);
+         *     oracle.setterFunction(setterVariable);
+         *
+         *     vm.prank(management);
+         *     oracle.setterFunction(setterVariable);
+         *
+         *     assertEq(oracle.setterVariable(), setterVariable);
+         */
     }
 
     function test_oracle(uint256 _amount, uint16 _percentChange) public {

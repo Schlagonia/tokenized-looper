@@ -147,7 +147,6 @@ abstract contract OperationTest is Setup {
             lastTendBefore,
             "!lastTend should update"
         );
-        assertEq(strategy.lastTend(), block.timestamp, "!lastTend timestamp");
     }
 
     function test_report_overTargetBelowWarning_doesNotDelever() public {
@@ -272,12 +271,6 @@ abstract contract OperationTest is Setup {
         assertLe(leverageAfter, targetLeverage + buffer, "!leverage too high");
     }
 
-    function test_maxFlashloan() public {
-        uint256 maxFL = strategy.maxFlashloan();
-        assertGt(maxFL, 0, "!maxFlashloan should be > 0");
-        console2.log("Max flashloan available:", maxFL);
-    }
-
     function test_setLeverageParams() public {
         // Test setting leverage params
         vm.startPrank(management);
@@ -308,7 +301,9 @@ abstract contract OperationTest is Setup {
         vm.stopPrank();
     }
 
-    function test_redeemFullUnwind_withSwapData(uint256 _amount) public virtual {
+    function test_redeemFullUnwind_withSwapData(
+        uint256 _amount
+    ) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -345,8 +340,9 @@ abstract contract OperationTest is Setup {
         // Airdrop asset to strategy for manual operations
         airdrop(asset, address(strategy), _amount);
 
+        uint256 looseAsset = strategy.balanceOfAsset();
         vm.prank(management);
-        strategy.convertAssetToCollateral(type(uint256).max);
+        strategy.convertAssetToCollateral(looseAsset);
         _settleActiveAuction();
 
         // Manual supply collateral
@@ -397,15 +393,27 @@ abstract contract OperationTest is Setup {
         );
         assertEq(strategy.want(unknownToken), address(asset), "!unknown want");
 
-        assertEq(strategy.activeAuction(), address(0), "!active auction before");
+        assertEq(
+            strategy.activeAuction(),
+            address(0),
+            "!active auction before"
+        );
         assertFalse(strategy.isActive(address(asset)), "!asset active before");
-        assertEq(strategy.available(address(asset)), 0, "!asset available before");
+        assertEq(
+            strategy.available(address(asset)),
+            0,
+            "!asset available before"
+        );
         assertEq(strategy.kicked(address(asset)), 0, "!asset kicked before");
         assertFalse(strategy.isActive(unknownToken), "!unknown active");
         assertEq(strategy.available(unknownToken), 0, "!unknown available");
         assertEq(strategy.kicked(unknownToken), 0, "!unknown kicked");
         assertEq(strategy.price(unknownToken), 0, "!unknown price");
-        assertEq(strategy.getAmountNeeded(unknownToken, amount), 0, "!unknown need");
+        assertEq(
+            strategy.getAmountNeeded(unknownToken, amount),
+            0,
+            "!unknown need"
+        );
 
         airdrop(asset, address(strategy), amount);
 
@@ -417,10 +425,22 @@ abstract contract OperationTest is Setup {
             strategy.collateralToken(),
             "!default want after"
         );
-        assertEq(strategy.activeAuction(), address(asset), "!active auction after");
+        assertEq(
+            strategy.activeAuction(),
+            address(asset),
+            "!active auction after"
+        );
         assertTrue(strategy.isActive(address(asset)), "!asset active after");
-        assertEq(strategy.available(address(asset)), amount, "!asset available");
-        assertEq(strategy.kicked(address(asset)), block.timestamp, "!asset kicked");
+        assertEq(
+            strategy.available(address(asset)),
+            amount,
+            "!asset available"
+        );
+        assertEq(
+            strategy.kicked(address(asset)),
+            block.timestamp,
+            "!asset kicked"
+        );
         assertEq(
             strategy.price(address(asset)),
             strategy.getAmountNeeded(address(asset), unit),
@@ -440,7 +460,10 @@ abstract contract OperationTest is Setup {
         vm.prank(management);
         strategy.convertAssetToCollateral(amount);
 
-        assertTrue(strategy.isActive(address(asset)), "!asset active after kick");
+        assertTrue(
+            strategy.isActive(address(asset)),
+            "!asset active after kick"
+        );
 
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
@@ -449,11 +472,30 @@ abstract contract OperationTest is Setup {
         vm.prank(emergencyAdmin);
         strategy.settle();
 
-        assertEq(strategy.activeAuction(), address(0), "!active auction after settle");
-        assertFalse(strategy.isActive(address(asset)), "!asset active after settle");
-        assertEq(strategy.available(address(asset)), 0, "!asset available after settle");
-        assertEq(strategy.kicked(address(asset)), 0, "!asset kicked after settle");
-        assertEq(strategy.price(address(asset)), 0, "!asset price after settle");
+        assertEq(
+            strategy.activeAuction(),
+            address(0),
+            "!active auction after settle"
+        );
+        assertFalse(
+            strategy.isActive(address(asset)),
+            "!asset active after settle"
+        );
+        assertEq(
+            strategy.available(address(asset)),
+            0,
+            "!asset available after settle"
+        );
+        assertEq(
+            strategy.kicked(address(asset)),
+            0,
+            "!asset kicked after settle"
+        );
+        assertEq(
+            strategy.price(address(asset)),
+            0,
+            "!asset price after settle"
+        );
     }
 
     function test_leverageBoundsValidation() public {
@@ -647,7 +689,7 @@ abstract contract OperationTest is Setup {
 
         // Get current debt
         uint256 debt = strategy.balanceOfDebt();
-        uint256 flashloan = strategy.maxFlashloan();
+        uint256 flashloan = _maxFlashloan(address(asset));
 
         // If flashloan >= debt, limit should be max
         if (flashloan >= debt) {
@@ -664,7 +706,7 @@ abstract contract OperationTest is Setup {
         public
     {
         // This test verifies the math when flashloan < debt
-        // We need to create a scenario where maxFlashloan < balanceOfDebt
+        // We need to create a scenario where flashloan liquidity < balanceOfDebt
         // This is hard to simulate in a real fork, so we verify the formula:
         //   targetDebt = currentDebt - flashloanAvailable
         //   targetEquity = targetDebt * WAD / (L - WAD)
@@ -675,7 +717,7 @@ abstract contract OperationTest is Setup {
         _keeperTendAndSettle();
 
         uint256 currentDebt = strategy.balanceOfDebt();
-        uint256 flashloanAvailable = strategy.maxFlashloan();
+        uint256 flashloanAvailable = _maxFlashloan(address(asset));
         uint256 targetLeverage = strategy.targetLeverageRatio();
 
         if (flashloanAvailable >= currentDebt) {
@@ -780,23 +822,23 @@ abstract contract OperationTest is Setup {
         uint256 lastTendBefore = strategy.lastTend();
         assertEq(lastTendBefore, 0, "!lastTend should start at 0");
 
-        // Deposit and tend
+        // Deposit and tend — lastTend is set at kick time (inside tend),
+        // before the auction is settled (which may advance time).
         mintAndDepositIntoStrategy(strategy, user, _amount);
         _keeperTendAndSettle();
 
-        // lastTend should be updated to current timestamp
         uint256 lastTendAfter = strategy.lastTend();
-        assertEq(lastTendAfter, block.timestamp, "!lastTend should update");
+        assertGt(lastTendAfter, lastTendBefore, "!lastTend should update");
 
         // Skip some time and tend again
         skip(3 hours);
         airdrop(asset, address(strategy), _amount / 30);
+        uint256 lastTendBeforeSecond = strategy.lastTend();
         _keeperTendAndSettle();
 
-        // lastTend should update again
-        assertEq(
+        assertGt(
             strategy.lastTend(),
-            block.timestamp,
+            lastTendBeforeSecond,
             "!lastTend should update again"
         );
     }

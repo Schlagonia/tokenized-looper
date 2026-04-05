@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import {Setup} from "../../base/Setup.sol";
 import {ShutdownTest} from "../../base/Shutdown.t.sol";
-import {SetupAavesUSDeUSDC, TestableSUSDeAaveLooper} from "./Setup.sol";
+import {SetupAavesUSDeUSDC} from "./Setup.sol";
 
 contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
     uint256 internal constant SUSDE_UNWIND_DUST_BPS = 5; // 0.05%
@@ -28,12 +28,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
 
     function _simulateExitSwapData(
         uint256 _assetAmountNeeded
-    )
-        internal
-        view
-        override(SetupAavesUSDeUSDC, Setup)
-        returns (bytes memory)
-    {
+    ) internal view override(SetupAavesUSDeUSDC, Setup) returns (bytes memory) {
         return SetupAavesUSDeUSDC._simulateExitSwapData(_assetAmountNeeded);
     }
 
@@ -55,14 +50,11 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
                 : MIN_UNWIND_COLLATERAL_DUST;
     }
 
-    function _manualFullUnwindWithSwapData() internal {
-        _prepareExitSwapRoute();
-        bytes memory swapData = _simulateManualFullUnwindSwapData();
-
+    function _manualFullUnwindAndSettle() internal {
         vm.prank(emergencyAdmin);
-        TestableSUSDeAaveLooper(payable(address(strategy))).manualFullUnwind(
-            swapData
-        );
+        strategy.manualFullUnwind();
+
+        _settleActiveAuction();
     }
 
     function test_shutdownCanWithdraw(uint256 _amount) public override {
@@ -76,7 +68,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
         strategy.shutdownStrategy();
 
         uint256 balanceBefore = asset.balanceOf(user);
-        _manualFullUnwindWithSwapData();
+        _manualFullUnwindAndSettle();
 
         vm.prank(user);
         strategy.redeem(_amount, user, user);
@@ -100,7 +92,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
 
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        _manualFullUnwindWithSwapData();
+        _manualFullUnwindAndSettle();
 
         assertLe(
             strategy.balanceOfCollateral(),
@@ -120,7 +112,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
 
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        _manualFullUnwindWithSwapData();
+        _manualFullUnwindAndSettle();
 
         assertLe(
             strategy.balanceOfCollateral(),
@@ -129,7 +121,10 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
         );
 
         (bool trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "!tendTrigger should be false after full unwind in idle mode");
+        assertFalse(
+            trigger,
+            "!tendTrigger should be false after full unwind in idle mode"
+        );
     }
 
     function test_idleMode_staysIdle(uint256 _amount) public override {
@@ -141,7 +136,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
 
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        _manualFullUnwindWithSwapData();
+        _manualFullUnwindAndSettle();
 
         assertLe(
             strategy.balanceOfCollateral(),
@@ -158,10 +153,16 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
         skip(strategy.minTendInterval() + 1);
         _keeperTendAndSettle();
 
-        assertEq(strategy.balanceOfDebt(), 0, "!debt should still be 0 in idle mode");
+        assertEq(
+            strategy.balanceOfDebt(),
+            0,
+            "!debt should still be 0 in idle mode"
+        );
     }
 
-    function test_idleMode_canReenableLeverage(uint256 _amount) public override {
+    function test_idleMode_canReenableLeverage(
+        uint256 _amount
+    ) public override {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -170,7 +171,7 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
 
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
-        _manualFullUnwindWithSwapData();
+        _manualFullUnwindAndSettle();
 
         assertLe(
             strategy.balanceOfCollateral(),
@@ -184,7 +185,11 @@ contract AavesUSDeUSDCShutdownTest is SetupAavesUSDeUSDC, ShutdownTest {
         skip(strategy.minTendInterval() + 1);
         _keeperTendAndSettle();
 
-        assertGt(strategy.balanceOfCollateral(), 0, "!collateral should be > 0");
+        assertGt(
+            strategy.balanceOfCollateral(),
+            0,
+            "!collateral should be > 0"
+        );
         assertGt(strategy.balanceOfDebt(), 0, "!debt should be > 0");
 
         uint256 leverage = strategy.getCurrentLeverageRatio();

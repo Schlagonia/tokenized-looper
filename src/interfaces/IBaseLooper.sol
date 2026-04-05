@@ -106,9 +106,6 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Get balance of asset held by strategy
     function balanceOfAsset() external view returns (uint256);
 
-    /// @notice Max available flashloan from protocol
-    function maxFlashloan() external view returns (uint256);
-
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external;
 

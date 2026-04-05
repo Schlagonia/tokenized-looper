@@ -82,6 +82,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
         // Fully unwind the leveraged position
         vm.prank(emergencyAdmin);
         strategy.manualFullUnwind();
+        _settleActiveAuction();
 
         // Now we have loose WETH, convert to wstETH
         uint256 looseWeth = strategy.balanceOfAsset();
@@ -185,6 +186,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
         // Fully unwind
         vm.prank(emergencyAdmin);
         strategy.manualFullUnwind();
+        _settleActiveAuction();
 
         // Convert all WETH to wstETH
         uint256 looseWeth = strategy.balanceOfAsset();
@@ -409,6 +411,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
         vm.prank(emergencyAdmin);
         strategy.manualFullUnwind();
+        _settleActiveAuction();
 
         // 3. Now have loose assets - convert to wstETH for LST withdrawal
         uint256 looseAssets = strategy.balanceOfAsset();

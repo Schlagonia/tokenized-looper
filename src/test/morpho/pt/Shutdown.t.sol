@@ -70,6 +70,7 @@ contract PTShutdownTest is SetupPT, ShutdownTest {
 
         vm.prank(emergencyAdmin);
         strategy.emergencyWithdraw(type(uint256).max);
+        _settleActiveAuction();
 
         uint256 balanceBefore = asset.balanceOf(user);
 

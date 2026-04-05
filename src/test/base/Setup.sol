@@ -211,6 +211,12 @@ contract Setup is Test, IEvents {
     }
 
     function _settleActiveAuction() internal returns (bool) {
+        // Skip time so the auction price decays from the starting premium
+        // toward oracle fair value. With stepDecayRate=1 (0.01%/step) and
+        // 60s steps, 10 minutes ≈ 0.1% decay, roughly matching slippage.
+        if (strategy.activeAuction() != address(0)) {
+            skip(10 minutes);
+        }
         (address from, , ) = _takeActiveAuction(DEFAULT_AUCTION_TAKER);
         return from != address(0);
     }
@@ -257,6 +263,10 @@ contract Setup is Test, IEvents {
 
     function _prepareExitSwapRoute() internal virtual {}
 
+    function _maxFlashloan(address _token) internal view returns (uint256) {
+        return ERC20(_token).balanceOf(MORPHO);
+    }
+
     function accrueYield(uint256 _amount) public virtual {
         skip(1 days);
         _amount = (_amount * 300) / 10_000;
@@ -292,7 +302,7 @@ contract Setup is Test, IEvents {
         console2.log("Loose Asset:", strategy.balanceOfAsset());
         console2.log("Current LTV:", strategy.getCurrentLTV());
         console2.log("Current Leverage:", strategy.getCurrentLeverageRatio());
-        console2.log("Max Flashloan:", strategy.maxFlashloan());
+        console2.log("Max Flashloan:", _maxFlashloan(address(asset)));
         console2.log("==============================");
     }
 }

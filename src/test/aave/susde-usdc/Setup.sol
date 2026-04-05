@@ -2,48 +2,11 @@
 pragma solidity ^0.8.18;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
 import {Setup, SimulatedSwapTarget} from "../../base/Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
 import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IAaveOracle} from "../../../interfaces/aave/IAaveOracle.sol";
-
-contract TestableSUSDeAaveLooper is sUSDeAaveLooper {
-    constructor(
-        address _asset,
-        string memory _name,
-        address _collateralToken,
-        address _addressesProvider,
-        address _morpho,
-        uint8 _eModeCategoryId,
-        address _governance
-    )
-        sUSDeAaveLooper(
-            _asset,
-            _name,
-            _collateralToken,
-            _addressesProvider,
-            _morpho,
-            _eModeCategoryId,
-            _governance
-        )
-    {}
-
-    function manualFullUnwind(
-        bytes calldata _swapData
-    ) external accrue onlyEmergencyAuthorized {
-        _setForcedExitSwapData(_swapData);
-        _withdrawFunds(type(uint256).max);
-        _clearForcedExitSwapData();
-    }
-
-    function isUnsafeSwapSelector(
-        bytes calldata _data
-    ) external pure returns (bool) {
-        return _isUnsafeSwapSelector(_data);
-    }
-}
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
@@ -107,17 +70,19 @@ contract SetupAavesUSDeUSDC is Setup {
     function setUpStrategy() public virtual override returns (address) {
         exchange = new ERC4626FluidExchange(WETH, USDT, address(asset), SUSDE);
 
-        TestableSUSDeAaveLooper looper = new TestableSUSDeAaveLooper(
-            address(asset),
-            "sUSDe/USDC Aave Looper",
-            SUSDE,
-            AAVE_ADDRESSES_PROVIDER,
-            MORPHO_FLASHLOAN_PROVIDER,
-            EMODE_CATEGORY_ID,
-            management
+        IStrategyInterface _strategy = IStrategyInterface(
+            address(
+                new sUSDeAaveLooper(
+                    address(asset),
+                    "sUSDe/USDC Aave Looper",
+                    SUSDE,
+                    AAVE_ADDRESSES_PROVIDER,
+                    MORPHO_FLASHLOAN_PROVIDER,
+                    EMODE_CATEGORY_ID,
+                    management
+                )
+            )
         );
-
-        IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.setStrategy(address(_strategy));
         _strategy.setPendingManagement(management);
 
@@ -138,6 +103,8 @@ contract SetupAavesUSDeUSDC is Setup {
         // Set high gas price tolerance for testing.
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        _strategy.setMinAmountToBorrow(2_000e6);
+
         vm.stopPrank();
 
         return address(_strategy);
@@ -156,29 +123,37 @@ contract SetupAavesUSDeUSDC is Setup {
         uint256 assetAmountOut;
 
         if (currentDebt == 0) {
-            collateralToWithdraw = _assetToCollateralAtOracle(_assetAmountNeeded);
+            collateralToWithdraw = _assetToCollateralAtOracle(
+                _assetAmountNeeded
+            );
             assetAmountOut = _assetAmountNeeded;
         } else {
             (uint256 collateralValue, ) = strategy.position();
             uint256 equity = collateralValue - currentDebt;
-            uint256 targetEquity = equity > _assetAmountNeeded
-                ? equity - _assetAmountNeeded
-                : 0;
-            (, uint256 targetDebt) = sUSDeAaveLooper(address(strategy))
-                .getTargetPosition(targetEquity);
+            (, uint256 targetDebt) = equity > _assetAmountNeeded
+                ? sUSDeAaveLooper(address(strategy)).getTargetPosition(
+                    equity - _assetAmountNeeded
+                )
+                : (uint256(0), uint256(0));
             uint256 debtToRepay = currentDebt - targetDebt;
-
-            debtToRepay = debtToRepay > strategy.maxFlashloan()
-                ? strategy.maxFlashloan()
-                : debtToRepay;
 
             if (debtToRepay == 0) return bytes("");
 
-            assetAmountOut = debtToRepay + _assetAmountNeeded;
+            // Mirror the strategy's snap-to-full-unwind logic
+            bool fullUnwind = debtToRepay == currentDebt ||
+                targetDebt < strategy.minAmountToBorrow();
 
-            collateralToWithdraw = debtToRepay == currentDebt
-                ? strategy.balanceOfCollateral()
-                : _assetToCollateralAtOracle(debtToRepay + _assetAmountNeeded);
+            if (fullUnwind) {
+                collateralToWithdraw = strategy.balanceOfCollateral();
+                assetAmountOut = _collateralToAssetAtOracle(
+                    collateralToWithdraw
+                );
+            } else {
+                assetAmountOut = debtToRepay + _assetAmountNeeded;
+                collateralToWithdraw = _assetToCollateralAtOracle(
+                    debtToRepay + _assetAmountNeeded
+                );
+            }
         }
 
         uint256 oracleAmountOut = _collateralToAssetAtOracle(
@@ -200,43 +175,28 @@ contract SetupAavesUSDeUSDC is Setup {
     function _assetToCollateralAtOracle(
         uint256 _assetAmount
     ) internal view returns (uint256) {
-        IAaveOracle oracle = sUSDeAaveLooper(address(strategy)).AAVE_ORACLE();
-        uint256 collateralPrice = oracle.getAssetPrice(SUSDE);
-        uint256 assetPrice = oracle.getAssetPrice(USDC);
-
-        return (_assetAmount * assetPrice * 1e18) / (collateralPrice * 1e6);
+        // Replicate the strategy's two-step oracle math exactly so that
+        // integer-division rounding matches _assetToCollateral().
+        uint256 oraclePrice = _getStrategyOraclePrice();
+        return (_assetAmount * 1e36) / oraclePrice;
     }
 
     function _collateralToAssetAtOracle(
         uint256 _collateralAmount
     ) internal view returns (uint256) {
+        uint256 oraclePrice = _getStrategyOraclePrice();
+        return (_collateralAmount * oraclePrice) / 1e36;
+    }
+
+    /// @dev Mirrors AaveLooper._getCollateralPrice() so rounding is identical.
+    function _getStrategyOraclePrice() internal view returns (uint256) {
         IAaveOracle oracle = sUSDeAaveLooper(address(strategy)).AAVE_ORACLE();
         uint256 collateralPrice = oracle.getAssetPrice(SUSDE);
         uint256 assetPrice = oracle.getAssetPrice(USDC);
-
-        return (_collateralAmount * collateralPrice * 1e6) / (assetPrice * 1e18);
+        return (collateralPrice * 1e6 * 1e36) / (assetPrice * 1e18);
     }
 
     function _prepareExitSwapRoute() internal virtual override {
         deal(USDC, address(simulatedSwapTarget), 10_000_000_000e6);
-    }
-
-    function _simulateManualFullUnwindSwapData()
-        internal
-        view
-        returns (bytes memory)
-    {
-        uint256 collateralToWithdraw = strategy.balanceOfCollateral();
-        uint256 assetAmountOut = _collateralToAssetAtOracle(
-            collateralToWithdraw
-        ) + 1;
-
-        return
-            _encodeSimulatedSwapData(
-                SUSDE,
-                USDC,
-                collateralToWithdraw,
-                assetAmountOut
-            );
     }
 }

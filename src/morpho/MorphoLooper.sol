@@ -94,8 +94,10 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback {
     }
 
     /// @notice Max available flashloan from Morpho
-    function maxFlashloan() public view override returns (uint256) {
-        return asset.balanceOf(address(MORPHO));
+    function _maxFlashloan(
+        address _token
+    ) internal view virtual override returns (uint256) {
+        return ERC20(_token).balanceOf(address(MORPHO));
     }
 
     /*//////////////////////////////////////////////////////////////

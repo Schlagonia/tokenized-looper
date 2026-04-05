@@ -2,10 +2,9 @@
 pragma solidity ^0.8.18;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-import {Setup, SimulatedSwapTarget} from "../../base/Setup.sol";
+import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
-import {SetupAavesUSDeUSDC, TestableSUSDeAaveLooper} from "./Setup.sol";
+import {SetupAavesUSDeUSDC} from "./Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
 
 contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
@@ -31,12 +30,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
     function _simulateExitSwapData(
         uint256 _assetAmountNeeded
-    )
-        internal
-        view
-        override(SetupAavesUSDeUSDC, Setup)
-        returns (bytes memory)
-    {
+    ) internal view override(SetupAavesUSDeUSDC, Setup) returns (bytes memory) {
         return SetupAavesUSDeUSDC._simulateExitSwapData(_assetAmountNeeded);
     }
 
@@ -181,75 +175,5 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
             beforeBal + 1_000e6,
             "!recv"
         );
-    }
-
-    function test_redeemFullUnwind_withSwapData(uint256 _amount) public override {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        _keeperTendAndSettle();
-
-        assertGt(strategy.totalAssets(), 0, "!totalAssets");
-        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
-        assertGt(collateralBeforeUnwind, 0, "!collateral should be > 0 before unwind");
-
-        _prepareExitSwapRoute();
-        bytes memory swapData = _simulateManualFullUnwindSwapData();
-
-        vm.prank(emergencyAdmin);
-        TestableSUSDeAaveLooper(payable(address(strategy))).manualFullUnwind(
-            swapData
-        );
-
-        assertLe(
-            strategy.balanceOfCollateral(),
-            _maxUnwindCollateralDust(collateralBeforeUnwind),
-            "!collateral dust too high"
-        );
-    }
-
-    function test_swapSelectorGuard_blocksApprove() public {
-        address spender = makeAddr("approve-spender");
-        TestableSUSDeAaveLooper looper = TestableSUSDeAaveLooper(
-            payable(address(strategy))
-        );
-
-        bytes memory callData = abi.encodeCall(
-            ERC20.approve,
-            (spender, type(uint256).max)
-        );
-
-        assertTrue(looper.isUnsafeSwapSelector(callData), "!approve blocked");
-    }
-
-    function test_swapSelectorGuard_blocksIncreaseAllowance() public {
-        address spender = makeAddr("increase-allowance-spender");
-        TestableSUSDeAaveLooper looper = TestableSUSDeAaveLooper(
-            payable(address(strategy))
-        );
-
-        bytes memory callData = abi.encodeCall(
-            ERC20.increaseAllowance,
-            (spender, type(uint256).max)
-        );
-
-        assertTrue(
-            looper.isUnsafeSwapSelector(callData),
-            "!increase allowance blocked"
-        );
-    }
-
-    function test_swapSelectorGuard_allowsSimulatedSwapData() public view {
-        uint256 amountIn = 10e18;
-        uint256 amountOut = _collateralToAssetAtOracle(amountIn);
-        TestableSUSDeAaveLooper looper = TestableSUSDeAaveLooper(
-            payable(address(strategy))
-        );
-        bytes memory callData = abi.encodeCall(
-            SimulatedSwapTarget.simulateSwap,
-            (SUSDE, USDC, amountIn, amountOut)
-        );
-
-        assertFalse(looper.isUnsafeSwapSelector(callData), "!swap allowed");
     }
 }

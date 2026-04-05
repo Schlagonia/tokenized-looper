@@ -52,41 +52,13 @@ abstract contract LeverScenariosTest is Setup {
             vm.prank(management);
             strategy.manualBorrow(desiredDebt - currentDebt);
         } else if (currentDebt > desiredDebt) {
-            // Need less debt - repay some
-            // To reduce debt, we need to:
-            // 1. Withdraw some collateral
-            // 2. Convert to asset
-            // 3. Repay debt
+            // Need less debt - airdrop asset and repay directly.
+            // This avoids going through the auction path which enforces
+            // leverage bounds that may conflict with test setup targets.
             uint256 repayAmount = currentDebt - desiredDebt;
-
-            // Calculate collateral needed based on repayAmount + slippage (like actual code)
-            // position() returns collateral VALUE in asset terms, balanceOfCollateral() returns token units
-            uint256 collateralTokens = strategy.balanceOfCollateral();
-
-            // Convert repayAmount (asset terms) to collateral token units:
-            // collateralTokens / currentCollateral = tokens per asset value
-            // repayAmount * collateralTokens / currentCollateral = tokens needed
-            // Add slippage buffer
-            uint256 repayWithSlippage = (repayAmount *
-                (10_000 + strategy.slippage())) / 10_000;
-            uint256 collateralToWithdraw = (repayWithSlippage *
-                collateralTokens) / currentCollateral;
-
-            vm.startPrank(management);
-            strategy.manualWithdrawCollateral(collateralToWithdraw);
-            strategy.convertCollateralToAsset(type(uint256).max);
-            vm.stopPrank();
-            _settleActiveAuction();
-
-            // Now repay as much as needed (limited by what we have)
-            uint256 looseAsset = strategy.balanceOfAsset();
+            airdrop(asset, address(strategy), repayAmount);
             vm.prank(management);
-            strategy.manualRepay(
-                looseAsset > repayAmount ? repayAmount : looseAsset
-            );
-
-            // Leave any leftover as loose asset to avoid slippage errors during conversion
-            // The position will be slightly under-leveraged which is fine for test setup
+            strategy.manualRepay(repayAmount);
         }
     }
 
@@ -156,13 +128,28 @@ abstract contract LeverScenariosTest is Setup {
         uint256 desiredDebt = desiredCollateral - currentEquity;
 
         if (desiredDebt > currentDebt) {
-            vm.startPrank(management);
-            strategy.manualBorrow(desiredDebt - currentDebt);
-            strategy.convertAssetToCollateral(type(uint256).max);
-            vm.stopPrank();
-            _settleActiveAuction();
+            uint256 extraBorrow = desiredDebt - currentDebt;
+            vm.prank(management);
+            strategy.manualBorrow(extraBorrow);
+
+            // Airdrop collateral tokens and supply directly to avoid the
+            // auction leverage check in _executeLeverageCallback.
+            uint256 extraCollateralValue = desiredCollateral -
+                currentCollateral;
+            uint256 currentTokens = strategy.balanceOfCollateral();
+            uint256 extraTokens = (extraCollateralValue * currentTokens) /
+                currentCollateral;
+            airdrop(
+                ERC20(strategy.collateralToken()),
+                address(strategy),
+                extraTokens
+            );
+
             vm.prank(management);
             strategy.manualSupplyCollateral(type(uint256).max);
+
+            // Clear loose asset left from the borrow.
+            deal(address(asset), address(strategy), 0);
         }
 
         assertLe(strategy.balanceOfAsset(), 1, "idle asset too high");
@@ -290,7 +277,11 @@ abstract contract LeverScenariosTest is Setup {
         // 4. Verify: no position is built until a taker actually fills the auction.
         uint256 debt = strategy.balanceOfDebt();
         assertEq(debt, 0, "should have no debt (flashloan skipped)");
-        assertEq(strategy.activeAuction(), address(asset), "should kick asset auction");
+        assertEq(
+            strategy.activeAuction(),
+            address(asset),
+            "should kick asset auction"
+        );
     }
 
     /// @notice Test Case 1: Existing under-leveraged position, add funds and lever up
@@ -631,7 +622,11 @@ abstract contract LeverScenariosTest is Setup {
             target + buffer,
             "position should still be over target"
         );
-        assertEq(strategy.balanceOfDebt(), debtBefore, "debt should not change before take");
+        assertEq(
+            strategy.balanceOfDebt(),
+            debtBefore,
+            "debt should not change before take"
+        );
     }
 
     /// @notice Case 2b should do nothing when maxAmountToSwap is zero
@@ -671,7 +666,11 @@ abstract contract LeverScenariosTest is Setup {
             target + buffer,
             "should stay over-leveraged"
         );
-        assertEq(strategy.activeAuction(), address(0), "!should not kick auction");
+        assertEq(
+            strategy.activeAuction(),
+            address(0),
+            "!should not kick auction"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

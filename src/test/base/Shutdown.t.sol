@@ -65,11 +65,8 @@ abstract contract ShutdownTest is Setup {
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        // Deploy funds via tend
-        vm.prank(keeper);
-        strategy.tend();
-
-        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+        // Deploy funds via tend and settle the auction so position is built
+        _keeperTendAndSettle();
 
         // Earn Interest
         accrueYield(_amount);
@@ -83,6 +80,7 @@ abstract contract ShutdownTest is Setup {
         // should be able to pass uint 256 max and not revert.
         vm.prank(emergencyAdmin);
         strategy.emergencyWithdraw(type(uint256).max);
+        _settleActiveAuction();
 
         // Make sure we can still withdraw the full amount
         uint256 balanceBefore = asset.balanceOf(user);

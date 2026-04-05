@@ -8,6 +8,7 @@ import {ITokenizedStrategy} from "@tokenized-strategy/interfaces/ITokenizedStrat
 import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
 import {ITaker} from "@periphery/interfaces/ITaker.sol";
 import {Maths} from "@periphery/libraries/Maths.sol";
+import {SideCarSwapper} from "./periphery/SideCarSwapper.sol";
 
 /**
  * @title BaseLooper
@@ -37,9 +38,8 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Flashloan operation types
     enum FlashLoanOperation {
-        DELEVERAGE, // Withdraw flow: decrease leverage
-        AUCTION_LEVERAGE, // Auction take flow: sell asset for collateral
-        AUCTION_DELEVERAGE // Auction take flow: sell collateral for asset
+        LEVERAGE, // Increase leverage flow: borrow asset and deposit collateral
+        DELEVERAGE // Decrease leverage flow: withdraw collateral and repay debt
     }
 
     /// @notice Data passed through flashloan callback
@@ -49,6 +49,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         address sender;
         address receiver;
         uint256 amountOut;
+        uint256 repayAmount;
         bytes swapData;
     }
 
@@ -64,6 +65,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint128 remaining;
         uint128 startingAmountOut;
         uint128 minimumAmountOut;
+        uint128 debtToRepay;
     }
 
     /// @notice Governance address allowed to update auction configuration.
@@ -116,6 +118,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// The token posted as collateral in the loop.
     address public immutable collateralToken;
 
+    SideCarSwapper public immutable sideCarSwapper;
+
     bytes internal _forcedExitSwapData;
 
     mapping(address => bool) public allowed;
@@ -129,6 +133,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         require(_governance != address(0), "!gov");
         collateralToken = _collateralToken;
         GOVERNANCE = _governance;
+        sideCarSwapper = new SideCarSwapper(address(this));
 
         depositLimit = type(uint256).max;
         // Allow self so we can use availableDepositLimit() to get the max deposit amount.
@@ -235,18 +240,14 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slip");
-        if (!TokenizedStrategy.isShutdown())
+        if (!TokenizedStrategy.isShutdown()) {
             require(_slippage < MAX_SLIPPAGE, "slip-hi");
+        }
         slippage = uint64(_slippage);
     }
 
-    function setstepDecayRate(
-        uint256 _stepDecayRate
-    ) external onlyManagement {
-        require(
-            _stepDecayRate > 0 && _stepDecayRate < 10_000,
-            "dec"
-        );
+    function setstepDecayRate(uint256 _stepDecayRate) external onlyManagement {
+        require(_stepDecayRate > 0 && _stepDecayRate < 10_000, "dec");
         require(!_hasActiveLeverageAuction(), "active");
         stepDecayRate = uint64(_stepDecayRate);
     }
@@ -408,7 +409,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         address /*_owner*/
     ) public view virtual override returns (uint256) {
         uint256 currentDebt = balanceOfDebt();
-        uint256 flashloanAvailable = maxFlashloan();
+        uint256 flashloanAvailable = _maxFlashloan(address(asset)); // TODO: FIX THis to account for the collateral token
 
         if (flashloanAvailable >= currentDebt) return type(uint256).max;
 
@@ -468,7 +469,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             // Over-leveraged: can repay with idle assets OR delever via flashloan
             if (
                 balanceOfAsset() > _minAmountToBorrow ||
-                maxFlashloan() > _minAmountToBorrow
+                _maxFlashloan(address(asset)) > _minAmountToBorrow // TODO: FIX THIS TO ACCOUNT FOR THE COLLATERAL TOKEN
             ) {
                 return _isBaseFeeAcceptable();
             }
@@ -491,9 +492,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         (, uint256 targetDebt) = getTargetPosition(currentEquity);
 
         if (targetDebt >= currentDebt) {
+            if (targetLeverageRatio == 0) return;
+
             uint256 flashloanAmount = Math.min(
                 targetDebt - currentDebt,
-                maxFlashloan()
+                _maxFlashloan(address(asset))
             );
 
             uint256 maxCollateralInAsset = _collateralToAsset(
@@ -507,11 +510,13 @@ abstract contract BaseLooper is BaseHealthCheck {
                 );
 
             uint256 totalSwap = _amount + flashloanAmount;
-            if (maxSwap != type(uint256).max && totalSwap > maxSwap) {
+            if (totalSwap > maxSwap) {
                 totalSwap = maxSwap;
             }
 
-            _kickAuction(address(asset), collateralToken, totalSwap);
+            if (totalSwap == 0) return;
+
+            _kickAuction(address(asset), collateralToken, totalSwap, 0);
             return;
         }
 
@@ -522,14 +527,15 @@ abstract contract BaseLooper is BaseHealthCheck {
                 _repay(debtToRepay);
                 _amount -= debtToRepay;
                 if (_amount > 0) {
-                    _kickAuction(address(asset), collateralToken, _amount);
+                    _kickAuction(address(asset), collateralToken, _amount, 0);
                 }
                 return;
             }
 
             _repay(_amount);
             debtToRepay -= _amount;
-            debtToRepay = Math.min(debtToRepay, maxFlashloan());
+            currentDebt -= _amount;
+            debtToRepay = Math.min(debtToRepay, _maxFlashloan(address(asset)));
 
             if (maxAmountToSwap != type(uint256).max) {
                 debtToRepay = Math.min(debtToRepay, maxAmountToSwap);
@@ -537,62 +543,144 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             if (debtToRepay == 0) return;
 
-            uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
-                (MAX_BPS + slippage)) / MAX_BPS;
-            _kickAuction(collateralToken, address(asset), collateralToWithdraw);
+            uint256 collateralToWithdraw;
+            if (debtToRepay == currentDebt) {
+                // If target is 0x, we need to withdraw all collateral, else just enough to repay the debt
+                collateralToWithdraw = targetLeverageRatio == 0
+                    ? balanceOfCollateral()
+                    : (_assetToCollateral(debtToRepay) * (MAX_BPS + slippage)) /
+                        MAX_BPS;
+                debtToRepay = type(uint256).max;
+            } else {
+                collateralToWithdraw =
+                    (_assetToCollateral(debtToRepay) * (MAX_BPS + slippage)) /
+                    MAX_BPS;
+            }
+
+            _kickAuction(
+                collateralToken,
+                address(asset),
+                collateralToWithdraw,
+                debtToRepay
+            );
             return;
         }
     }
 
-    /// @notice Will withdraw funds from the strategy to cover the amount needed keeping the position at target leverage ratio using a flashloan
     function _withdrawFunds(uint256 _amountNeeded) internal virtual {
-        (uint256 valueOfCollateral, uint256 currentDebt) = position();
-        uint256 equity = valueOfCollateral - currentDebt;
+        (
+            uint256 collateralToWithdraw,
+            uint256 debtToRepay
+        ) = _getWithdrawValues(_amountNeeded);
 
-        uint256 targetEquity = equity > _amountNeeded
-            ? equity - _amountNeeded
-            : 0;
-        (, uint256 targetDebt) = getTargetPosition(targetEquity);
-
-        if (currentDebt == 0 || targetDebt > currentDebt) {
-            // No debt, just withdraw collateral
-            uint256 toWithdraw = _assetToCollateral(_amountNeeded);
-            _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
-
-            toWithdraw = Math.min(toWithdraw, balanceOfCollateralToken());
+        if (debtToRepay == 0) {
+            // If we have no debt to repay, just withdraw collateral and swap it to asset
+            _withdrawCollateral(
+                Math.min(collateralToWithdraw, balanceOfCollateral())
+            );
+            collateralToWithdraw = Math.min(
+                collateralToWithdraw,
+                balanceOfCollateralToken()
+            );
             _executeSwap(
                 collateralToken,
                 address(asset),
-                toWithdraw,
-                _getAmountOut(toWithdraw, false),
+                collateralToWithdraw,
+                _getAmountOut(collateralToWithdraw, false),
                 _forcedExitSwapData
             );
-            return;
+        } else {
+            // We need to flashloan to repay the debt
+            bytes memory data = abi.encode(
+                FlashLoanData({
+                    operation: FlashLoanOperation.DELEVERAGE,
+                    amount: 0,
+                    sender: address(0),
+                    receiver: address(0),
+                    amountOut: 0,
+                    repayAmount: debtToRepay,
+                    swapData: _forcedExitSwapData
+                })
+            );
+
+            _executeFlashloan(
+                address(collateralToken),
+                collateralToWithdraw,
+                data
+            );
+        }
+    }
+
+    /// @notice Will withdraw funds from the strategy to cover the amount needed keeping the position at target leverage ratio using a flashloan
+    function _getWithdrawValues(
+        uint256 _amountNeeded
+    )
+        internal
+        virtual
+        returns (uint256 collateralToWithdraw, uint256 debtToRepay)
+    {
+        (uint256 valueOfCollateral, uint256 currentDebt) = position();
+        uint256 equity = valueOfCollateral - currentDebt;
+
+        (, uint256 targetDebt) = equity > _amountNeeded
+            ? getTargetPosition(equity - _amountNeeded)
+            : (0, 0);
+
+        if (currentDebt == 0 || targetDebt > currentDebt) {
+            // No debt, just withdraw collateral
+            collateralToWithdraw = _assetToCollateral(_amountNeeded);
+            return (collateralToWithdraw, debtToRepay);
         }
 
-        uint256 debtToRepay = currentDebt - targetDebt;
+        debtToRepay = currentDebt - targetDebt;
 
         // Cap flashloan by available liquidity
-        debtToRepay = Math.min(debtToRepay, maxFlashloan());
+        //debtToRepay = Math.min(debtToRepay, _maxFlashloan(address(collateralToken))); // TODO: FIX THIS TO ACCOUNT FOR THE COLLATERAL TOKEN
 
-        if (debtToRepay == 0) return;
+        if (debtToRepay == 0) return (0, 0);
 
-        uint256 collateralToWithdraw = debtToRepay == currentDebt
-            ? balanceOfCollateral()
-            : _assetToCollateral(debtToRepay + _amountNeeded);
+        if (
+            debtToRepay == currentDebt ||
+            currentDebt - debtToRepay < minAmountToBorrow
+        ) {
+            collateralToWithdraw = balanceOfCollateral();
+            // Use max uint to know to repay all debt
+            debtToRepay = type(uint256).max;
+        } else {
+            collateralToWithdraw = _assetToCollateral(
+                debtToRepay + _amountNeeded
+            );
+        }
 
-        bytes memory data = abi.encode(
-            FlashLoanData({
-                operation: FlashLoanOperation.DELEVERAGE,
-                amount: collateralToWithdraw,
-                sender: address(0),
-                receiver: address(0),
-                amountOut: 0,
-                swapData: _forcedExitSwapData
-            })
+        return (collateralToWithdraw, debtToRepay);
+    }
+
+    function freeAssets(uint256 _amountNeeded) external virtual onlyKeepers {
+        _freeAssets(_amountNeeded);
+    }
+
+    function _freeAssets(uint256 _amountNeeded) internal virtual {
+        require(!_hasActiveLeverageAuction(), "active");
+
+        (
+            uint256 collateralToWithdraw,
+            uint256 debtToRepay
+        ) = _getWithdrawValues(_amountNeeded);
+
+        collateralToWithdraw = Math.min(
+            collateralToWithdraw,
+            balanceOfCollateralToken() + balanceOfCollateral()
         );
 
-        _executeFlashloan(address(asset), debtToRepay, data);
+        require(
+            _kickAuction(
+                address(collateralToken),
+                address(asset),
+                collateralToWithdraw,
+                debtToRepay
+            ),
+            "kick"
+        );
     }
 
     /// @notice Called by protocol-specific flashloan callback
@@ -602,11 +690,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual {
         FlashLoanData memory params = abi.decode(data, (FlashLoanData));
 
-        if (params.operation == FlashLoanOperation.AUCTION_LEVERAGE) {
-            _settleAuctionLeverageTake(assets, params);
-            return;
-        } else if (params.operation == FlashLoanOperation.AUCTION_DELEVERAGE) {
-            _settleAuctionDeleverageTake(assets, params);
+        if (params.operation == FlashLoanOperation.LEVERAGE) {
+            _executeLeverageCallback(assets, params);
             return;
         } else if (params.operation == FlashLoanOperation.DELEVERAGE) {
             _executeDeleverageCallback(assets, params);
@@ -615,7 +700,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         revert("op");
     }
 
-    function _settleAuctionLeverageTake(
+    function _executeLeverageCallback(
         uint256 assets,
         FlashLoanData memory params
     ) internal virtual {
@@ -638,60 +723,41 @@ abstract contract BaseLooper is BaseHealthCheck {
         );
     }
 
-    function _settleAuctionDeleverageTake(
+    function _executeDeleverageCallback(
         uint256 assets,
         FlashLoanData memory params
     ) internal virtual {
         uint256 initialLeverage = getCurrentLeverageRatio();
 
-        _executeAuctionCallback(
-            collateralToken,
-            address(asset),
-            params.amount,
-            params.sender,
-            params.receiver,
-            params.amountOut,
-            params.swapData
-        );
+        if (params.receiver != address(0)) {
+            // Receiver means we are in an auction take.
+            _executeAuctionCallback(
+                collateralToken,
+                address(asset),
+                params.amount,
+                params.sender,
+                params.receiver,
+                params.amountOut,
+                params.swapData
+            );
+        } else {
+            // Convert collateral back to asset
+            _executeSwap(
+                collateralToken,
+                address(asset),
+                assets,
+                _getAmountOut(assets, false),
+                params.swapData
+            );
+        }
 
-        _repay(Math.min(params.amountOut, balanceOfDebt()));
-        _withdrawCollateral(assets);
+        // Dont repay amountOut to leave loose asset.
+        _repay(Math.min(params.repayAmount, balanceOfDebt()));
+
+        // Bound by collateral balance in case of loose collateral
+        _withdrawCollateral(Math.min(assets, balanceOfCollateral()));
 
         uint256 finalLeverage = getCurrentLeverageRatio();
-        require(
-            finalLeverage < maxLeverageRatio || finalLeverage < initialLeverage,
-            "lev"
-        );
-    }
-
-    function _executeDeleverageCallback(
-        uint256 flashloanAmount,
-        FlashLoanData memory params
-    ) internal virtual {
-        uint256 initialLeverage = getCurrentLeverageRatio();
-
-        // Use flashloaned amount to repay debt
-        _repay(Math.min(flashloanAmount, balanceOfDebt()));
-
-        uint256 collateralToWithdraw = Math.min(
-            params.amount,
-            balanceOfCollateral()
-        );
-        // Withdraw
-        _withdrawCollateral(collateralToWithdraw);
-
-        // Convert collateral back to asset
-        _executeSwap(
-            collateralToken,
-            address(asset),
-            collateralToWithdraw,
-            _getAmountOut(collateralToWithdraw, false),
-            params.swapData
-        );
-
-        // Sanity check
-        uint256 finalLeverage = getCurrentLeverageRatio();
-        // Make sure the leverage is within the bounds, or at least improved.
         require(
             finalLeverage < maxLeverageRatio || finalLeverage < initialLeverage,
             "lev"
@@ -791,17 +857,27 @@ abstract contract BaseLooper is BaseHealthCheck {
         );
         require(amountNeeded != 0, "need0");
 
-        if(_from == address(asset) || _from == collateralToken) {
+        uint256 debtToRepay;
+        if (_from == address(asset) || _from == collateralToken) {
             uint256 currentBalance = ERC20(_from).balanceOf(address(this));
+            debtToRepay = amountTaken == auction.remaining ||
+                auction.debtToRepay == type(uint256).max
+                ? auction.debtToRepay
+                : Math.mulDiv(
+                    auction.debtToRepay,
+                    amountTaken,
+                    auction.remaining
+                );
 
             FlashLoanData memory params = FlashLoanData({
                 operation: _from == address(asset)
-                    ? FlashLoanOperation.AUCTION_LEVERAGE
-                    : FlashLoanOperation.AUCTION_DELEVERAGE,
+                    ? FlashLoanOperation.LEVERAGE
+                    : FlashLoanOperation.DELEVERAGE,
                 amount: amountTaken,
                 sender: msg.sender,
                 receiver: _takerReceiver,
                 amountOut: amountNeeded,
+                repayAmount: debtToRepay,
                 swapData: _data
             });
 
@@ -813,11 +889,11 @@ abstract contract BaseLooper is BaseHealthCheck {
                     abi.encode(params)
                 );
 
-            // Else just settle the auciton
+                // Else just settle the auciton
             } else if (_from == address(asset)) {
-                    _settleAuctionLeverageTake(0, params);
+                _executeLeverageCallback(0, params);
             } else if (_from == collateralToken) {
-                    _settleAuctionDeleverageTake(0, params);
+                _executeDeleverageCallback(0, params);
             }
         } else {
             _executeAuctionCallback(
@@ -835,6 +911,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             _clearAuctionState(_from);
         } else {
             auction.remaining = uint128(auction.remaining - amountTaken);
+            auction.debtToRepay = uint128(auction.debtToRepay - debtToRepay);
         }
 
         emit AuctionTaken(_from, amountTaken);
@@ -843,7 +920,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _kickAuction(
         address _from,
         address _want,
-        uint256 _amount
+        uint256 _amount,
+        uint256 _debtToRepay
     ) internal virtual returns (bool) {
         if (_amount == 0) return false;
         require(!_hasActiveLeverageAuction(), "active");
@@ -865,7 +943,8 @@ abstract contract BaseLooper is BaseHealthCheck {
             initialAvailable: uint128(_amount),
             remaining: uint128(_amount),
             startingAmountOut: uint128(startingAmountOut),
-            minimumAmountOut: uint128(minimumAmountOut)
+            minimumAmountOut: uint128(minimumAmountOut),
+            debtToRepay: uint128(_debtToRepay)
         });
 
         auctionStates[_from] = auction;
@@ -918,9 +997,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             ? _assetToCollateral(_amount)
             : _collateralToAsset(_amount);
 
-        _startingAmountOut =
-            (quotedAmountOut * (MAX_BPS + slippage)) /
-            MAX_BPS;
+        _startingAmountOut = (quotedAmountOut * (MAX_BPS + slippage)) / MAX_BPS;
         _minimumAmountOut = (quotedAmountOut * (MAX_BPS - slippage)) / MAX_BPS;
         _stepDecayRate = stepDecayRate;
     }
@@ -973,36 +1050,13 @@ abstract contract BaseLooper is BaseHealthCheck {
         if (_amount == 0) return 0;
         require(_swapData.length != 0, "!swapData");
 
-        SwapInstruction memory instruction = abi.decode(
-            _swapData,
-            (SwapInstruction)
-        );
-        require(!_isUnsafeSwapSelector(instruction.data), "!selector");
-
-        ERC20 fromToken = ERC20(_from);
         uint256 balanceBefore = ERC20(_to).balanceOf(address(this));
+        ERC20(_from).safeTransfer(address(sideCarSwapper), _amount);
 
-        fromToken.forceApprove(instruction.target, _amount);
-
-        (bool success, ) = instruction.target.call(instruction.data);
-
-        fromToken.forceApprove(instruction.target, 0);
-        require(success, "!swapData");
+        sideCarSwapper.executeSwap(_from, _to, _amount, _swapData);
 
         amountOut = ERC20(_to).balanceOf(address(this)) - balanceBefore;
         require(amountOut >= _amountOutMin, "!amountOut");
-    }
-
-    function _isUnsafeSwapSelector(
-        bytes memory _data
-    ) internal pure returns (bool) {
-        if (_data.length < 4) return false;
-
-        bytes4 selector = bytes4(_data);
-
-        return
-            selector == ERC20.approve.selector ||
-            selector == ERC20.increaseAllowance.selector;
     }
 
     function _setForcedExitSwapData(bytes calldata _swapData) internal {
@@ -1031,7 +1085,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual;
 
     /// @notice Max available flashloan from protocol
-    function maxFlashloan() public view virtual returns (uint256);
+    function _maxFlashloan(
+        address _token
+    ) internal view virtual returns (uint256);
 
     /// @notice Get oracle price (loan token value per 1 collateral token, ORACLE_PRICE_SCALE)
     /// @dev Must return raw oracle price in 1e36 scale for precision in conversions
@@ -1126,8 +1182,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _collateralToAsset(
         uint256 collateralAmount
     ) internal view virtual returns (uint256) {
-        if (collateralAmount == 0 || collateralAmount == type(uint256).max)
+        if (collateralAmount == 0 || collateralAmount == type(uint256).max) {
             return collateralAmount;
+        }
         return (collateralAmount * _getCollateralPrice()) / ORACLE_PRICE_SCALE;
     }
 
@@ -1136,8 +1193,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _assetToCollateral(
         uint256 assetAmount
     ) internal view virtual returns (uint256) {
-        if (assetAmount == 0 || assetAmount == type(uint256).max)
+        if (assetAmount == 0 || assetAmount == type(uint256).max) {
             return assetAmount;
+        }
         uint256 collateralPrice = _getCollateralPrice();
         return (assetAmount * ORACLE_PRICE_SCALE) / collateralPrice;
     }
@@ -1212,7 +1270,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external accrue onlyEmergencyAuthorized {
-        _withdrawFunds(TokenizedStrategy.totalAssets());
+        _freeAssets(TokenizedStrategy.totalAssets());
     }
 
     function settle() external accrue onlyEmergencyAuthorized {
@@ -1252,21 +1310,13 @@ abstract contract BaseLooper is BaseHealthCheck {
     function convertCollateralToAsset(
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
-        _kickAuction(
-            collateralToken,
-            address(asset),
-            Math.min(amount, balanceOfCollateralToken() + balanceOfCollateral())
-        );
+        _kickAuction(collateralToken, address(asset), amount, 0);
     }
 
     function convertAssetToCollateral(
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
-        _kickAuction(
-            address(asset),
-            collateralToken,
-            Math.min(amount, balanceOfAsset())
-        );
+        _kickAuction(address(asset), collateralToken, amount, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1280,19 +1330,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _emergencyWithdraw(
         uint256 _amount
     ) internal virtual override accrue {
-        // Try full unwind first
-        if (balanceOfDebt() > 0) {
-            _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
-        } else if (_amount > 0) {
-            _amount = Math.min(_amount, balanceOfCollateral());
-            _withdrawCollateral(_amount);
-            _executeSwap(
-                collateralToken,
-                address(asset),
-                _amount,
-                _getAmountOut(_amount, false),
-                bytes("")
-            );
-        }
+        _freeAssets(Math.min(_amount, TokenizedStrategy.totalAssets()));
     }
 }

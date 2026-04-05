@@ -7,7 +7,7 @@ import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
-import {AaveLooper} from "./AaveLooper.sol";
+import {AaveLooper} from "../src/aave/AaveLooper.sol";
 import {LSTAaveLooper} from "../src/aave/LSTAaveLooper.sol";
 import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
 import {sUSDeAaveLooper} from "../src/aave/sUSDeAaveLooper.sol";
@@ -522,12 +522,7 @@ contract Deploy is Script {
     function deployMorphoLBTCWBTC(BaseConfig memory cfg) internal returns (address) {
         UniswapUniversalRouterExchange exchange = new UniswapUniversalRouterExchange(WETH_MAINNET);
         MorphoLooper looper = new MorphoLooper(
-            cfg.asset,
-            cfg.name,
-            cfg.collateralToken,
-            cfg.morpho,
-            Id.wrap(cfg.marketId),
-            LOOPER_GOVERNANCE
+            cfg.asset, cfg.name, cfg.collateralToken, cfg.morpho, Id.wrap(cfg.marketId), LOOPER_GOVERNANCE
         );
         exchange.setStrategy(address(looper));
 
