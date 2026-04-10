@@ -107,15 +107,16 @@ abstract contract OperationTest is Setup {
 
         accrueYield(_amount);
 
+        uint256 pricePerShareBefore = strategy.pricePerShare();
+
         vm.prank(keeper);
-        strategy.report();
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        assertGt(profit, 0, "!profit");
+        assertGt(profit, loss, "!net profit");
 
         skip(strategy.profitMaxUnlockTime());
-
-        vm.prank(user);
-        strategy.redeem(_amount, user, user);
-
-        assertGt(asset.balanceOf(user), _amount, "!profit not realized");
+        assertGt(strategy.pricePerShare(), pricePerShareBefore, "!pps");
     }
 
     function test_report_aboveWarningLTV_onlyDelevers() public {

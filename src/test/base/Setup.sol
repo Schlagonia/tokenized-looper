@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {InfinifiMorphoLooper} from "../../morpho/InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
-import {Id} from "../../interfaces/morpho/IMorpho.sol";
+import {IMorpho, Id, MarketParams} from "../../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
 
 // Inherit the events so they can be checked if desired.
@@ -62,6 +62,7 @@ contract Setup is Test, IEvents {
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
+    uint256 public constant MORPHO_LIQUIDITY_SEED = 5_000_000e6;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -73,6 +74,7 @@ contract Setup is Test, IEvents {
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
+        _seedMorphoLiquidity(MORPHO_LIQUIDITY_SEED);
 
         factory = strategy.FACTORY();
 
@@ -170,6 +172,17 @@ contract Setup is Test, IEvents {
         deal(address(asset), address(this), _amount);
         asset.approve(address(GATEWAY), _amount);
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(strategy), _amount);
+    }
+
+    function _seedMorphoLiquidity(uint256 _amount) internal {
+        // Fork tests should not depend on whatever scraps happen to be sitting
+        // in the live market at the current head.
+        MarketParams memory params = IMorpho(MORPHO).idToMarketParams(
+            MARKET_ID
+        );
+        deal(address(asset), address(this), _amount);
+        asset.approve(MORPHO, _amount);
+        IMorpho(MORPHO).supply(params, _amount, 0, address(this), "");
     }
 
     function setFees(uint16 _protocolFee, uint16 _performanceFee) public {

@@ -90,8 +90,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// The token posted as collateral in the loop.
     address public immutable collateralToken;
 
-    mapping(address => bool) public allowed;
-
     constructor(
         address _asset,
         string memory _name,
@@ -104,7 +102,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         GOVERNANCE = _governance;
 
         depositLimit = type(uint256).max;
-        // Allow self so we can use availableDepositLimit() to get the max deposit amount.
+        // Allow self so helper flows can still query deposit capacity through the inherited allowlist.
         allowed[address(this)] = true;
 
         // Leverage ratio defaults: 3x target, 0.5x buffer
@@ -138,17 +136,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @param _depositLimit New deposit limit in asset units.
     function setDepositLimit(uint256 _depositLimit) external onlyManagement {
         depositLimit = _depositLimit;
-    }
-
-    /// @notice Allow or disallow an address for privileged strategy interactions.
-    /// @dev `availableDepositLimit` returns 0 for addresses not allowlisted, so disabling an address blocks fresh deposits from that caller.
-    /// @param _address Address to update.
-    /// @param _allowed Whether the address is allowed.
-    function setAllowed(
-        address _address,
-        bool _allowed
-    ) external onlyManagement {
-        allowed[_address] = _allowed;
     }
 
     /// @notice Configure leverage targeting and safety bounds.
