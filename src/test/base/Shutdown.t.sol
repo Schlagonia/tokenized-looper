@@ -296,7 +296,12 @@ abstract contract ShutdownTest is Setup {
         uint256 leverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(leverage, target - buffer, "!leverage too low");
-        assertLe(leverage, target + buffer, "!leverage too high");
+        _assertLeverageWithinTestBuffer(
+            leverage,
+            target,
+            buffer,
+            "!leverage too low",
+            "!leverage too high"
+        );
     }
 }

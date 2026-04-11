@@ -1039,14 +1039,11 @@ abstract contract OperationTest is Setup {
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 
@@ -1145,14 +1142,11 @@ abstract contract OperationTest is Setup {
         // Verify within buffer (not under-leveraged which would override the idle check)
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 
@@ -1185,14 +1179,11 @@ abstract contract OperationTest is Setup {
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 

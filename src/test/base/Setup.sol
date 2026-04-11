@@ -26,6 +26,8 @@ interface IFactory {
 contract Setup is Test, IEvents {
     using SafeERC20 for ERC20;
 
+    uint256 internal constant TEST_LEVERAGE_DUST_BPS = 100; // 1% of target leverage
+
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
@@ -201,6 +203,64 @@ contract Setup is Test, IEvents {
 
     function _setTokenAddrs() internal {
         tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    }
+
+    function _leverageDust() internal view returns (uint256) {
+        return strategy.targetLeverageRatio() / TEST_LEVERAGE_DUST_BPS;
+    }
+
+    function _lowerLeverageBound(
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (uint256) {
+        uint256 totalTolerance = buffer + _leverageDust();
+        return
+            targetLeverage > totalTolerance
+                ? targetLeverage - totalTolerance
+                : 0;
+    }
+
+    function _upperLeverageBound(
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (uint256) {
+        return targetLeverage + buffer + _leverageDust();
+    }
+
+    function _isWithinLeverageDust(
+        uint256 leverage,
+        uint256 targetLeverage
+    ) internal view returns (bool) {
+        uint256 dust = _leverageDust();
+        if (leverage > targetLeverage) {
+            return leverage - targetLeverage <= dust;
+        }
+        return targetLeverage - leverage <= dust;
+    }
+
+    function _isWithinTestBuffer(
+        uint256 leverage,
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (bool) {
+        return
+            leverage >= _lowerLeverageBound(targetLeverage, buffer) &&
+            leverage <= _upperLeverageBound(targetLeverage, buffer);
+    }
+
+    function _assertLeverageWithinTestBuffer(
+        uint256 leverage,
+        uint256 targetLeverage,
+        uint256 buffer,
+        string memory lowErr,
+        string memory highErr
+    ) internal view {
+        assertGe(leverage, _lowerLeverageBound(targetLeverage, buffer), lowErr);
+        assertLe(
+            leverage,
+            _upperLeverageBound(targetLeverage, buffer),
+            highErr
+        );
     }
 
     function logStrategyStatus(string memory label) public view {
