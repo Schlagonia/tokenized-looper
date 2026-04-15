@@ -119,7 +119,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
             management
         );
 
-        exchange.setStrategy(address(looper));
+        exchange.transferGovernance(management);
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         _strategy.setPendingManagement(management);

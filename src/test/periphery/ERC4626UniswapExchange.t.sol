@@ -118,7 +118,6 @@ contract ERC4626UniswapExchangeTest is Test {
         );
         strategy = new MockStrategyForExchange(address(this), governance);
 
-        exchange.setStrategy(address(strategy));
         strategy.setExchange(address(exchange));
 
         strategy.approveToken(

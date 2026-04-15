@@ -19,27 +19,31 @@ contract PTLeverScenariosTest is SetupPT, LeverScenariosTest {
         SetupPT.accrueYield(_amount);
     }
 
-    function test_lever_noPosition_exactAmount_100_revertsOnPendleLiquidity()
+    function test_lever_noPosition_exactAmount_100_worksOnUsdgPtMarket()
         public
     {
         uint256 amount = 100e6;
 
         mintAndDepositIntoStrategy(strategy, user, amount);
 
-        vm.expectRevert(bytes("insufficient liquidity"));
         vm.prank(keeper);
         strategy.tend();
+
+        assertGt(strategy.balanceOfCollateral(), 0, "!collateral");
+        assertGt(strategy.balanceOfDebt(), 0, "!debt");
     }
 
-    function test_lever_noPosition_exactAmount_50k_revertsOnPendleLiquidity()
+    function test_lever_noPosition_exactAmount_50k_worksOnUsdgPtMarket()
         public
     {
         uint256 amount = 50_000e6;
 
         mintAndDepositIntoStrategy(strategy, user, amount);
 
-        vm.expectRevert(bytes("Slippage: search range overflow"));
         vm.prank(keeper);
         strategy.tend();
+
+        assertGt(strategy.balanceOfCollateral(), 0, "!collateral");
+        assertGt(strategy.balanceOfDebt(), 0, "!debt");
     }
 }

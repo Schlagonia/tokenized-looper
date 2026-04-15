@@ -70,7 +70,7 @@ contract SetupLST is Setup {
                 )
             )
         );
-        exchange.setStrategy(address(_strategy));
+        exchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 

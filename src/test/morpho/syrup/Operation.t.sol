@@ -5,9 +5,9 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSyrupMorpho} from "./Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
-/// @notice syrup/USDC Morpho operation tests
+/// @notice syrup/PYUSD Morpho operation tests
 contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     function setUp() public override(SetupSyrupMorpho, OperationTest) {
         SetupSyrupMorpho.setUp();
@@ -51,31 +51,69 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         looper.zeroPendingRedemptions();
     }
 
-    function test_exchange_setMint_onlyManagement() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_setSyrupDepositConfig_onlyManagement() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        syrupExchange.setMint(false);
+        vm.expectRevert("!operator");
+        exchange.setSyrupDepositConfig(
+            SYRUP_USDC,
+            SYRUP_USDC_ROUTER,
+            bytes32("Maple")
+        );
 
         vm.prank(management);
-        syrupExchange.setMint(false);
+        exchange.setSyrupDepositConfig(
+            SYRUP_USDC,
+            SYRUP_USDC_ROUTER,
+            bytes32("Maple")
+        );
 
-        assertFalse(syrupExchange.mint(), "!mint");
+        (address router, bytes32 depositData) = exchange.syrupDepositConfigs(
+            SYRUP_USDC
+        );
+        assertEq(router, SYRUP_USDC_ROUTER, "!router");
+        assertEq(depositData, bytes32("Maple"), "!depositData");
     }
 
-    function test_exchange_router_isConfiguredInConstructor() public view {
-        SyrupExchange syrupExchange = exchange;
-        assertEq(syrupExchange.SYRUP_ROUTER(), SYRUP_USDC_ROUTER, "!router");
+    function test_exchange_routes_areConfiguredForPyusdMarket() public view {
+        MetaExchange.RouteStep[] memory forward = exchange.getRoute(
+            PYUSD,
+            SYRUP_USDC
+        );
+        assertEq(forward.length, 2, "!forward length");
+        assertEq(
+            uint256(forward[0].venue),
+            uint256(MetaExchange.Venue.CURVE),
+            "!forward venue 0"
+        );
+        assertEq(forward[0].tokenTo, USDC, "!forward token 0");
+        assertEq(
+            uint256(forward[1].venue),
+            uint256(MetaExchange.Venue.SYRUP_DEPOSIT),
+            "!forward venue 1"
+        );
+        assertEq(forward[1].tokenTo, SYRUP_USDC, "!forward token 1");
+
+        MetaExchange.RouteStep[] memory reverse = exchange.getRoute(
+            SYRUP_USDC,
+            PYUSD
+        );
+        assertEq(reverse.length, 2, "!reverse length");
+        assertEq(
+            uint256(reverse[0].venue),
+            uint256(MetaExchange.Venue.UNISWAP_UNIVERSAL),
+            "!reverse venue 0"
+        );
+        assertEq(reverse[0].tokenTo, USDC, "!reverse token 0");
+        assertEq(
+            uint256(reverse[1].venue),
+            uint256(MetaExchange.Venue.CURVE),
+            "!reverse venue 1"
+        );
+        assertEq(reverse[1].tokenTo, PYUSD, "!reverse token 1");
     }
 
-    function test_exchange_directMint_worksWhenMapleAuthorized() public {
+    function test_exchange_routeDrivenTend_worksWithSyrupDeposit() public {
         uint256 amount = 10_000e6;
-
-        _authorizeExchangeForSyrupDeposit();
-
-        vm.prank(management);
-        exchange.setMint(true);
 
         mintAndDepositIntoStrategy(strategy, user, amount);
 

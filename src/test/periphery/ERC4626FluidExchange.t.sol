@@ -155,7 +155,6 @@ contract ERC4626FluidExchangeTest is Test {
         );
         strategy = new MockStrategyForExchange(address(this), governance);
 
-        exchange.setStrategy(address(strategy));
         strategy.setExchange(address(exchange));
 
         strategy.approveToken(
@@ -221,7 +220,7 @@ contract ERC4626FluidExchangeTest is Test {
         assertFalse(exchange.deposit(), "!deposit");
         assertTrue(exchange.redeem(), "!redeem");
         assertEq(exchange.base(), address(asset), "!base");
-        assertEq(exchange.minAmountToSell(), 1e18, "!min");
+        assertEq(exchange.minAmountToSell(), 0, "!min");
     }
 
     function _depositUnderlyingForStrategy(uint256 amount) internal {

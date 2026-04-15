@@ -11,9 +11,9 @@ import {BaseExchange} from "./BaseExchange.sol";
 /**
  * @title UniswapUniversalRouterExchange
  * @notice Strategy-bound exchange wrapper using the universal swapper.
- *         - Only strategy can swap
- *         - Setters are onlyManagement via strategy.management()
- *         - Sweep is onlyGovernance via strategy factory governance
+ *         - Any caller can swap its own funds through the exchange
+ *         - Setters are onlyManagement via exchange governance
+ *         - Sweep is onlyGovernance
  *         - Base defaults to WETH from the parent constructor
  */
 contract UniswapUniversalRouterExchange is

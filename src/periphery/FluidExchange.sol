@@ -8,9 +8,9 @@ import {BaseExchange} from "./BaseExchange.sol";
 /**
  * @title FluidExchange
  * @notice Strategy-bound exchange wrapper using FluidSwapper routes.
- *         - Only strategy can swap
- *         - Setters are onlyManagement via strategy.management()
- *         - Sweep is onlyGovernance via strategy.GOVERNANCE()
+ *         - Any caller can swap its own funds through the exchange
+ *         - Setters are onlyManagement via exchange governance
+ *         - Sweep is onlyGovernance
  */
 contract FluidExchange is FluidSwapper, BaseExchange {
     constructor(address _weth) FluidSwapper(_weth) {}

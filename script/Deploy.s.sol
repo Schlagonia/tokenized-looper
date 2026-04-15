@@ -459,8 +459,8 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
         exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, 100);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -476,7 +476,7 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -493,9 +493,9 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
         exchange.setV4Pool(cfg.base.asset, cfg.base.collateralToken, cfg.assetCollateralV4PoolId);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -511,9 +511,9 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
         exchange.setFluidDex(cfg.base.asset, cfg.base.collateralToken, cfg.fluidDex);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -531,7 +531,7 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
         return address(looper);
     }
 
@@ -548,7 +548,7 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
         return address(looper);
     }
 
@@ -563,10 +563,10 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
 
         uint24 uniFee = uint24(vm.envOr("MORPHO_LBTC_WBTC_UNI_FEE", uint256(500)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -583,10 +583,10 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
 
         uint24 uniFee = uint24(vm.envOr("AAVE_LBTC_WBTC_UNI_FEE", uint256(cfg.uniFee)));
         exchange.setUniFees(cfg.asset, cfg.collateralToken, uniFee);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -603,7 +603,7 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
@@ -628,10 +628,9 @@ contract Deploy is Script {
 
     function _configureERC4626FluidExchange(
         ERC4626FluidExchange exchange,
-        address strategy,
+        address,
         AaveFluid4626Config memory cfg
     ) internal {
-        exchange.setStrategy(strategy);
         exchange.setDeposit(true);
         if (cfg.assetBaseFluidDex != address(0) && cfg.base.asset != cfg.baseToken) {
             exchange.setFluidDex(cfg.base.asset, cfg.baseToken, cfg.assetBaseFluidDex);
@@ -642,6 +641,7 @@ contract Deploy is Script {
         }
 
         exchange.setFluidDex(cfg.base.collateralToken, cfg.baseToken, cfg.collateralBaseFluidDex);
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
     }
 
     function deployAaveSyrup(AaveSyrupConfig memory cfg) internal returns (address) {
@@ -657,7 +657,6 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.setStrategy(address(looper));
         exchange.setBase(cfg.base.asset);
         exchange.setV4Pool(cfg.base.asset, cfg.base.collateralToken, cfg.assetCollateralV4PoolId);
         exchange.setMint(vm.envOr("SYRUP_MAINNET_USE_MINT", true));
@@ -666,6 +665,7 @@ contract Deploy is Script {
         if (uniFee != 0) {
             exchange.setUniFees(cfg.base.asset, cfg.base.collateralToken, uniFee);
         }
+        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
