@@ -5,12 +5,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
-    ERC4626FluidExchange public exchange;
+    MetaExchange public exchange;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -67,7 +67,7 @@ contract SetupAavesUSDeUSDC is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new ERC4626FluidExchange(WETH, USDT, address(asset), SUSDE);
+        exchange = new MetaExchange(WETH);
 
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             address(asset),
@@ -87,10 +87,11 @@ contract SetupAavesUSDeUSDC is Setup {
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        exchange.setDeposit(true);
+        exchange.setFluidBase(USDT);
         exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         exchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
         exchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -110,5 +111,37 @@ contract SetupAavesUSDeUSDC is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 300) / 10_000);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.FLUID,
+            tokenTo: USDE
+        });
+        forward[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_DEPOSIT,
+            tokenTo: SUSDE
+        });
+        exchange.setRoute(USDC, SUSDE, forward);
+
+        MetaExchange.RouteStep[] memory unwind = new MetaExchange.RouteStep[](
+            1
+        );
+        unwind[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.FLUID,
+            tokenTo: USDC
+        });
+        exchange.setRoute(SUSDE, USDC, unwind);
+
+        MetaExchange.RouteStep[]
+            memory underlyingToAsset = new MetaExchange.RouteStep[](1);
+        underlyingToAsset[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.FLUID,
+            tokenTo: USDC
+        });
+        exchange.setRoute(USDE, USDC, underlyingToAsset);
     }
 }

@@ -7,14 +7,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
-import {CurvePTExchange} from "../../../periphery/CurvePTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for PT USDG/USDC Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupPT is Setup {
-    CurvePTExchange public exchange;
+    MetaExchange public exchange;
 
     // PT-USDG/USDC market
     Id public constant PT_MARKET_ID =
@@ -34,6 +34,7 @@ contract SetupPT is Setup {
         0xe343167631d89B6Ffc58B88d6b7fB0228795491D;
     address public constant CURVE_USDG_USDC_POOL =
         0xc061caa073f3d95F80f8e5428d32D2d76F5e1622;
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     function setUp() public virtual override {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -66,12 +67,7 @@ contract SetupPT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new CurvePTExchange(
-            address(asset),
-            PT_TOKEN,
-            PENDLE_MARKET,
-            PENDLE_TOKEN
-        );
+        exchange = new MetaExchange(WETH);
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(
@@ -106,8 +102,11 @@ contract SetupPT is Setup {
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);
 
+        exchange.setPendleMarket(PT_TOKEN, PENDLE_MARKET);
+        exchange.setGuessMaxMultiplier(2);
         _setCurveRoute(address(asset), PENDLE_TOKEN, 1, 0);
         _setCurveRoute(PENDLE_TOKEN, address(asset), 0, 1);
+        _setRoutes();
 
         vm.stopPrank();
 
@@ -139,6 +138,34 @@ contract SetupPT is Setup {
         address[5] memory pools;
 
         exchange.setCurveRoute(from, to, route, swapParams, pools);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: PENDLE_TOKEN
+        });
+        forward[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.PT,
+            tokenTo: PT_TOKEN
+        });
+        exchange.setRoute(address(asset), PT_TOKEN, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            2
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.PT,
+            tokenTo: PENDLE_TOKEN
+        });
+        reverse[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: address(asset)
+        });
+        exchange.setRoute(PT_TOKEN, address(asset), reverse);
     }
 
     function _seedPtMorphoLiquidity(uint256 amount) internal {
