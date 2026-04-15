@@ -53,7 +53,12 @@ contract OriginMorphoLooper is MorphoLooper {
     function estimatedTotalAssets() public view override returns (uint256) {
         return
             super.estimatedTotalAssets() +
-            _assetToCollateral(balanceOfUnderlying() + pendingWithdrawalAssets);
+            _collateralToAsset(
+                IERC4626(address(collateralToken)).convertToShares(
+                    balanceOfUnderlying()
+                )
+            ) +
+            pendingWithdrawalAssets;
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
@@ -74,14 +79,14 @@ contract OriginMorphoLooper is MorphoLooper {
     )
         external
         onlyEmergencyAuthorized
-        returns (uint256 requestId, uint256 assets)
+        returns (uint256 requestId, uint256 underlyingAmount)
     {
         require(pendingWithdrawalAssets == 0, "pending withdrawals");
 
         _shares = Math.min(_shares, balanceOfCollateralToken());
         require(_shares > 0, "!shares");
 
-        uint256 underlyingAmount = IERC4626(collateralToken).redeem(
+        underlyingAmount = IERC4626(collateralToken).redeem(
             _shares,
             address(this),
             address(this)
