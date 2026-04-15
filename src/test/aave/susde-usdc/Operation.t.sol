@@ -97,10 +97,10 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
     }
 
-    function test_exchange_swap_onlyStrategy() public {
+    function test_exchange_swap_isNotStrategyGated() public {
         vm.prank(user);
-        vm.expectRevert("!strategy");
-        exchange.exchange(USDC, SUSDE, 0, 0);
+        uint256 amountOut = exchange.exchange(USDC, SUSDE, 0, 0);
+        assertEq(amountOut, 0, "!amountOut");
     }
 
     function test_cooldown_functions_onlyEmergencyAuthorized() public {

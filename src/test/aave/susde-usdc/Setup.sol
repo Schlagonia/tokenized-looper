@@ -81,7 +81,7 @@ contract SetupAavesUSDeUSDC is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
+        exchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);

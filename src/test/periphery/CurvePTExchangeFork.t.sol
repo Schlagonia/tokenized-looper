@@ -42,7 +42,6 @@ contract CurvePTExchangeForkTest is Test {
             PENDLE_MARKET,
             USDG
         );
-        exchange.setStrategy(address(this));
         _setCurveRoute(USDC, USDG, 1, 0);
         _setCurveRoute(USDG, USDC, 0, 1);
     }

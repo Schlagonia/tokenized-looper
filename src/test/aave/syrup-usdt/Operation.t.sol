@@ -82,12 +82,12 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         syrupExchange.setUniFees(USDT, SYRUP_USDT, 500);
     }
 
-    function test_exchange_swap_onlyStrategy() public {
+    function test_exchange_swap_isNotStrategyGated() public {
         SyrupExchange syrupExchange = exchange;
 
         vm.prank(user);
-        vm.expectRevert("!strategy");
-        syrupExchange.exchange(USDT, SYRUP_USDT, 0, 0);
+        uint256 amountOut = syrupExchange.exchange(USDT, SYRUP_USDT, 0, 0);
+        assertEq(amountOut, 0, "!amountOut");
     }
 
     function test_exchange_setBase_onlyManagement() public {

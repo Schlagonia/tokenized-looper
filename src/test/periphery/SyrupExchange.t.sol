@@ -224,7 +224,6 @@ contract SyrupExchangeTest is Test {
         );
         strategy = new MockStrategyForSyrupExchange(address(this), governance);
 
-        exchange.setStrategy(address(strategy));
         strategy.setExchange(address(exchange));
 
         strategy.approveToken(

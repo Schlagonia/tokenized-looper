@@ -68,7 +68,7 @@ contract SetupSUSDSUSDT is Setup {
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
+        exchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 

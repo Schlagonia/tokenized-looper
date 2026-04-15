@@ -74,7 +74,7 @@ contract SetupAaveLST is Setup {
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
+        exchange.transferGovernance(management);
 
         // Guard against inherited ETH balance at this CREATE address on fork state.
         if (address(looper).balance > 0) {
