@@ -7,15 +7,16 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
-    SyrupExchange public exchange;
+    MetaExchange public exchange;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
+    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -37,6 +38,7 @@ contract SetupAaveSyrupUSDT is Setup {
     // Provide via env var when running tests:
     // export SYRUP_USDT_V4_POOL_ID=0x...
     bytes32 public syrupUsdtV4PoolId;
+    bool public useMint;
 
     function setUp() public virtual override {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -47,6 +49,7 @@ contract SetupAaveSyrupUSDT is Setup {
                 0xd861038a98942312d1495dd1313fb66c7e7de48f549a15edf3a45decf7338e1d
             )
         );
+        useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", true);
 
         tokenAddrs["USDT"] = USDT;
         tokenAddrs["SYRUP_USDT"] = SYRUP_USDT;
@@ -72,12 +75,7 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new SyrupExchange(
-            WETH,
-            address(asset),
-            SYRUP_USDT,
-            SYRUP_USDT_ROUTER
-        );
+        exchange = new MetaExchange(WETH);
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),
@@ -97,21 +95,25 @@ contract SetupAaveSyrupUSDT is Setup {
         vm.prank(management);
         _strategy.acceptManagement();
 
-        bool useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", true);
         if (useMint) {
             _authorizeExchangeForSyrupDeposit();
         }
 
         vm.startPrank(management);
-        exchange.setBase(address(asset));
+        exchange.setUniBase(address(asset));
         exchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
-        exchange.setMint(useMint);
+        exchange.setSyrupDepositConfig(
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER,
+            SYRUP_DEPOSIT_DATA
+        );
 
         // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
         uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
         if (uniFee != 0) {
             exchange.setUniFees(USDT, SYRUP_USDT, uniFee);
         }
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -133,10 +135,31 @@ contract SetupAaveSyrupUSDT is Setup {
         airdrop(asset, address(strategy), (_amount * 500) / 10_000);
     }
 
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            1
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: useMint
+                ? MetaExchange.Venue.SYRUP_DEPOSIT
+                : MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            tokenTo: SYRUP_USDT
+        });
+        exchange.setRoute(USDT, SYRUP_USDT, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            1
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            tokenTo: USDT
+        });
+        exchange.setRoute(SYRUP_USDT, USDT, reverse);
+    }
+
     function _authorizeExchangeForSyrupDeposit() internal {
-        address router = exchange.SYRUP_ROUTER();
-        address poolManager = ISyrupRouter(router).poolManager();
-        address permissionManager = ISyrupRouter(router)
+        address poolManager = ISyrupRouter(SYRUP_USDT_ROUTER).poolManager();
+        address permissionManager = ISyrupRouter(SYRUP_USDT_ROUTER)
             .poolPermissionManager();
 
         address[] memory lenders = new address[](1);

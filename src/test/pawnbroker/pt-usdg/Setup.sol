@@ -5,16 +5,16 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {PawnBrokerLooper} from "../../../pawnbroker/PawnBrokerLooper.sol";
-import {CurvePTExchange} from "../../../periphery/CurvePTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IPawnBroker} from "pawn-broker/interfaces/IPawnBroker.sol";
 import {PawnBrokerFactory} from "pawn-broker/PawnBrokerFactory.sol";
 import {MockMorphoOracle} from "pawn-broker/test/mocks/MockMorphoOracle.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for a USDC / PT-USDG Pendle pawn broker looper.
 contract SetupPawnBrokerPTUSDG is Setup {
     PawnBrokerLooper public looper;
-    CurvePTExchange public exchange;
+    MetaExchange public exchange;
     IPawnBroker public pawnBroker;
     PawnBrokerFactory public pawnBrokerFactory;
     MockMorphoOracle public oracle;
@@ -81,12 +81,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
         oracle = new MockMorphoOracle();
         oracle.setPrice(PT_ORACLE_PRICE);
 
-        exchange = new CurvePTExchange(
-            address(asset),
-            PT_USDG_28_MAY_2026,
-            PENDLE_MARKET,
-            USDG
-        );
+        exchange = new MetaExchange(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
         address predictedLooper = vm.computeCreateAddress(
             address(this),
@@ -126,8 +121,11 @@ contract SetupPawnBrokerPTUSDG is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
+        exchange.setPendleMarket(PT_USDG_28_MAY_2026, PENDLE_MARKET);
+        exchange.setGuessMaxMultiplier(2);
         _setCurveRoute(address(asset), USDG, 1, 0);
         _setCurveRoute(USDG, address(asset), 0, 1);
+        _setRoutes();
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);
@@ -183,5 +181,31 @@ contract SetupPawnBrokerPTUSDG is Setup {
         address[5] memory pools;
 
         exchange.setCurveRoute(_from, _to, route, swapParams, pools);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[]
+            memory assetToPt = new MetaExchange.RouteStep[](2);
+        assetToPt[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: USDG
+        });
+        assetToPt[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.PT,
+            tokenTo: PT_USDG_28_MAY_2026
+        });
+        exchange.setRoute(address(asset), PT_USDG_28_MAY_2026, assetToPt);
+
+        MetaExchange.RouteStep[]
+            memory ptToAsset = new MetaExchange.RouteStep[](2);
+        ptToAsset[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.PT,
+            tokenTo: USDG
+        });
+        ptToAsset[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: address(asset)
+        });
+        exchange.setRoute(PT_USDG_28_MAY_2026, address(asset), ptToAsset);
     }
 }

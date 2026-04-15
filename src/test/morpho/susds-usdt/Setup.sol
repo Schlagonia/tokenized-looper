@@ -7,18 +7,19 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
-import {SUSDSUSDTExchange} from "../../../periphery/SUSDSUSDTExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for sUSDS/USDT Morpho Looper tests
 contract SetupSUSDSUSDT is Setup {
-    SUSDSUSDTExchange public exchange;
+    MetaExchange public exchange;
 
     Id public constant SUSDS_USDT_MARKET_ID =
         Id.wrap(
             0x3274643db77a064abd3bc851de77556a4ad2e2f502f4f0c80845fa8f909ecf0b
         );
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant USDS = 0xdC035D45d973E3EC169d2276DDab16f1e407384F;
@@ -56,7 +57,7 @@ contract SetupSUSDSUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new SUSDSUSDTExchange();
+        exchange = new MetaExchange(WETH);
 
         MorphoLooper looper = new MorphoLooper(
             address(asset),
@@ -74,6 +75,9 @@ contract SetupSUSDSUSDT is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
+        exchange.setUniBase(USDC);
+        exchange.setUniFees(USDT, USDC, 100);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -90,5 +94,41 @@ contract SetupSUSDSUSDT is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 500) / 10_000);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            3
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            tokenTo: USDC
+        });
+        forward[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.LITE_PSM,
+            tokenTo: USDS
+        });
+        forward[2] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.SUSDS_DEPOSIT,
+            tokenTo: SUSDS
+        });
+        exchange.setRoute(USDT, SUSDS, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            3
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_REDEEM,
+            tokenTo: USDS
+        });
+        reverse[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.LITE_PSM,
+            tokenTo: USDC
+        });
+        reverse[2] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            tokenTo: USDT
+        });
+        exchange.setRoute(SUSDS, USDT, reverse);
     }
 }
