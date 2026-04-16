@@ -5,6 +5,7 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSyrupUsdcArbMorpho} from "./Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 contract SyrupUsdcArbMorphoOperationTest is
     SetupSyrupUsdcArbMorpho,
@@ -50,5 +51,43 @@ contract SyrupUsdcArbMorphoOperationTest is
 
         vm.prank(emergencyAdmin);
         looper.zeroPendingRedemptions();
+    }
+
+    function test_exchange_routes_areConfiguredForArbSyrupMarket() public view {
+        MetaExchange.RouteStep[] memory forward = exchange.getRoute(
+            ARB_USDC,
+            ARB_SYRUP_USDC
+        );
+        assertEq(forward.length, 1, "!forward length");
+        assertEq(
+            uint256(forward[0].venue),
+            uint256(MetaExchange.Venue.FLUID),
+            "!forward venue"
+        );
+        assertEq(forward[0].tokenTo, ARB_SYRUP_USDC, "!forward token");
+
+        MetaExchange.RouteStep[] memory reverse = exchange.getRoute(
+            ARB_SYRUP_USDC,
+            ARB_USDC
+        );
+        assertEq(reverse.length, 1, "!reverse length");
+        assertEq(
+            uint256(reverse[0].venue),
+            uint256(MetaExchange.Venue.FLUID),
+            "!reverse venue"
+        );
+        assertEq(reverse[0].tokenTo, ARB_USDC, "!reverse token");
+    }
+
+    function test_exchange_routeDrivenTend_worksWithFluidSwap() public {
+        uint256 amount = 10_000e6;
+
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertGt(strategy.balanceOfCollateral(), 0, "!collateral");
+        assertGt(strategy.balanceOfDebt(), 0, "!debt");
     }
 }

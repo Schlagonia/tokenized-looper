@@ -5,13 +5,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {OriginMorphoLooper} from "../../../morpho/OriginMorphoLooper.sol";
-import {OriginERC4626CurveExchange} from "../../../periphery/OriginERC4626CurveExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for wOUSD/USDC Morpho looper tests.
 contract SetupWOUSDMorpho is Setup {
-    OriginERC4626CurveExchange public exchange;
+    MetaExchange public exchange;
 
     Id public constant WOUSD_USDC_MARKET_ID =
         Id.wrap(
@@ -25,6 +25,7 @@ contract SetupWOUSDMorpho is Setup {
         0xE75D77B1865Ae93c7eaa3040B038D7aA7BC02F70;
     address public constant CURVE_OUSD_USDC_POOL =
         0x6d18E1a7faeB1F0467A77C0d293872ab685426dc;
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     uint256 public constant WOUSD_MORPHO_LIQUIDITY_SEED = 5_000_000e6;
 
@@ -63,7 +64,7 @@ contract SetupWOUSDMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new OriginERC4626CurveExchange(address(asset), WOUSD);
+        exchange = new MetaExchange(WETH);
 
         OriginMorphoLooper looper = new OriginMorphoLooper(
             address(asset),
@@ -76,16 +77,14 @@ contract SetupWOUSDMorpho is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
+        exchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        exchange.setMint(true);
-        exchange.setDeposit(true);
-        exchange.setRedeem(true);
         _setCurveRoute(OUSD, address(asset), 0, 1);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -109,6 +108,34 @@ contract SetupWOUSDMorpho is Setup {
         deal(address(asset), address(this), _amount);
         asset.approve(MORPHO, _amount);
         IMorpho(MORPHO).supply(params, _amount, 0, address(this), "");
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ORIGIN_MINT,
+            tokenTo: OUSD
+        });
+        forward[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_DEPOSIT,
+            tokenTo: WOUSD
+        });
+        exchange.setRoute(address(asset), WOUSD, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            2
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_REDEEM,
+            tokenTo: OUSD
+        });
+        reverse[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: address(asset)
+        });
+        exchange.setRoute(WOUSD, address(asset), reverse);
     }
 
     function _setCurveRoute(

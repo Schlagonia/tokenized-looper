@@ -124,7 +124,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     function version() public pure virtual returns (string memory) {
-        return "1.0.2";
+        return "1.0.3";
     }
 
     /*//////////////////////////////////////////////////////////////

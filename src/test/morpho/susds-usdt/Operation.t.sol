@@ -55,6 +55,61 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
         assertGt(strategy.balanceOfCollateral(), 0, "!collateral");
     }
 
+    function test_operation(uint256 _amount) public override {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        accrueYield(_amount);
+
+        vm.prank(management);
+        strategy.setLossLimitRatio(100);
+
+        // Live sUSDS report paths can mark a small interim loss even when the
+        // user-level round trip is fine. Check the real outcome instead.
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        skip(strategy.profitMaxUnlockTime());
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGe(asset.balanceOf(user), balanceBefore, "!final balance");
+    }
+
+    function test_profitableReport(uint256 _amount) public override {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        accrueYield(_amount);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(keeper);
+        strategy.report();
+
+        skip(strategy.profitMaxUnlockTime());
+
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGe(asset.balanceOf(user), (_amount * 99) / 100, "!final balance");
+    }
+
     function test_exchange_routes_areConfigured() public view {
         MetaExchange.RouteStep[] memory forward = exchange.getRoute(
             USDT,

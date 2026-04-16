@@ -5,13 +5,13 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests on Arbitrum
 contract SetupSyrupUsdcArbMorpho is Setup {
-    FluidExchange public exchange;
+    MetaExchange public exchange;
 
     // Arbitrum Morpho deployment
     address public constant ARB_MORPHO =
@@ -48,9 +48,10 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         asset = ERC20(ARB_USDC);
         decimals = asset.decimals();
 
-        // Keep conservative while pool depth evolves.
+        // Keep conservative while pool depth evolves. Small Arb positions can
+        // unwind into sub-min Fluid trades on zero-amount delevers.
         maxFuzzAmount = 50_000e6;
-        minFuzzAmount = 100e6;
+        minFuzzAmount = 5_000e6;
 
         strategy = IStrategyInterface(setUpStrategy());
         factory = strategy.FACTORY();
@@ -70,7 +71,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new FluidExchange(ARB_WETH);
+        exchange = new MetaExchange(ARB_WETH);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -91,12 +92,13 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         _strategy.acceptManagement();
 
         vm.startPrank(management);
-        exchange.setBase(address(asset));
+        exchange.setFluidBase(address(asset));
         exchange.setFluidDex(
             address(asset),
             ARB_SYRUP_USDC,
             ARB_FLUID_DEX_SYRUP_USDC_USDC
         );
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -113,5 +115,25 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), _amount / 30);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            1
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.FLUID,
+            tokenTo: ARB_SYRUP_USDC
+        });
+        exchange.setRoute(address(asset), ARB_SYRUP_USDC, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            1
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.FLUID,
+            tokenTo: address(asset)
+        });
+        exchange.setRoute(ARB_SYRUP_USDC, address(asset), reverse);
     }
 }

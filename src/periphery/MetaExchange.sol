@@ -9,6 +9,8 @@ import {CurveSwapper} from "@periphery/swappers/CurveSwapper.sol";
 import {PendleSwapper} from "@periphery/swappers/PendleSwapper.sol";
 import {UniswapUniversalSwapper} from "@periphery/swappers/UniswapUniversalSwapper.sol";
 
+import {IOUSD} from "../interfaces/origin/IOUSD.sol";
+import {IOUSDVault} from "../interfaces/origin/IOUSDVault.sol";
 import {ILitePSMWrapper} from "../interfaces/sky/ILitePSMWrapper.sol";
 import {ISUSDS} from "../interfaces/sky/ISUSDS.sol";
 import {ISyrupRouter} from "../interfaces/syrup/ISyrupRouter.sol";
@@ -46,7 +48,8 @@ contract MetaExchange is
         LITE_PSM,
         WRAPPED_NATIVE,
         SYRUP_DEPOSIT,
-        SUSDS_DEPOSIT
+        SUSDS_DEPOSIT,
+        ORIGIN_MINT
     }
 
     struct RouteStep {
@@ -71,12 +74,24 @@ contract MetaExchange is
         0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     mapping(address => bool) public operators;
+    mapping(address => mapping(address => address)) public uniBases;
+    mapping(address => mapping(address => address)) public fluidBases;
     mapping(address => SyrupDepositConfig) public syrupDepositConfigs;
     mapping(address => mapping(address => RouteStep[])) internal _routes;
     uint16 public susdsReferral = 1007;
 
     event OperatorSet(address indexed operator, bool allowed);
     event RouteSet(address indexed from, address indexed to, uint256 length);
+    event UniBaseSet(
+        address indexed token0,
+        address indexed token1,
+        address indexed uniBase
+    );
+    event FluidBaseSet(
+        address indexed token0,
+        address indexed token1,
+        address indexed fluidBase
+    );
     event SyrupDepositConfigSet(
         address indexed vault,
         address indexed router,
@@ -151,6 +166,22 @@ contract MetaExchange is
         base = uniBase;
     }
 
+    function setUniBaseForPair(
+        address token0,
+        address token1,
+        address uniBase
+    ) external onlyRouteOperator {
+        require(
+            token0 != address(0) && token1 != address(0) && token0 != token1,
+            "!pair"
+        );
+
+        uniBases[token0][token1] = uniBase;
+        uniBases[token1][token0] = uniBase;
+
+        emit UniBaseSet(token0, token1, uniBase);
+    }
+
     function setUniswapRouter(address _router) external onlyGovernance {
         require(_router != address(0), "!router");
         router = _router;
@@ -192,6 +223,22 @@ contract MetaExchange is
     function setFluidBase(address _fluidBase) external onlyRouteOperator {
         require(_fluidBase != address(0), "!base");
         fluidBase = _fluidBase;
+    }
+
+    function setFluidBaseForPair(
+        address token0,
+        address token1,
+        address _fluidBase
+    ) external onlyRouteOperator {
+        require(
+            token0 != address(0) && token1 != address(0) && token0 != token1,
+            "!pair"
+        );
+
+        fluidBases[token0][token1] = _fluidBase;
+        fluidBases[token1][token0] = _fluidBase;
+
+        emit FluidBaseSet(token0, token1, _fluidBase);
     }
 
     function setFluidDex(
@@ -274,13 +321,13 @@ contract MetaExchange is
         if (amountIn == 0) return 0;
 
         if (venue == Venue.UNISWAP_UNIVERSAL) {
-            return UniswapUniversalSwapper._swapFrom(from, to, amountIn, 0);
+            return _swapUniFrom(from, to, amountIn, 0);
         }
         if (venue == Venue.CURVE) {
             return CurveSwapper._curveSwapFrom(from, to, amountIn, 0);
         }
         if (venue == Venue.FLUID) {
-            return MetaFluidSwapper._fluidSwapFrom(from, to, amountIn, 0);
+            return _swapFluidFrom(from, to, amountIn, 0);
         }
         if (venue == Venue.PT) {
             return PendleSwapper._pendleSwapFrom(from, to, amountIn, 0);
@@ -303,8 +350,71 @@ contract MetaExchange is
         if (venue == Venue.SUSDS_DEPOSIT) {
             return _susdsDeposit(from, to, amountIn);
         }
+        if (venue == Venue.ORIGIN_MINT) {
+            return _originMint(from, to, amountIn);
+        }
 
         revert("!venue");
+    }
+
+    function _swapUniFrom(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal virtual returns (uint256 amountOut) {
+        address pairBase = uniBases[from][to];
+        if (pairBase == address(0)) {
+            return
+                UniswapUniversalSwapper._swapFrom(
+                    from,
+                    to,
+                    amountIn,
+                    amountOutMin
+                );
+        }
+
+        address previousBase = base;
+        base = pairBase;
+        amountOut = UniswapUniversalSwapper._swapFrom(
+            from,
+            to,
+            amountIn,
+            amountOutMin
+        );
+        if (pairBase != previousBase) {
+            base = previousBase;
+        }
+    }
+
+    function _swapFluidFrom(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal virtual returns (uint256 amountOut) {
+        address pairBase = fluidBases[from][to];
+        if (pairBase == address(0)) {
+            return
+                MetaFluidSwapper._fluidSwapFrom(
+                    from,
+                    to,
+                    amountIn,
+                    amountOutMin
+                );
+        }
+
+        address previousBase = fluidBase;
+        fluidBase = pairBase;
+        amountOut = MetaFluidSwapper._fluidSwapFrom(
+            from,
+            to,
+            amountIn,
+            amountOutMin
+        );
+        if (pairBase != previousBase) {
+            fluidBase = previousBase;
+        }
     }
 
     function _erc4626Deposit(
@@ -395,6 +505,23 @@ contract MetaExchange is
 
         _checkAllowance(vault, from, amountIn);
         return ISUSDS(vault).deposit(amountIn, address(this), susdsReferral);
+    }
+
+    function _originMint(
+        address from,
+        address to,
+        uint256 amountIn
+    ) internal virtual returns (uint256 amountOut) {
+        address vault = IOUSD(to).vaultAddress();
+        require(vault != address(0), "!vault");
+        require(IOUSDVault(vault).asset() == from, "!vaultAsset");
+
+        _checkAllowance(vault, from, amountIn);
+
+        uint256 balanceBefore = ERC20(to).balanceOf(address(this));
+        IOUSDVault(vault).mint(amountIn);
+        amountOut = ERC20(to).balanceOf(address(this)) - balanceBefore;
+        require(amountOut != 0, "!amountOut");
     }
 
     function _checkAllowance(

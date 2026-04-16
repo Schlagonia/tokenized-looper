@@ -50,10 +50,15 @@ contract MetaExchangeForkTest is Test {
         0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
     address internal constant SUSDS =
         0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
+    address internal constant OUSD = 0x2A8e1E676Ec238d8A992307B495b45B3fEAa5e86;
+    address internal constant WOUSD =
+        0xD2af830E8CBdFed6CC11Bab697bB25496ed6FA62;
     address internal constant PYUSD =
         0x6c3ea9036406852006290770BEdFcAbA0e23A0e8;
     address internal constant PYUSD_USDC_CURVE_POOL =
         0x383E6b4437b59fff47B619CBA855CA29342A8559;
+    address internal constant CURVE_OUSD_USDC_POOL =
+        0x6d18E1a7faeB1F0467A77C0d293872ab685426dc;
     address internal constant SYRUP_USDC =
         0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
     address internal constant SYRUP_USDC_ROUTER =
@@ -159,6 +164,23 @@ contract MetaExchangeForkTest is Test {
         assertEq(ERC20(SUSDS).balanceOf(address(strategy)), sharesOut, "!recv");
     }
 
+    function test_fork_swap_usdc_to_wousd() public {
+        (MetaExchange exchange, MockStrategyForExchange strategy) = _deploy();
+
+        _configureOriginRoutes(exchange);
+
+        uint256 amountIn = 10_000e6;
+        deal(USDC, address(strategy), amountIn);
+        strategy.approveToken(USDC, address(exchange), type(uint256).max);
+
+        uint256 sharesOut = strategy.swap(USDC, WOUSD, amountIn, 0);
+        uint256 assetValue = IERC4626(WOUSD).convertToAssets(sharesOut);
+
+        assertGt(sharesOut, 0, "!sharesOut");
+        assertGt(assetValue, 9_999e18, "!assetValue");
+        assertEq(ERC20(WOUSD).balanceOf(address(strategy)), sharesOut, "!recv");
+    }
+
     function _deploy()
         internal
         returns (MetaExchange exchange, MockStrategyForExchange strategy)
@@ -172,8 +194,8 @@ contract MetaExchangeForkTest is Test {
     function _configureSyrupPyusdRoutes(MetaExchange exchange) internal {
         exchange.setUniBase(USDC);
         exchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
-        _setCurveRoute(exchange, PYUSD, USDC, 0, 1);
-        _setCurveRoute(exchange, USDC, PYUSD, 1, 0);
+        _setCurveRoute(exchange, PYUSD, USDC, PYUSD_USDC_CURVE_POOL, 0, 1);
+        _setCurveRoute(exchange, USDC, PYUSD, PYUSD_USDC_CURVE_POOL, 1, 0);
         exchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,
@@ -207,16 +229,47 @@ contract MetaExchangeForkTest is Test {
         exchange.setRoute(SYRUP_USDC, PYUSD, reverse);
     }
 
+    function _configureOriginRoutes(MetaExchange exchange) internal {
+        _setCurveRoute(exchange, OUSD, USDC, CURVE_OUSD_USDC_POOL, 0, 1);
+
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ORIGIN_MINT,
+            tokenTo: OUSD
+        });
+        forward[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_DEPOSIT,
+            tokenTo: WOUSD
+        });
+        exchange.setRoute(USDC, WOUSD, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            2
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.ERC4626_REDEEM,
+            tokenTo: OUSD
+        });
+        reverse[1] = MetaExchange.RouteStep({
+            venue: MetaExchange.Venue.CURVE,
+            tokenTo: USDC
+        });
+        exchange.setRoute(WOUSD, USDC, reverse);
+    }
+
     function _setCurveRoute(
         MetaExchange exchange,
         address from,
         address to,
+        address pool,
         uint256 i,
         uint256 j
     ) internal {
         address[11] memory route;
         route[0] = from;
-        route[1] = PYUSD_USDC_CURVE_POOL;
+        route[1] = pool;
         route[2] = to;
 
         uint256[5][5] memory swapParams;
