@@ -58,28 +58,26 @@ contract InfinifiMorphoLooper is MorphoLooper {
 
     /// @notice Convert USDC to sIUSD (staked iUSD) via Infinifi Gateway
     /// @dev Uses gateway.mintAndStake to atomically mint iUSD from USDC and stake it to sIUSD.
-    ///      The amountOutMin parameter is unused since Infinifi provides 1:1 minting.
     /// @param amount The amount of USDC to convert
     /// @return The amount of sIUSD received
     function _convertAssetToCollateral(
-        uint256 amount,
-        uint256
+        uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         // Gateway mints iUSD and stakes directly to sIUSD for this contract.
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
-        return balanceOfCollateralToken() - collateralBalance;
+        uint256 amountOut = balanceOfCollateralToken() - collateralBalance;
+        _recordSlippage(_assetToCollateral(amount), amountOut);
+        return amountOut;
     }
 
     /// @notice Convert sIUSD (staked iUSD) back to USDC via Infinifi Gateway
     /// @dev First unstakes sIUSD to iUSD, then redeems iUSD for USDC via the gateway.
     /// @param amount The amount of sIUSD to convert
-    /// @param amountOutMin The minimum amount of USDC to receive (slippage protection)
     /// @return The amount of USDC received
     function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
+        uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
         uint256 iusdBalance = IInfiniFiGatewayV1(GATEWAY).unstake(
@@ -87,12 +85,13 @@ contract InfinifiMorphoLooper is MorphoLooper {
             amount
         );
         // Gateway handles unstake + redemption back to USDC.
-        return
-            IInfiniFiGatewayV1(GATEWAY).redeem(
-                address(this),
-                iusdBalance,
-                amountOutMin
-            );
+        uint256 amountOut = IInfiniFiGatewayV1(GATEWAY).redeem(
+            address(this),
+            iusdBalance,
+            0
+        );
+        _recordSlippage(_collateralToAsset(amount), amountOut);
+        return amountOut;
     }
 
     /// @notice Claim any enqueued redemptions from Infinifi

@@ -27,6 +27,7 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function minTendInterval() external view returns (uint256);
 
+    /// @notice Slippage in basis points used for swap checks and the daily budget.
     function slippage() external view returns (uint64);
 
     function reportBuffer() external view returns (uint256);
@@ -48,6 +49,7 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setMaxGasPriceToTend(uint256 _maxGasPriceToTend) external;
 
+    /// @notice Set slippage in basis points for swap checks and the daily budget.
     function setSlippage(uint256 _slippage) external;
 
     function setReportBuffer(uint256 _reportBuffer) external;

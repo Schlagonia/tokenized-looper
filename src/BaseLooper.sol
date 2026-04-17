@@ -32,6 +32,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_SLIPPAGE = 100;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
+    uint256 internal constant SLIPPAGE_PERIOD = 1 days;
 
     /// @notice Flashloan operation types
     enum FlashLoanOperation {
@@ -48,8 +49,14 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Governance address allowed to update exchange configuration.
     address public immutable GOVERNANCE;
 
-    /// @notice Slippage tolerance (in basis points) for swaps.
+    /// @notice Slippage parameter in basis points for swaps and the 1-day budget.
     uint64 public slippage;
+
+    /// @notice Start timestamp for the current slippage accounting period.
+    uint256 public slippagePeriodStart;
+
+    /// @notice Cumulative realized slippage percentage for the current period.
+    uint256 public realizedSlippage;
 
     /// @notice Exchange address
     address public exchange;
@@ -192,9 +199,10 @@ abstract contract BaseLooper is BaseHealthCheck {
         maxGasPriceToTend = _maxGasPriceToTend;
     }
 
-    /// @notice Set swap slippage tolerance used for min amount out checks.
-    /// @dev Applied to both asset->collateral and collateral->asset swaps; value is in BPS and must be strictly less than `MAX_BPS`.
-    ///      If the strategy is not shutdown, the slippage must be strictly less than `MAX_SLIPPAGE`.
+    /// @notice Set the slippage parameter used by swap checks and the 1-day budget.
+    /// @dev Value is in BPS and must be strictly less than `MAX_BPS`. If the
+    ///      strategy is not shutdown, it must also be strictly less than
+    ///      `MAX_SLIPPAGE`.
     /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slippage");
@@ -651,47 +659,39 @@ abstract contract BaseLooper is BaseHealthCheck {
         );
     }
 
-    function _convertCollateralToAsset(
-        uint256 amount
-    ) internal virtual returns (uint256) {
-        return _convertCollateralToAsset(amount, _getAmountOut(amount, false));
-    }
-
     function _convertAssetToCollateral(
         uint256 amount
-    ) internal virtual returns (uint256) {
-        return _convertAssetToCollateral(amount, _getAmountOut(amount, true));
-    }
-
-    function _convertAssetToCollateral(
-        uint256 amount,
-        uint256 amountOutMin
     ) internal virtual returns (uint256) {
         if (amount == 0) return 0;
+
+        uint256 expectedAmountOut = _assetToCollateral(amount);
 
         uint256 amountOut = IExchange(exchange).exchange(
             address(asset),
             collateralToken,
             amount,
-            amountOutMin
+            0
         );
-        require(amountOut >= amountOutMin, "!amountOut");
+
+        _recordSlippage(expectedAmountOut, amountOut);
         return amountOut;
     }
 
     function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
+        uint256 amount
     ) internal virtual returns (uint256) {
         if (amount == 0) return 0;
+
+        uint256 expectedAmountOut = _collateralToAsset(amount);
 
         uint256 amountOut = IExchange(exchange).exchange(
             collateralToken,
             address(asset),
             amount,
-            amountOutMin
+            0
         );
-        require(amountOut >= amountOutMin, "!amountOut");
+
+        _recordSlippage(expectedAmountOut, amountOut);
         return amountOut;
     }
 
@@ -877,6 +877,21 @@ abstract contract BaseLooper is BaseHealthCheck {
             ? _assetToCollateral(amount)
             : _collateralToAsset(amount);
         return (converted * (MAX_BPS - slippage)) / MAX_BPS;
+    }
+
+    function _recordSlippage(uint256 expected, uint256 actual) internal {
+        if (actual >= expected) return;
+        uint256 loss = expected - actual;
+        uint256 newRealizedSlippage = (loss * MAX_BPS) / expected;
+
+        if (block.timestamp >= slippagePeriodStart + SLIPPAGE_PERIOD) {
+            slippagePeriodStart = block.timestamp;
+        } else {
+            newRealizedSlippage += realizedSlippage;
+        }
+
+        require(newRealizedSlippage <= slippage, "!slippage");
+        realizedSlippage = newRealizedSlippage;
     }
 
     /// @notice Check if the current base fee is acceptable for tending

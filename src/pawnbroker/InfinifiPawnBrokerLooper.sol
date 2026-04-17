@@ -41,19 +41,19 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
     }
 
     function _convertAssetToCollateral(
-        uint256 amount,
-        uint256
+        uint256 amount
     ) internal virtual override returns (uint256) {
         if (amount == 0) return 0;
 
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
-        return balanceOfCollateralToken() - collateralBalance;
+        uint256 amountOut = balanceOfCollateralToken() - collateralBalance;
+        _recordSlippage(_assetToCollateral(amount), amountOut);
+        return amountOut;
     }
 
     function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
+        uint256 amount
     ) internal virtual override returns (uint256) {
         if (amount == 0) return 0;
 
@@ -62,12 +62,13 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
             amount
         );
 
-        return
-            IInfiniFiGatewayV1(GATEWAY).redeem(
-                address(this),
-                iusdBalance,
-                amountOutMin
-            );
+        uint256 amountOut = IInfiniFiGatewayV1(GATEWAY).redeem(
+            address(this),
+            iusdBalance,
+            0
+        );
+        _recordSlippage(_collateralToAsset(amount), amountOut);
+        return amountOut;
     }
 
     function claimRedemption() external onlyEmergencyAuthorized {
