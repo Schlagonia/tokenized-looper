@@ -55,8 +55,11 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Start timestamp for the current slippage accounting period.
     uint256 public slippagePeriodStart;
 
-    /// @notice Cumulative realized slippage percentage for the current period.
-    uint256 public realizedSlippage;
+    /// @notice Cumulative expected swap notional in asset terms for the current period.
+    uint256 public slippagePeriodNotional;
+
+    /// @notice Cumulative realized swap loss in asset terms for the current period.
+    uint256 public slippagePeriodLoss;
 
     /// @notice Exchange address
     address public exchange;
@@ -664,8 +667,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual returns (uint256) {
         if (amount == 0) return 0;
 
-        uint256 expectedAmountOut = _assetToCollateral(amount);
-
         uint256 amountOut = IExchange(exchange).exchange(
             address(asset),
             collateralToken,
@@ -673,7 +674,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             0
         );
 
-        _recordSlippage(expectedAmountOut, amountOut);
+        _recordSlippage(amount, _collateralToAsset(amountOut));
         return amountOut;
     }
 
@@ -867,31 +868,24 @@ abstract contract BaseLooper is BaseHealthCheck {
         return (targetCollateral, targetDebt);
     }
 
-    /// @notice Get amount out with slippage
-    function _getAmountOut(
-        uint256 amount,
-        bool assetToCollateral
-    ) internal view virtual returns (uint256) {
-        if (amount == 0) return 0;
-        uint256 converted = assetToCollateral
-            ? _assetToCollateral(amount)
-            : _collateralToAsset(amount);
-        return (converted * (MAX_BPS - slippage)) / MAX_BPS;
-    }
-
     function _recordSlippage(uint256 expected, uint256 actual) internal {
-        if (actual >= expected) return;
-        uint256 loss = expected - actual;
-        uint256 newRealizedSlippage = (loss * MAX_BPS) / expected;
-
         if (block.timestamp >= slippagePeriodStart + SLIPPAGE_PERIOD) {
             slippagePeriodStart = block.timestamp;
+            slippagePeriodNotional = expected;
+            slippagePeriodLoss = 0;
         } else {
-            newRealizedSlippage += realizedSlippage;
+            slippagePeriodNotional += expected;
         }
 
-        require(newRealizedSlippage <= slippage, "!slippage");
-        realizedSlippage = newRealizedSlippage;
+        if (actual < expected) {
+            slippagePeriodLoss += expected - actual;
+        }
+
+        require(
+            slippagePeriodLoss <=
+                Math.mulDiv(slippagePeriodNotional, slippage, MAX_BPS),
+            "!slippage"
+        );
     }
 
     /// @notice Check if the current base fee is acceptable for tending

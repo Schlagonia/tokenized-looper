@@ -60,7 +60,7 @@ contract MockBudgetExchange is IExchange {
 }
 
 contract MockBudgetLooper is BaseLooper {
-    uint256 internal constant PRICE = 1e36;
+    uint256 public collateralPrice = 1e36;
 
     uint256 public suppliedCollateral;
     uint256 public debt;
@@ -100,8 +100,12 @@ contract MockBudgetLooper is BaseLooper {
         return type(uint256).max;
     }
 
-    function _getCollateralPrice() internal pure override returns (uint256) {
-        return PRICE;
+    function setCollateralPrice(uint256 _collateralPrice) external {
+        collateralPrice = _collateralPrice;
+    }
+
+    function _getCollateralPrice() internal view override returns (uint256) {
+        return collateralPrice;
     }
 
     function _supplyCollateral(uint256 amount) internal override {
@@ -181,7 +185,6 @@ contract SlippageBudgetTest is Test {
             address(factory)
         );
         vm.etch(TOKENIZED_STRATEGY, address(implementation).code);
-        vm.warp(1 days + 1);
 
         asset = new ERC20Mock();
         collateral = new ERC20Mock();
@@ -194,7 +197,7 @@ contract SlippageBudgetTest is Test {
         );
     }
 
-    function test_dailyBudget_zeroLossDoesNotConsumeBudget() public {
+    function test_dailyBudget_zeroLossStartsPeriodAndAddsNotional() public {
         uint256 amount = 100_000;
 
         asset.mint(address(looper), amount);
@@ -204,26 +207,69 @@ contract SlippageBudgetTest is Test {
         uint256 amountOut = looper.swapAssetToCollateral(amount);
 
         assertEq(amountOut, amount, "wrong output");
-        assertEq(looper.slippagePeriodStart(), 0, "start should stay unset");
-        assertEq(looper.realizedSlippage(), 0, "slippage should stay zero");
+        assertEq(looper.slippagePeriodStart(), block.timestamp, "wrong start");
+        assertEq(looper.slippagePeriodNotional(), amount, "wrong notional");
+        assertEq(looper.slippagePeriodLoss(), 0, "loss should stay zero");
     }
 
-    function test_dailyBudget_accumulatesLossAcrossSwaps() public {
+    function test_dailyBudget_accumulatesWeightedLossAcrossSwaps() public {
         uint256 amount = 100_000;
 
         asset.mint(address(looper), amount * 2);
         looper.setSlippage(10);
         exchange.setRates(9_995, 9_995);
 
-        uint256 start = block.timestamp;
         looper.swapAssetToCollateral(amount);
         looper.swapAssetToCollateral(amount);
 
-        assertEq(looper.slippagePeriodStart(), start, "wrong start");
-        assertEq(looper.realizedSlippage(), 10, "wrong slippage");
+        assertEq(looper.slippagePeriodStart(), block.timestamp, "wrong start");
+        assertEq(looper.slippagePeriodNotional(), amount * 2, "wrong notional");
+        assertEq(looper.slippagePeriodLoss(), 100, "wrong loss");
     }
 
-    function test_dailyBudget_revertsWhenCumulativeBudgetIsExceeded() public {
+    function test_dailyBudget_weightsLargeGoodSwapAgainstTinyBadSwap() public {
+        uint256 tinyAmount = 10_000;
+        uint256 largeAmount = 100_000;
+
+        asset.mint(address(looper), tinyAmount + largeAmount);
+        looper.setSlippage(10);
+
+        exchange.setRates(9_990, 9_990);
+        looper.swapAssetToCollateral(tinyAmount);
+
+        exchange.setRates(9_995, 9_995);
+        looper.swapAssetToCollateral(largeAmount);
+
+        assertEq(
+            looper.slippagePeriodNotional(),
+            tinyAmount + largeAmount,
+            "wrong notional"
+        );
+        assertEq(looper.slippagePeriodLoss(), 60, "wrong loss");
+    }
+
+    function test_dailyBudget_normalizesMixedDirectionsIntoAssetTerms() public {
+        uint256 assetAmount = 100_000;
+        uint256 collateralAmount = 50_000;
+
+        looper.setCollateralPrice(2e36);
+        looper.setSlippage(6);
+
+        asset.mint(address(looper), assetAmount);
+        collateral.mint(address(looper), collateralAmount);
+
+        exchange.setRates(5_000, 20_000);
+        looper.swapAssetToCollateral(assetAmount);
+
+        exchange.setRates(5_000, 19_980);
+        uint256 amountOut = looper.swapCollateralToAsset(collateralAmount);
+
+        assertEq(amountOut, 99_900, "wrong output");
+        assertEq(looper.slippagePeriodNotional(), 200_000, "wrong notional");
+        assertEq(looper.slippagePeriodLoss(), 100, "wrong loss");
+    }
+
+    function test_dailyBudget_revertsWhenWeightedBudgetIsExceeded() public {
         uint256 amount = 100_000;
 
         asset.mint(address(looper), amount * 2);
@@ -235,6 +281,13 @@ contract SlippageBudgetTest is Test {
         exchange.setRates(9_980, 9_980);
         vm.expectRevert(bytes("!slippage"));
         looper.swapAssetToCollateral(amount);
+
+        assertEq(
+            looper.slippagePeriodNotional(),
+            amount,
+            "notional should revert"
+        );
+        assertEq(looper.slippagePeriodLoss(), 50, "loss should revert");
     }
 
     function test_dailyBudget_resetsAfterOneDay() public {
@@ -252,7 +305,8 @@ contract SlippageBudgetTest is Test {
         looper.swapAssetToCollateral(amount);
 
         assertGt(looper.slippagePeriodStart(), firstStart, "start not reset");
-        assertEq(looper.realizedSlippage(), 5, "slippage not reset");
+        assertEq(looper.slippagePeriodNotional(), amount, "notional not reset");
+        assertEq(looper.slippagePeriodLoss(), 50, "loss not reset");
     }
 
     function test_dailyBudget_tracksCollateralToAssetLoss() public {
@@ -265,7 +319,8 @@ contract SlippageBudgetTest is Test {
         uint256 amountOut = looper.swapCollateralToAsset(amount);
 
         assertEq(amountOut, 99_950, "wrong output");
-        assertEq(looper.realizedSlippage(), 5, "wrong slippage");
+        assertEq(looper.slippagePeriodNotional(), amount, "wrong notional");
+        assertEq(looper.slippagePeriodLoss(), 50, "wrong loss");
     }
 
     function test_dailyBudget_revertsForCollateralToAssetWhenLimitIsExceeded()
@@ -282,5 +337,12 @@ contract SlippageBudgetTest is Test {
         exchange.setRates(9_980, 9_980);
         vm.expectRevert(bytes("!slippage"));
         looper.swapCollateralToAsset(amount);
+
+        assertEq(
+            looper.slippagePeriodNotional(),
+            amount,
+            "notional should revert"
+        );
+        assertEq(looper.slippagePeriodLoss(), 50, "loss should revert");
     }
 }

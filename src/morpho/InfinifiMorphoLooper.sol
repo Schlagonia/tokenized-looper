@@ -68,7 +68,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
         uint256 amountOut = balanceOfCollateralToken() - collateralBalance;
-        _recordSlippage(_assetToCollateral(amount), amountOut);
+        _recordSlippage(amount, _collateralToAsset(amountOut));
         return amountOut;
     }
 

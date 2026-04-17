@@ -104,15 +104,19 @@ contract sUSDeAaveLooper is AaveLooper {
 
         ERC20(UNDERLYING).forceApprove(exchange, amount);
 
-        return
-            IExchange(exchange).exchange(
-                UNDERLYING,
-                address(asset),
-                amount,
-                _getAmountOut(
-                    IERC4626(address(collateralToken)).convertToShares(amount),
-                    false
-                )
-            );
+        uint256 amountOut = IExchange(exchange).exchange(
+            UNDERLYING,
+            address(asset),
+            amount,
+            0
+        );
+
+        _recordSlippage(
+            _collateralToAsset(
+                IERC4626(address(collateralToken)).convertToShares(amount)
+            ),
+            amountOut
+        );
+        return amountOut;
     }
 }
