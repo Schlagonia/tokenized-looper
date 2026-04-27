@@ -106,14 +106,19 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Manual: convert asset to collateral
     function convertAssetToCollateral(uint256 amount) external;
 
-    /// @notice Set target leverage ratio and buffer
-    /// @param _targetLeverageRatio Target leverage in WAD (e.g., 3e18 = 3x)
-    /// @param _leverageBuffer Buffer tolerance in WAD
-    /// @param _maxLeverageRatio Maximum leverage ratio in WAD (e.g., 10e18 = 10x)
+    /// @notice Set target leverage ratio, buffer, and max leverage.
+    /// @dev Management-only path for changing the hard max leverage ratio.
     function setLeverageParams(
         uint256 _targetLeverageRatio,
         uint256 _leverageBuffer,
         uint256 _maxLeverageRatio
+    ) external;
+
+    /// @notice Set target leverage ratio and buffer without changing max leverage.
+    /// @dev Keeper path for day-to-day tuning; reuses the current `maxLeverageRatio`.
+    function setLeverageParams(
+        uint256 _targetLeverageRatio,
+        uint256 _leverageBuffer
     ) external;
 
     function position()

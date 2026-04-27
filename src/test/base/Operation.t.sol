@@ -280,33 +280,45 @@ abstract contract OperationTest is Setup {
     }
 
     function test_setLeverageParams() public {
-        // Test setting leverage params
         vm.startPrank(management);
 
-        // Set new target leverage to 2.5x with 0.15 buffer
         strategy.setLeverageParams(2.5e18, 0.15e18, 5e18);
         assertEq(strategy.targetLeverageRatio(), 2.5e18, "!new target");
         assertEq(strategy.leverageBuffer(), 0.15e18, "!new buffer");
+        assertEq(strategy.maxLeverageRatio(), 5e18, "!new max");
 
-        // Test bounds validation - leverage < 1x
         vm.expectRevert("leverage < 1x");
         strategy.setLeverageParams(0.5e18, 0.1e18, 5e18);
 
-        // Test bounds validation - buffer too small
         vm.expectRevert("buffer too small");
         strategy.setLeverageParams(2e18, 0.001e18, 5e18);
 
-        // Test bounds validation - exceeds LLTV
-        // LLTV is ~91.5% which corresponds to max leverage of ~11.76x
-        // Setting target + buffer above that should fail
         vm.expectRevert("exceeds LLTV");
-        strategy.setLeverageParams(3e18, 1e18, 40e18); // 11x + 1x = 12x would exceed LLTV
+        strategy.setLeverageParams(3e18, 1e18, 40e18);
 
-        // Test bounds validation - max leverage < target + buffer
         vm.expectRevert("max leverage < target + buffer");
         strategy.setLeverageParams(2e18, 0.1e18, 1e18);
 
         vm.stopPrank();
+    }
+
+    function test_setLeverageParams_keeperCanTuneWithoutChangingMax() public {
+        vm.prank(keeper);
+        strategy.setLeverageParams(2.25e18, 0.2e18);
+
+        assertEq(strategy.targetLeverageRatio(), 2.25e18, "!new target");
+        assertEq(strategy.leverageBuffer(), 0.2e18, "!new buffer");
+        assertEq(
+            strategy.maxLeverageRatio(),
+            4e18,
+            "!max should stay unchanged"
+        );
+    }
+
+    function test_setLeverageParams_keeperSetter_rejectsNonKeeper() public {
+        vm.prank(user);
+        vm.expectRevert("!keeper");
+        strategy.setLeverageParams(2.25e18, 0.2e18);
     }
 
     function test_manualFullUnwind(uint256 _amount) public {
