@@ -59,11 +59,7 @@ contract SyrupUsdcArbMorphoOperationTest is
             ARB_SYRUP_USDC
         );
         assertEq(forward.length, 1, "!forward length");
-        assertEq(
-            uint256(forward[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!forward venue"
-        );
+        assertEq(forward[0].exchange, address(fluidExchange), "!forward ex");
         assertEq(forward[0].tokenTo, ARB_SYRUP_USDC, "!forward token");
 
         MetaExchange.RouteStep[] memory reverse = exchange.getRoute(
@@ -71,11 +67,7 @@ contract SyrupUsdcArbMorphoOperationTest is
             ARB_USDC
         );
         assertEq(reverse.length, 1, "!reverse length");
-        assertEq(
-            uint256(reverse[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!reverse venue"
-        );
+        assertEq(reverse[0].exchange, address(fluidExchange), "!reverse ex");
         assertEq(reverse[0].tokenTo, ARB_USDC, "!reverse token");
     }
 

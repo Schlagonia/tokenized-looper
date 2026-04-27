@@ -54,22 +54,21 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     function test_exchange_setSyrupDepositConfig_onlyManagement() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setSyrupDepositConfig(
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,
             bytes32("Maple")
         );
 
         vm.prank(management);
-        exchange.setSyrupDepositConfig(
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,
             bytes32("Maple")
         );
 
-        (address router, bytes32 depositData) = exchange.syrupDepositConfigs(
-            SYRUP_USDC
-        );
+        (address router, bytes32 depositData) = syrupExchange
+            .syrupDepositConfigs(SYRUP_USDC);
         assertEq(router, SYRUP_USDC_ROUTER, "!router");
         assertEq(depositData, bytes32("Maple"), "!depositData");
     }
@@ -80,16 +79,12 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             SYRUP_USDC
         );
         assertEq(forward.length, 2, "!forward length");
-        assertEq(
-            uint256(forward[0].venue),
-            uint256(MetaExchange.Venue.CURVE),
-            "!forward venue 0"
-        );
+        assertEq(forward[0].exchange, address(curveExchange), "!forward ex 0");
         assertEq(forward[0].tokenTo, USDC, "!forward token 0");
         assertEq(
-            uint256(forward[1].venue),
-            uint256(MetaExchange.Venue.SYRUP_DEPOSIT),
-            "!forward venue 1"
+            forward[1].exchange,
+            address(syrupExchange),
+            "!forward ex 1"
         );
         assertEq(forward[1].tokenTo, SYRUP_USDC, "!forward token 1");
 
@@ -98,17 +93,9 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             PYUSD
         );
         assertEq(reverse.length, 2, "!reverse length");
-        assertEq(
-            uint256(reverse[0].venue),
-            uint256(MetaExchange.Venue.UNISWAP_UNIVERSAL),
-            "!reverse venue 0"
-        );
+        assertEq(reverse[0].exchange, address(uniExchange), "!reverse ex 0");
         assertEq(reverse[0].tokenTo, USDC, "!reverse token 0");
-        assertEq(
-            uint256(reverse[1].venue),
-            uint256(MetaExchange.Venue.CURVE),
-            "!reverse venue 1"
-        );
+        assertEq(reverse[1].exchange, address(curveExchange), "!reverse ex 1");
         assertEq(reverse[1].tokenTo, PYUSD, "!reverse token 1");
     }
 

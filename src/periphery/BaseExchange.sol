@@ -10,24 +10,37 @@ import {IExchange} from "../interfaces/IExchange.sol";
  * @title BaseExchange
  * @notice Shared exchange primitives. Callers swap their own funds through the
  *         exchange; admin setters are governed separately.
- *         Concrete exchanges override `_swapFrom` with their conversion logic.
+ *         Concrete exchanges override `_exchange` with their conversion logic.
  */
 abstract contract BaseExchange is IExchange, Governance {
     using SafeERC20 for ERC20;
+
+    mapping(address => bool) public operators;
+
+    event OperatorSet(address indexed operator, bool allowed);
 
     modifier onlyManagement() {
         require(msg.sender == governance, "!management");
         _;
     }
 
+    modifier onlyConfigOperator() {
+        require(operators[msg.sender] || msg.sender == governance, "!operator");
+        _;
+    }
+
     constructor() Governance(msg.sender) {}
 
-    function exchange(
-        address from,
-        address to,
-        uint256 amountIn,
-        uint256 amountOutMin
-    ) external returns (uint256 amountOut) {
+    function setOperator(address operator, bool allowed) external onlyGovernance {
+        require(operator != address(0), "!operator");
+        operators[operator] = allowed;
+        emit OperatorSet(operator, allowed);
+    }
+
+    function exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
+        external
+        returns (uint256 amountOut)
+    {
         if (amountIn == 0) return 0;
 
         ERC20(from).safeTransferFrom(msg.sender, address(this), amountIn);
@@ -40,16 +53,12 @@ abstract contract BaseExchange is IExchange, Governance {
     function sweep(address token, uint256 amount) external onlyGovernance {
         require(token != address(0), "!token");
 
-        uint256 tokenToSweep = amount == type(uint256).max
-            ? ERC20(token).balanceOf(address(this))
-            : amount;
+        uint256 tokenToSweep = amount == type(uint256).max ? ERC20(token).balanceOf(address(this)) : amount;
         ERC20(token).safeTransfer(msg.sender, tokenToSweep);
     }
 
-    function _exchange(
-        address from,
-        address to,
-        uint256 amountIn,
-        uint256 amountOutMin
-    ) internal virtual returns (uint256 amountOut);
+    function _exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
+        internal
+        virtual
+        returns (uint256 amountOut);
 }

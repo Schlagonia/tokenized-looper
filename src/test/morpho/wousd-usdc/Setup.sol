@@ -8,10 +8,16 @@ import {OriginMorphoLooper} from "../../../morpho/OriginMorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/CurveExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
+import {OriginMintExchange} from "../../../periphery/OriginMintExchange.sol";
 
 /// @notice Setup for wOUSD/USDC Morpho looper tests.
 contract SetupWOUSDMorpho is Setup {
     MetaExchange public exchange;
+    CurveExchange public curveExchange;
+    ERC4626Exchange public erc4626Exchange;
+    OriginMintExchange public originExchange;
 
     Id public constant WOUSD_USDC_MARKET_ID =
         Id.wrap(
@@ -65,6 +71,9 @@ contract SetupWOUSDMorpho is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        curveExchange = new CurveExchange();
+        erc4626Exchange = new ERC4626Exchange();
+        originExchange = new OriginMintExchange();
 
         OriginMorphoLooper looper = new OriginMorphoLooper(
             address(asset),
@@ -78,12 +87,18 @@ contract SetupWOUSDMorpho is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        curveExchange.transferGovernance(management);
+        erc4626Exchange.transferGovernance(management);
+        originExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
 
         _setCurveRoute(OUSD, address(asset), 0, 1);
+        exchange.setAllowedExchange(address(curveExchange), true);
+        exchange.setAllowedExchange(address(erc4626Exchange), true);
+        exchange.setAllowedExchange(address(originExchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -115,11 +130,11 @@ contract SetupWOUSDMorpho is Setup {
             2
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.ORIGIN_MINT,
+            exchange: address(originExchange),
             tokenTo: OUSD
         });
         forward[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.ERC4626_DEPOSIT,
+            exchange: address(erc4626Exchange),
             tokenTo: WOUSD
         });
         exchange.setRoute(address(asset), WOUSD, forward);
@@ -128,11 +143,11 @@ contract SetupWOUSDMorpho is Setup {
             2
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.ERC4626_REDEEM,
+            exchange: address(erc4626Exchange),
             tokenTo: OUSD
         });
         reverse[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: address(asset)
         });
         exchange.setRoute(WOUSD, address(asset), reverse);
@@ -154,6 +169,6 @@ contract SetupWOUSDMorpho is Setup {
 
         address[5] memory pools;
 
-        exchange.setCurveRoute(_from, _to, route, swapParams, pools);
+        curveExchange.setCurveRoute(_from, _to, route, swapParams, pools);
     }
 }

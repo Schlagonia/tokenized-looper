@@ -12,10 +12,16 @@ import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol"
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/CurveExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDC/PYUSD Morpho looper tests
 contract SetupSyrupMorpho is Setup {
     MetaExchange public exchange;
+    UniswapUniversalRouterExchange public uniExchange;
+    CurveExchange public curveExchange;
+    SyrupDepositExchange public syrupExchange;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
     bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
@@ -68,6 +74,9 @@ contract SetupSyrupMorpho is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        curveExchange = new CurveExchange();
+        syrupExchange = new SyrupDepositExchange();
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -81,6 +90,9 @@ contract SetupSyrupMorpho is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        uniExchange.transferGovernance(management);
+        curveExchange.transferGovernance(management);
+        syrupExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.prank(management);
@@ -89,15 +101,18 @@ contract SetupSyrupMorpho is Setup {
         _authorizeExchangeForSyrupDeposit();
 
         vm.startPrank(management);
-        exchange.setUniBase(USDC);
-        exchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
+        uniExchange.setUniBase(USDC);
+        uniExchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
         _setCurveRoute(PYUSD, USDC, 0, 1);
         _setCurveRoute(USDC, PYUSD, 1, 0);
-        exchange.setSyrupDepositConfig(
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,
             SYRUP_DEPOSIT_DATA
         );
+        exchange.setAllowedExchange(address(uniExchange), true);
+        exchange.setAllowedExchange(address(curveExchange), true);
+        exchange.setAllowedExchange(address(syrupExchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -122,11 +137,11 @@ contract SetupSyrupMorpho is Setup {
             2
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.SYRUP_DEPOSIT,
+            exchange: address(syrupExchange),
             tokenTo: SYRUP_USDC
         });
         exchange.setRoute(PYUSD, SYRUP_USDC, forward);
@@ -135,11 +150,11 @@ contract SetupSyrupMorpho is Setup {
             2
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            exchange: address(uniExchange),
             tokenTo: USDC
         });
         reverse[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: PYUSD
         });
         exchange.setRoute(SYRUP_USDC, PYUSD, reverse);
@@ -161,7 +176,7 @@ contract SetupSyrupMorpho is Setup {
 
         address[5] memory pools;
 
-        exchange.setCurveRoute(from, to, route, swapParams, pools);
+        curveExchange.setCurveRoute(from, to, route, swapParams, pools);
     }
 
     function _seedSyrupMorphoLiquidity(uint256 amount) internal {
@@ -179,7 +194,7 @@ contract SetupSyrupMorpho is Setup {
             .poolPermissionManager();
 
         address[] memory lenders = new address[](1);
-        lenders[0] = address(exchange);
+        lenders[0] = address(syrupExchange);
         bool[] memory isAllowed = new bool[](1);
         isAllowed[0] = true;
 
@@ -193,7 +208,7 @@ contract SetupSyrupMorpho is Setup {
         assertTrue(
             IPoolPermissionManager(permissionManager).hasPermission(
                 poolManager,
-                address(exchange),
+                address(syrupExchange),
                 MAPLE_DEPOSIT_PERMISSION
             ),
             "!deposit permission"

@@ -11,10 +11,14 @@ import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
     MetaExchange public exchange;
+    UniswapUniversalRouterExchange public uniExchange;
+    SyrupDepositExchange public syrupExchange;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
     bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
@@ -76,6 +80,8 @@ contract SetupAaveSyrupUSDT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        syrupExchange = new SyrupDepositExchange();
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),
@@ -90,6 +96,8 @@ contract SetupAaveSyrupUSDT is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        uniExchange.transferGovernance(management);
+        syrupExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.prank(management);
@@ -100,9 +108,9 @@ contract SetupAaveSyrupUSDT is Setup {
         }
 
         vm.startPrank(management);
-        exchange.setUniBase(address(asset));
-        exchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
-        exchange.setSyrupDepositConfig(
+        uniExchange.setUniBase(address(asset));
+        uniExchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDT,
             SYRUP_USDT_ROUTER,
             SYRUP_DEPOSIT_DATA
@@ -111,8 +119,10 @@ contract SetupAaveSyrupUSDT is Setup {
         // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
         uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
         if (uniFee != 0) {
-            exchange.setUniFees(USDT, SYRUP_USDT, uniFee);
+            uniExchange.setUniFees(USDT, SYRUP_USDT, uniFee);
         }
+        exchange.setAllowedExchange(address(uniExchange), true);
+        exchange.setAllowedExchange(address(syrupExchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -140,9 +150,7 @@ contract SetupAaveSyrupUSDT is Setup {
             1
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: useMint
-                ? MetaExchange.Venue.SYRUP_DEPOSIT
-                : MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            exchange: useMint ? address(syrupExchange) : address(uniExchange),
             tokenTo: SYRUP_USDT
         });
         exchange.setRoute(USDT, SYRUP_USDT, forward);
@@ -151,7 +159,7 @@ contract SetupAaveSyrupUSDT is Setup {
             1
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            exchange: address(uniExchange),
             tokenTo: USDT
         });
         exchange.setRoute(SYRUP_USDT, USDT, reverse);
@@ -163,7 +171,7 @@ contract SetupAaveSyrupUSDT is Setup {
             .poolPermissionManager();
 
         address[] memory lenders = new address[](1);
-        lenders[0] = address(exchange);
+        lenders[0] = address(syrupExchange);
         bool[] memory isAllowed = new bool[](1);
         isAllowed[0] = true;
 
@@ -177,7 +185,7 @@ contract SetupAaveSyrupUSDT is Setup {
         assertTrue(
             IPoolPermissionManager(permissionManager).hasPermission(
                 poolManager,
-                address(exchange),
+                address(syrupExchange),
                 MAPLE_DEPOSIT_PERMISSION
             ),
             "!deposit permission"

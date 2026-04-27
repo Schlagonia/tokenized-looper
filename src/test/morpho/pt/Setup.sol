@@ -10,11 +10,15 @@ import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/CurveExchange.sol";
+import {PendleExchange} from "../../../periphery/PendleExchange.sol";
 
 /// @notice Setup for PT USDG/USDC Morpho Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupPT is Setup {
     MetaExchange public exchange;
+    CurveExchange public curveExchange;
+    PendleExchange public pendleExchange;
 
     // PT-USDG/USDC market
     Id public constant PT_MARKET_ID =
@@ -68,6 +72,8 @@ contract SetupPT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        curveExchange = new CurveExchange();
+        pendleExchange = new PendleExchange();
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(
@@ -83,6 +89,8 @@ contract SetupPT is Setup {
             )
         );
         exchange.transferGovernance(management);
+        curveExchange.transferGovernance(management);
+        pendleExchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 
@@ -102,10 +110,12 @@ contract SetupPT is Setup {
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);
 
-        exchange.setPendleMarket(PT_TOKEN, PENDLE_MARKET);
-        exchange.setGuessMaxMultiplier(2);
+        pendleExchange.setPendleMarket(PT_TOKEN, PENDLE_MARKET);
+        pendleExchange.setGuessMaxMultiplier(2);
         _setCurveRoute(address(asset), PENDLE_TOKEN, 1, 0);
         _setCurveRoute(PENDLE_TOKEN, address(asset), 0, 1);
+        exchange.setAllowedExchange(address(curveExchange), true);
+        exchange.setAllowedExchange(address(pendleExchange), true);
         _setRoutes();
 
         vm.stopPrank();
@@ -137,7 +147,7 @@ contract SetupPT is Setup {
 
         address[5] memory pools;
 
-        exchange.setCurveRoute(from, to, route, swapParams, pools);
+        curveExchange.setCurveRoute(from, to, route, swapParams, pools);
     }
 
     function _setRoutes() internal {
@@ -145,11 +155,11 @@ contract SetupPT is Setup {
             2
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: PENDLE_TOKEN
         });
         forward[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.PT,
+            exchange: address(pendleExchange),
             tokenTo: PT_TOKEN
         });
         exchange.setRoute(address(asset), PT_TOKEN, forward);
@@ -158,11 +168,11 @@ contract SetupPT is Setup {
             2
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.PT,
+            exchange: address(pendleExchange),
             tokenTo: PENDLE_TOKEN
         });
         reverse[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: address(asset)
         });
         exchange.setRoute(PT_TOKEN, address(asset), reverse);

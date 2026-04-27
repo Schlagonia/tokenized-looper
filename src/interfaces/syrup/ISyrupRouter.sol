@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 /**
- * @notice Minimal Maple Syrup Router interface used by SyrupExchange.
+ * @notice Minimal Maple Syrup Router interface used by SyrupDepositExchange.
  * @dev Router address depends on the syrup pool (e.g. syrupUSDC/syrupUSDT).
  */
 interface ISyrupRouter {

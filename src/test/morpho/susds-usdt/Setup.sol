@@ -10,10 +10,18 @@ import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
+import {LitePsmExchange} from "../../../periphery/LitePsmExchange.sol";
+import {SUSDSExchange} from "../../../periphery/SUSDSExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for sUSDS/USDT Morpho Looper tests
 contract SetupSUSDSUSDT is Setup {
     MetaExchange public exchange;
+    UniswapUniversalRouterExchange public uniExchange;
+    LitePsmExchange public litePsmExchange;
+    SUSDSExchange public susdsExchange;
+    ERC4626Exchange public erc4626Exchange;
 
     Id public constant SUSDS_USDT_MARKET_ID =
         Id.wrap(
@@ -24,6 +32,8 @@ contract SetupSUSDSUSDT is Setup {
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant USDS = 0xdC035D45d973E3EC169d2276DDab16f1e407384F;
     address public constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
+    address public constant LITE_PSM_WRAPPER =
+        0xA188EEC8F81263234dA3622A406892F3D630f98c;
 
     function setUp() public virtual override {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -60,6 +70,15 @@ contract SetupSUSDSUSDT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        litePsmExchange = new LitePsmExchange(
+            USDC,
+            USDS,
+            LITE_PSM_WRAPPER,
+            1e12
+        );
+        susdsExchange = new SUSDSExchange();
+        erc4626Exchange = new ERC4626Exchange();
 
         MorphoLooper looper = new MorphoLooper(
             address(asset),
@@ -72,13 +91,21 @@ contract SetupSUSDSUSDT is Setup {
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        uniExchange.transferGovernance(management);
+        litePsmExchange.transferGovernance(management);
+        susdsExchange.transferGovernance(management);
+        erc4626Exchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-        exchange.setUniBase(USDC);
-        exchange.setUniFees(USDT, USDC, 100);
+        uniExchange.setUniBase(USDC);
+        uniExchange.setUniFees(USDT, USDC, 100);
+        exchange.setAllowedExchange(address(uniExchange), true);
+        exchange.setAllowedExchange(address(litePsmExchange), true);
+        exchange.setAllowedExchange(address(susdsExchange), true);
+        exchange.setAllowedExchange(address(erc4626Exchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -103,15 +130,15 @@ contract SetupSUSDSUSDT is Setup {
             3
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            exchange: address(uniExchange),
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.LITE_PSM,
+            exchange: address(litePsmExchange),
             tokenTo: USDS
         });
         forward[2] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.SUSDS_DEPOSIT,
+            exchange: address(susdsExchange),
             tokenTo: SUSDS
         });
         exchange.setRoute(USDT, SUSDS, forward);
@@ -120,15 +147,15 @@ contract SetupSUSDSUSDT is Setup {
             3
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.ERC4626_REDEEM,
+            exchange: address(erc4626Exchange),
             tokenTo: USDS
         });
         reverse[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.LITE_PSM,
+            exchange: address(litePsmExchange),
             tokenTo: USDC
         });
         reverse[2] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.UNISWAP_UNIVERSAL,
+            exchange: address(uniExchange),
             tokenTo: USDT
         });
         exchange.setRoute(SUSDS, USDT, reverse);

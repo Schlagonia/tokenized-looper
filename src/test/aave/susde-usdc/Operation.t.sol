@@ -42,33 +42,25 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     }
 
     function test_exchange_coreConfig() public view {
-        assertEq(exchange.fluidBase(), USDT, "!base");
+        assertEq(fluidExchange.fluidBase(), USDT, "!base");
 
         MetaExchange.RouteStep[] memory forward = exchange.getRoute(
             USDC,
             SUSDE
         );
         assertEq(forward.length, 2, "!forward length");
-        assertEq(
-            uint256(forward[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!forward venue 0"
-        );
+        assertEq(forward[0].exchange, address(fluidExchange), "!forward ex 0");
         assertEq(forward[0].tokenTo, USDE, "!forward token 0");
         assertEq(
-            uint256(forward[1].venue),
-            uint256(MetaExchange.Venue.ERC4626_DEPOSIT),
-            "!forward venue 1"
+            forward[1].exchange,
+            address(erc4626Exchange),
+            "!forward ex 1"
         );
         assertEq(forward[1].tokenTo, SUSDE, "!forward token 1");
 
         MetaExchange.RouteStep[] memory unwind = exchange.getRoute(SUSDE, USDC);
         assertEq(unwind.length, 1, "!unwind length");
-        assertEq(
-            uint256(unwind[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!unwind venue"
-        );
+        assertEq(unwind[0].exchange, address(fluidExchange), "!unwind ex");
         assertEq(unwind[0].tokenTo, USDC, "!unwind token");
 
         MetaExchange.RouteStep[] memory underlying = exchange.getRoute(
@@ -77,9 +69,9 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         );
         assertEq(underlying.length, 1, "!underlying length");
         assertEq(
-            uint256(underlying[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!underlying venue"
+            underlying[0].exchange,
+            address(fluidExchange),
+            "!underlying ex"
         );
         assertEq(underlying[0].tokenTo, USDC, "!underlying token");
     }
@@ -99,7 +91,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     function test_exchange_setRoute_onlyGovernanceOrOperator() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: USDE
         });
 
@@ -112,21 +104,17 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         MetaExchange.RouteStep[] memory stored = exchange.getRoute(USDC, USDE);
         assertEq(stored.length, 1, "!route length");
-        assertEq(
-            uint256(stored[0].venue),
-            uint256(MetaExchange.Venue.FLUID),
-            "!route venue"
-        );
+        assertEq(stored[0].exchange, address(fluidExchange), "!route ex");
         assertEq(stored[0].tokenTo, USDE, "!route token");
     }
 
     function test_exchange_setFluidDex_onlyGovernanceOrOperator() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
 
         vm.prank(management);
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
     }
 
     function test_exchange_swap_isNotStrategyGated() public {

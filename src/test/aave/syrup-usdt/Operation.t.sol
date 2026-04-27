@@ -58,19 +58,19 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     function test_exchange_setV4Pool_onlyGovernanceOrOperator() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
+        uniExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
 
         vm.prank(management);
-        exchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
+        uniExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
     }
 
     function test_exchange_setUniFees_onlyGovernanceOrOperator() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setUniFees(USDT, SYRUP_USDT, 500);
+        uniExchange.setUniFees(USDT, SYRUP_USDT, 500);
 
         vm.prank(management);
-        exchange.setUniFees(USDT, SYRUP_USDT, 500);
+        uniExchange.setUniFees(USDT, SYRUP_USDT, 500);
     }
 
     function test_exchange_swap_isNotStrategyGated() public {
@@ -82,10 +82,10 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     function test_exchange_setUniBase_onlyGovernanceOrOperator() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setUniBase(WETH);
+        uniExchange.setUniBase(WETH);
 
         vm.prank(management);
-        exchange.setUniBase(WETH);
+        uniExchange.setUniBase(WETH);
     }
 
     function test_exchange_setSyrupDepositConfig_onlyGovernanceOrOperator()
@@ -93,22 +93,21 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     {
         vm.prank(user);
         vm.expectRevert("!operator");
-        exchange.setSyrupDepositConfig(
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDT,
             SYRUP_USDT_ROUTER,
             bytes32("Maple")
         );
 
         vm.prank(management);
-        exchange.setSyrupDepositConfig(
+        syrupExchange.setSyrupDepositConfig(
             SYRUP_USDT,
             SYRUP_USDT_ROUTER,
             bytes32("Maple")
         );
 
-        (address router, bytes32 depositData) = exchange.syrupDepositConfigs(
-            SYRUP_USDT
-        );
+        (address router, bytes32 depositData) = syrupExchange
+            .syrupDepositConfigs(SYRUP_USDT);
         assertEq(router, SYRUP_USDT_ROUTER, "!router");
         assertEq(depositData, bytes32("Maple"), "!depositData");
     }
@@ -120,13 +119,9 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         );
         assertEq(forward.length, 1, "!forward length");
         assertEq(
-            uint256(forward[0].venue),
-            uint256(
-                useMint
-                    ? MetaExchange.Venue.SYRUP_DEPOSIT
-                    : MetaExchange.Venue.UNISWAP_UNIVERSAL
-            ),
-            "!forward venue"
+            forward[0].exchange,
+            useMint ? address(syrupExchange) : address(uniExchange),
+            "!forward exchange"
         );
         assertEq(forward[0].tokenTo, SYRUP_USDT, "!forward token");
 
@@ -135,11 +130,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
             USDT
         );
         assertEq(reverse.length, 1, "!reverse length");
-        assertEq(
-            uint256(reverse[0].venue),
-            uint256(MetaExchange.Venue.UNISWAP_UNIVERSAL),
-            "!reverse venue"
-        );
+        assertEq(reverse[0].exchange, address(uniExchange), "!reverse ex");
         assertEq(reverse[0].tokenTo, USDT, "!reverse token");
     }
 

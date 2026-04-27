@@ -7,10 +7,14 @@ import {Setup} from "../../base/Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
+import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
     MetaExchange public exchange;
+    FluidExchange public fluidExchange;
+    ERC4626Exchange public erc4626Exchange;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -68,6 +72,8 @@ contract SetupAavesUSDeUSDC is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
+        fluidExchange = new FluidExchange(WETH);
+        erc4626Exchange = new ERC4626Exchange();
 
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             address(asset),
@@ -82,15 +88,19 @@ contract SetupAavesUSDeUSDC is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        fluidExchange.transferGovernance(management);
+        erc4626Exchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        exchange.setFluidBase(USDT);
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
-        exchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
-        exchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
+        fluidExchange.setFluidBase(USDT);
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        fluidExchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
+        fluidExchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
+        exchange.setAllowedExchange(address(fluidExchange), true);
+        exchange.setAllowedExchange(address(erc4626Exchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -118,11 +128,11 @@ contract SetupAavesUSDeUSDC is Setup {
             2
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: USDE
         });
         forward[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.ERC4626_DEPOSIT,
+            exchange: address(erc4626Exchange),
             tokenTo: SUSDE
         });
         exchange.setRoute(USDC, SUSDE, forward);
@@ -131,7 +141,7 @@ contract SetupAavesUSDeUSDC is Setup {
             1
         );
         unwind[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: USDC
         });
         exchange.setRoute(SUSDE, USDC, unwind);
@@ -139,7 +149,7 @@ contract SetupAavesUSDeUSDC is Setup {
         MetaExchange.RouteStep[]
             memory underlyingToAsset = new MetaExchange.RouteStep[](1);
         underlyingToAsset[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: USDC
         });
         exchange.setRoute(USDE, USDC, underlyingToAsset);

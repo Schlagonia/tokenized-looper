@@ -27,25 +27,25 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
     }
 
     function test_setSUSDSReferral() public {
-        assertEq(exchange.susdsReferral(), 1007, "!default referral");
+        assertEq(susdsExchange.susdsReferral(), 1007, "!default referral");
 
         vm.prank(management);
-        exchange.setSUSDSReferral(42);
+        susdsExchange.setSUSDSReferral(42);
 
-        assertEq(exchange.susdsReferral(), 42, "!set referral");
+        assertEq(susdsExchange.susdsReferral(), 42, "!set referral");
     }
 
     function test_setSUSDSReferral_onlyManagement() public {
         vm.prank(user);
         vm.expectRevert("!governance");
-        exchange.setSUSDSReferral(7);
+        susdsExchange.setSUSDSReferral(7);
     }
 
     function test_tendWithSUSDSReferral(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         vm.prank(management);
-        exchange.setSUSDSReferral(7);
+        susdsExchange.setSUSDSReferral(7);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
@@ -116,22 +116,18 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
             SUSDS
         );
         assertEq(forward.length, 3, "!forward length");
-        assertEq(
-            uint256(forward[0].venue),
-            uint256(MetaExchange.Venue.UNISWAP_UNIVERSAL),
-            "!forward venue 0"
-        );
+        assertEq(forward[0].exchange, address(uniExchange), "!forward ex 0");
         assertEq(forward[0].tokenTo, USDC, "!forward token 0");
         assertEq(
-            uint256(forward[1].venue),
-            uint256(MetaExchange.Venue.LITE_PSM),
-            "!forward venue 1"
+            forward[1].exchange,
+            address(litePsmExchange),
+            "!forward ex 1"
         );
         assertEq(forward[1].tokenTo, USDS, "!forward token 1");
         assertEq(
-            uint256(forward[2].venue),
-            uint256(MetaExchange.Venue.SUSDS_DEPOSIT),
-            "!forward venue 2"
+            forward[2].exchange,
+            address(susdsExchange),
+            "!forward ex 2"
         );
         assertEq(forward[2].tokenTo, SUSDS, "!forward token 2");
 
@@ -141,22 +137,18 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
         );
         assertEq(reverse.length, 3, "!reverse length");
         assertEq(
-            uint256(reverse[0].venue),
-            uint256(MetaExchange.Venue.ERC4626_REDEEM),
-            "!reverse venue 0"
+            reverse[0].exchange,
+            address(erc4626Exchange),
+            "!reverse ex 0"
         );
         assertEq(reverse[0].tokenTo, USDS, "!reverse token 0");
         assertEq(
-            uint256(reverse[1].venue),
-            uint256(MetaExchange.Venue.LITE_PSM),
-            "!reverse venue 1"
+            reverse[1].exchange,
+            address(litePsmExchange),
+            "!reverse ex 1"
         );
         assertEq(reverse[1].tokenTo, USDC, "!reverse token 1");
-        assertEq(
-            uint256(reverse[2].venue),
-            uint256(MetaExchange.Venue.UNISWAP_UNIVERSAL),
-            "!reverse venue 2"
-        );
+        assertEq(reverse[2].exchange, address(uniExchange), "!reverse ex 2");
         assertEq(reverse[2].tokenTo, USDT, "!reverse token 2");
     }
 }

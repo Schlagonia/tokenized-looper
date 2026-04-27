@@ -8,10 +8,12 @@ import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests on Arbitrum
 contract SetupSyrupUsdcArbMorpho is Setup {
     MetaExchange public exchange;
+    FluidExchange public fluidExchange;
 
     // Arbitrum Morpho deployment
     address public constant ARB_MORPHO =
@@ -72,6 +74,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(ARB_WETH);
+        fluidExchange = new FluidExchange(ARB_WETH);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -85,6 +88,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);
+        fluidExchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 
@@ -92,12 +96,13 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         _strategy.acceptManagement();
 
         vm.startPrank(management);
-        exchange.setFluidBase(address(asset));
-        exchange.setFluidDex(
+        fluidExchange.setFluidBase(address(asset));
+        fluidExchange.setFluidDex(
             address(asset),
             ARB_SYRUP_USDC,
             ARB_FLUID_DEX_SYRUP_USDC_USDC
         );
+        exchange.setAllowedExchange(address(fluidExchange), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);
@@ -122,7 +127,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
             1
         );
         forward[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: ARB_SYRUP_USDC
         });
         exchange.setRoute(address(asset), ARB_SYRUP_USDC, forward);
@@ -131,7 +136,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
             1
         );
         reverse[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.FLUID,
+            exchange: address(fluidExchange),
             tokenTo: address(asset)
         });
         exchange.setRoute(ARB_SYRUP_USDC, address(asset), reverse);

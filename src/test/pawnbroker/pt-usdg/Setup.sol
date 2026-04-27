@@ -10,6 +10,8 @@ import {IPawnBroker} from "pawn-broker/interfaces/IPawnBroker.sol";
 import {PawnBrokerFactory} from "pawn-broker/PawnBrokerFactory.sol";
 import {MockMorphoOracle} from "pawn-broker/test/mocks/MockMorphoOracle.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/CurveExchange.sol";
+import {PendleExchange} from "../../../periphery/PendleExchange.sol";
 
 /// @notice Setup for a USDC / PT-USDG Pendle pawn broker looper.
 contract SetupPawnBrokerPTUSDG is Setup {
@@ -18,6 +20,8 @@ contract SetupPawnBrokerPTUSDG is Setup {
     IPawnBroker public pawnBroker;
     PawnBrokerFactory public pawnBrokerFactory;
     MockMorphoOracle public oracle;
+    CurveExchange public curveExchange;
+    PendleExchange public pendleExchange;
 
     address public lender = makeAddr("pawn-broker-pt-lender");
     address public user2 = makeAddr("pawn-broker-pt-second-user");
@@ -82,6 +86,8 @@ contract SetupPawnBrokerPTUSDG is Setup {
         oracle.setPrice(PT_ORACLE_PRICE);
 
         exchange = new MetaExchange(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        curveExchange = new CurveExchange();
+        pendleExchange = new PendleExchange();
 
         address predictedLooper = vm.computeCreateAddress(
             address(this),
@@ -115,16 +121,20 @@ contract SetupPawnBrokerPTUSDG is Setup {
         );
 
         exchange.transferGovernance(management);
+        curveExchange.transferGovernance(management);
+        pendleExchange.transferGovernance(management);
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-        exchange.setPendleMarket(PT_USDG_28_MAY_2026, PENDLE_MARKET);
-        exchange.setGuessMaxMultiplier(2);
+        pendleExchange.setPendleMarket(PT_USDG_28_MAY_2026, PENDLE_MARKET);
+        pendleExchange.setGuessMaxMultiplier(2);
         _setCurveRoute(address(asset), USDG, 1, 0);
         _setCurveRoute(USDG, address(asset), 0, 1);
+        exchange.setAllowedExchange(address(curveExchange), true);
+        exchange.setAllowedExchange(address(pendleExchange), true);
         _setRoutes();
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -180,18 +190,18 @@ contract SetupPawnBrokerPTUSDG is Setup {
 
         address[5] memory pools;
 
-        exchange.setCurveRoute(_from, _to, route, swapParams, pools);
+        curveExchange.setCurveRoute(_from, _to, route, swapParams, pools);
     }
 
     function _setRoutes() internal {
         MetaExchange.RouteStep[]
             memory assetToPt = new MetaExchange.RouteStep[](2);
         assetToPt[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: USDG
         });
         assetToPt[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.PT,
+            exchange: address(pendleExchange),
             tokenTo: PT_USDG_28_MAY_2026
         });
         exchange.setRoute(address(asset), PT_USDG_28_MAY_2026, assetToPt);
@@ -199,11 +209,11 @@ contract SetupPawnBrokerPTUSDG is Setup {
         MetaExchange.RouteStep[]
             memory ptToAsset = new MetaExchange.RouteStep[](2);
         ptToAsset[0] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.PT,
+            exchange: address(pendleExchange),
             tokenTo: USDG
         });
         ptToAsset[1] = MetaExchange.RouteStep({
-            venue: MetaExchange.Venue.CURVE,
+            exchange: address(curveExchange),
             tokenTo: address(asset)
         });
         exchange.setRoute(PT_USDG_28_MAY_2026, address(asset), ptToAsset);
