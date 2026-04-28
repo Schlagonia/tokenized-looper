@@ -76,6 +76,9 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Get balance of collateral in the lending protocol
     function balanceOfCollateral() external view returns (uint256);
 
+    /// @notice Get balance of collateral token held by strategy
+    function balanceOfCollateralToken() external view returns (uint256);
+
     /// @notice Get balance of debt in the lending protocol
     function balanceOfDebt() external view returns (uint256);
 

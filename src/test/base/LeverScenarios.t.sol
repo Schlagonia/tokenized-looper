@@ -1351,6 +1351,7 @@ abstract contract LeverScenariosTest is Setup {
     /// @dev When maxAmountToSwap is 0, should not swap anything
     function test_lever_maxAmountToSwap_zero() public {
         uint256 depositAmount = 10000e6;
+        uint256 looseCollateralDust = 1;
 
         // Set maxAmountToSwap to 0
         vm.prank(management);
@@ -1359,19 +1360,32 @@ abstract contract LeverScenariosTest is Setup {
         // Deposit funds
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
+        // Seed loose collateral token dust. A zero-sized convert must not supply it.
+        deal(
+            strategy.collateralToken(),
+            address(strategy),
+            strategy.balanceOfCollateralToken() + looseCollateralDust
+        );
+
+        uint256 assetBefore = strategy.balanceOfAsset();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 looseCollateralBefore = strategy.balanceOfCollateralToken();
+
         // Tend should swap 0 (early return path)
         vm.prank(keeper);
         strategy.tend();
 
-        // Should have no debt
         assertEq(strategy.balanceOfDebt(), 0, "!should have no debt");
-
-        // Loose asset should be close to deposit (minus any minimal swaps)
-        uint256 looseAsset = strategy.balanceOfAsset();
-        // The strategy should have either all asset or some collateral if 0 swap succeeded
-        assertTrue(
-            looseAsset > 0 || strategy.balanceOfCollateral() > 0,
-            "!should have either asset or collateral"
+        assertEq(strategy.balanceOfAsset(), assetBefore, "!asset changed");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral changed"
+        );
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            looseCollateralBefore,
+            "!loose collateral changed"
         );
     }
 

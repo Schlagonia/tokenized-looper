@@ -457,36 +457,28 @@ abstract contract BaseLooper is BaseHealthCheck {
         (, uint256 targetDebt) = getTargetPosition(currentEquity);
 
         if (targetDebt > currentDebt) {
-            // CASE 1: Need MORE debt → leverage up via flashloan
-            uint256 flashloanAmount = Math.min(
-                targetDebt - currentDebt,
-                maxFlashloan()
-            );
+            uint256 flashloanAmount = targetDebt - currentDebt;
 
-            // Cap total swap if maxAmountToSwap is set or collateral capacity is reached
-            uint256 maxCollateralInAsset = _collateralToAsset(
-                _maxCollateralDeposit()
-            );
-            uint256 _maxAmountToSwap = maxCollateralInAsset == type(uint256).max
-                ? maxAmountToSwap
-                : Math.min(
+            uint256 maxBorrow = Math.min(maxFlashloan(), _maxBorrowAmount());
+            if (flashloanAmount > maxBorrow) flashloanAmount = maxBorrow;
+
+            uint256 maxSupply = _collateralToAsset(_maxCollateralDeposit());
+            if (maxSupply != type(uint256).max) {
+                maxSupply = Math.min(
                     maxAmountToSwap,
-                    (maxCollateralInAsset * (MAX_BPS - slippage)) / MAX_BPS
+                    (maxSupply * (MAX_BPS - slippage)) / MAX_BPS
                 );
-            if (_maxAmountToSwap != type(uint256).max) {
-                uint256 totalSwap = _amount + flashloanAmount;
+            } else {
+                maxSupply = maxAmountToSwap;
+            }
 
-                if (totalSwap > _maxAmountToSwap) {
-                    if (_amount >= _maxAmountToSwap) {
-                        // _amount alone exceeds max, just swap max and supply
-                        _supplyCollateral(
-                            _convertAssetToCollateral(_maxAmountToSwap)
-                        );
-                        return;
-                    }
-                    // Reduce flashloan to stay within limit
-                    flashloanAmount = _maxAmountToSwap - _amount;
+            if (_amount + flashloanAmount > maxSupply) {
+                if (_amount >= maxSupply) {
+                    // Just swap the max and supply
+                    _convertAndSupplyCollateral(maxSupply);
+                    return;
                 }
+                flashloanAmount = maxSupply - _amount;
             }
 
             if (flashloanAmount <= minAmountToBorrow) {
@@ -510,19 +502,8 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (_amount >= debtToRepay) {
                 // _amount covers the debt repayment, just repay and supply the rest
                 _repay(debtToRepay);
-                _amount -= debtToRepay;
-                if (_amount > 0) {
-                    _convertAssetToCollateral(
-                        Math.min(_amount, maxAmountToSwap)
-                    );
-                    // Cap remainder by collateral capacity
-                    _supplyCollateral(
-                        Math.min(
-                            balanceOfCollateralToken(),
-                            _maxCollateralDeposit()
-                        )
-                    );
-                }
+                if (targetLeverageRatio > 0)
+                    _convertAndSupplyCollateral(_amount - debtToRepay);
                 return;
             }
 
@@ -530,19 +511,18 @@ abstract contract BaseLooper is BaseHealthCheck {
             _repay(_amount);
             debtToRepay -= _amount;
 
-            // Cap flashloan by available liquidity
-            debtToRepay = Math.min(debtToRepay, maxFlashloan());
+            // Cap flashloan by available liquidity and maxAmountToSwap
+            uint256 maxDebtToRepay = Math.min(maxAmountToSwap, maxFlashloan());
 
-            // Cap delever swap size when requested.
-            if (maxAmountToSwap != type(uint256).max) {
-                debtToRepay = Math.min(debtToRepay, maxAmountToSwap);
-            }
+            if (debtToRepay > maxDebtToRepay) debtToRepay = maxDebtToRepay;
 
             if (debtToRepay == 0) return;
 
             // Flashloan to repay debt, withdraw collateral to cover
-            uint256 collateralToWithdraw = (_assetToCollateral(debtToRepay) *
-                (MAX_BPS + slippage)) / MAX_BPS;
+            uint256 collateralToWithdraw = debtToRepay == currentDebt
+                ? balanceOfCollateral()
+                : (_assetToCollateral(debtToRepay) * (MAX_BPS + slippage)) /
+                    MAX_BPS;
 
             bytes memory data = abi.encode(
                 FlashLoanData({
@@ -552,12 +532,19 @@ abstract contract BaseLooper is BaseHealthCheck {
             );
             _executeFlashloan(address(asset), debtToRepay, data);
         } else {
+            if (targetLeverageRatio == 0) return;
             // CASE 3: At target debt → just deploy _amount if any
-            _convertAssetToCollateral(Math.min(_amount, maxAmountToSwap));
-            _supplyCollateral(
-                Math.min(balanceOfCollateralToken(), _maxCollateralDeposit())
-            );
+            _convertAndSupplyCollateral(_amount);
         }
+    }
+
+    function _convertAndSupplyCollateral(uint256 _amount) internal virtual {
+        _amount = Math.min(_amount, maxAmountToSwap);
+        if (_amount == 0) return;
+        _convertAssetToCollateral(_amount);
+        _supplyCollateral(
+            Math.min(balanceOfCollateralToken(), _maxCollateralDeposit())
+        );
     }
 
     /// @notice Will withdraw funds from the strategy to cover the amount needed keeping the position at target leverage ratio using a flashloan

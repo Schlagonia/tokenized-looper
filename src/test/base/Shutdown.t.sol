@@ -233,25 +233,138 @@ abstract contract ShutdownTest is Setup {
             "!deposit limit should be 0 in idle mode"
         );
 
+        uint256 assetBefore = strategy.balanceOfAsset();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 looseCollateralBefore = strategy.balanceOfCollateralToken();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertEq(debtBefore, 0, "!debt before idle tend");
+
         // Skip past minTendInterval for tend to work
         skip(strategy.minTendInterval() + 1);
 
-        // Note: In idle mode (targetLeverageRatio = 0), calling tend() will hit CASE 3
-        // which supplies collateral without borrowing. This is the expected behavior:
-        // assets are converted to collateral but no leverage is applied.
         vm.prank(keeper);
         strategy.tend();
 
-        // Verify NO DEBT (key assertion for idle mode)
+        assertEq(strategy.balanceOfDebt(), debtBefore, "!debt changed");
+        assertEq(strategy.balanceOfAsset(), assetBefore, "!asset changed");
         assertEq(
-            strategy.balanceOfDebt(),
-            0,
-            "!debt should still be 0 in idle mode"
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral changed"
         );
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            looseCollateralBefore,
+            "!loose collateral changed"
+        );
+    }
 
-        // Collateral may be non-zero as CASE 3 supplies collateral without leverage
-        // This is acceptable behavior - assets are deployed but not leveraged
-        // The key invariant is that debt = 0 (no borrowing in idle mode)
+    function test_idleMode_tendLeavesLooseAssetsIdle(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), _amount);
+
+        uint256 assetBefore = strategy.balanceOfAsset();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 looseCollateralBefore = strategy.balanceOfCollateralToken();
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertEq(strategy.balanceOfAsset(), assetBefore, "!asset");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            looseCollateralBefore,
+            "!loose collateral"
+        );
+    }
+
+    function test_idleMode_tendRepaysDebtAndLeavesExcessIdle(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(debtBefore, 0, "!debt before");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), debtBefore * 2 + minFuzzAmount);
+        uint256 assetBefore = strategy.balanceOfAsset();
+        assertGt(assetBefore, debtBefore, "!idle before");
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral changed"
+        );
+        assertGt(strategy.balanceOfAsset(), 0, "!leftover idle");
+        assertLt(
+            strategy.balanceOfAsset(),
+            assetBefore,
+            "!repay did not spend"
+        );
+    }
+
+    function test_idleMode_tendDecreasesLeverageWhenIdleBelowDebt(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(debtBefore, 0, "!debt before");
+        assertGt(collateralBefore, 0, "!collateral before");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), debtBefore / 4);
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt not reduced");
+        assertLt(
+            strategy.getCurrentLeverageRatio(),
+            leverageBefore,
+            "!leverage not reduced"
+        );
+        assertLe(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral increased"
+        );
     }
 
     function test_idleMode_canReenableLeverage(uint256 _amount) public {
