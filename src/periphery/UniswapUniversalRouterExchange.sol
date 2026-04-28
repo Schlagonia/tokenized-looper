@@ -9,12 +9,23 @@ import {BaseExchange} from "./BaseExchange.sol";
  * @title UniswapUniversalRouterExchange
  * @notice Venue-specific Uniswap Universal Router exchange for MetaExchange routes.
  */
-contract UniswapUniversalRouterExchange is UniswapUniversalSwapper, BaseExchange {
+contract UniswapUniversalRouterExchange is
+    UniswapUniversalSwapper,
+    BaseExchange
+{
     mapping(address => mapping(address => address)) public uniBases;
 
-    event UniBaseSet(address indexed token0, address indexed token1, address indexed uniBase);
+    event UniBaseSet(
+        address indexed token0,
+        address indexed token1,
+        address indexed uniBase
+    );
 
     constructor(address _weth) UniswapUniversalSwapper(_weth) {}
+
+    function name() external pure override returns (string memory) {
+        return "UniswapUniversalRouterExchange";
+    }
 
     function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
         _setMinAmountToSell(minAmount);
@@ -30,8 +41,15 @@ contract UniswapUniversalRouterExchange is UniswapUniversalSwapper, BaseExchange
         base = uniBase;
     }
 
-    function setUniBaseForPair(address token0, address token1, address uniBase) external onlyConfigOperator {
-        require(token0 != address(0) && token1 != address(0) && token0 != token1, "!pair");
+    function setUniBaseForPair(
+        address token0,
+        address token1,
+        address uniBase
+    ) external onlyConfigOperator {
+        require(
+            token0 != address(0) && token1 != address(0) && token0 != token1,
+            "!pair"
+        );
 
         uniBases[token0][token1] = uniBase;
         uniBases[token1][token0] = uniBase;
@@ -44,24 +62,35 @@ contract UniswapUniversalRouterExchange is UniswapUniversalSwapper, BaseExchange
         router = _router;
     }
 
-    function setPositionManager(address _positionManager) external onlyGovernance {
+    function setPositionManager(
+        address _positionManager
+    ) external onlyGovernance {
         require(_positionManager != address(0), "!positionManager");
         positionManager = _positionManager;
     }
 
-    function setUniFees(address token0, address token1, uint24 fee) external onlyConfigOperator {
+    function setUniFees(
+        address token0,
+        address token1,
+        uint24 fee
+    ) external onlyConfigOperator {
         _setUniFees(token0, token1, fee);
     }
 
-    function setV4Pool(address token0, address token1, bytes32 poolId) external onlyConfigOperator {
+    function setV4Pool(
+        address token0,
+        address token1,
+        bytes32 poolId
+    ) external onlyConfigOperator {
         _setV4Pool(token0, token1, poolId);
     }
 
-    function _exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal override returns (uint256 amountOut) {
         address pairBase = uniBases[from][to];
         if (pairBase == address(0)) {
             return _swapFrom(from, to, amountIn, amountOutMin);

@@ -564,7 +564,13 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _withdrawFunds(uint256 _amountNeeded) internal virtual {
         (uint256 valueOfCollateral, uint256 currentDebt) = position();
 
-        if (currentDebt == 0) {
+        uint256 equity = valueOfCollateral - currentDebt;
+
+        (, uint256 targetDebt) = equity > _amountNeeded
+            ? getTargetPosition(equity - _amountNeeded)
+            : (0, 0);
+
+        if (currentDebt == 0 || targetDebt > currentDebt) {
             // No debt, just withdraw collateral
             uint256 toWithdraw = _assetToCollateral(_amountNeeded);
             _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
@@ -574,25 +580,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             return;
         }
 
-        uint256 equity = valueOfCollateral - currentDebt;
-
-        uint256 targetEquity = equity > _amountNeeded
-            ? equity - _amountNeeded
-            : 0;
-        (, uint256 targetDebt) = getTargetPosition(targetEquity);
-
-        if (targetDebt > currentDebt) {
-            // No debt to repay, just withdraw collateral
-            uint256 toWithdraw = _assetToCollateral(_amountNeeded);
-            _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
-            _convertCollateralToAsset(toWithdraw);
-            return;
-        }
-
         uint256 debtToRepay = currentDebt - targetDebt;
 
-        // Cap flashloan by available liquidity
-        debtToRepay = Math.min(debtToRepay, maxFlashloan());
+        require(debtToRepay <= maxFlashloan(), "!liquidity");
 
         if (debtToRepay == 0) return;
 

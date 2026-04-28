@@ -31,16 +31,23 @@ abstract contract BaseExchange is IExchange, Governance {
 
     constructor() Governance(msg.sender) {}
 
-    function setOperator(address operator, bool allowed) external onlyGovernance {
+    function setOperator(
+        address operator,
+        bool allowed
+    ) external onlyGovernance {
         require(operator != address(0), "!operator");
         operators[operator] = allowed;
         emit OperatorSet(operator, allowed);
     }
 
-    function exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
-        external
-        returns (uint256 amountOut)
-    {
+    function name() external view virtual override returns (string memory);
+
+    function exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) external returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
 
         ERC20(from).safeTransferFrom(msg.sender, address(this), amountIn);
@@ -53,12 +60,16 @@ abstract contract BaseExchange is IExchange, Governance {
     function sweep(address token, uint256 amount) external onlyGovernance {
         require(token != address(0), "!token");
 
-        uint256 tokenToSweep = amount == type(uint256).max ? ERC20(token).balanceOf(address(this)) : amount;
+        uint256 tokenToSweep = amount == type(uint256).max
+            ? ERC20(token).balanceOf(address(this))
+            : amount;
         ERC20(token).safeTransfer(msg.sender, tokenToSweep);
     }
 
-    function _exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
-        internal
-        virtual
-        returns (uint256 amountOut);
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal virtual returns (uint256 amountOut);
 }

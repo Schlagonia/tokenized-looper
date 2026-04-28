@@ -20,7 +20,10 @@ interface IMintableToken {
 }
 
 contract MockERC20 is ERC20 {
-    constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {}
+    constructor(
+        string memory name_,
+        string memory symbol_
+    ) ERC20(name_, symbol_) {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
@@ -30,7 +33,11 @@ contract MockERC20 is ERC20 {
 contract MockERC20Decimals is ERC20 {
     uint8 internal immutable tokenDecimals;
 
-    constructor(string memory name_, string memory symbol_, uint8 decimals_) ERC20(name_, symbol_) {
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        uint8 decimals_
+    ) ERC20(name_, symbol_) {
         tokenDecimals = decimals_;
     }
 
@@ -63,19 +70,29 @@ contract MockLitePSM {
     MockERC20Decimals public immutable usds;
     uint256 public immutable scale;
 
-    constructor(MockERC20Decimals gem_, MockERC20Decimals usds_, uint256 scale_) {
+    constructor(
+        MockERC20Decimals gem_,
+        MockERC20Decimals usds_,
+        uint256 scale_
+    ) {
         gem = gem_;
         usds = usds_;
         scale = scale_;
     }
 
-    function sellGem(address usr, uint256 gemAmt) external returns (uint256 usdsOut) {
+    function sellGem(
+        address usr,
+        uint256 gemAmt
+    ) external returns (uint256 usdsOut) {
         require(gem.transferFrom(msg.sender, address(this), gemAmt), "!gem");
         usdsOut = gemAmt * scale;
         usds.mint(usr, usdsOut);
     }
 
-    function buyGem(address usr, uint256 gemAmt) external returns (uint256 usdsIn) {
+    function buyGem(
+        address usr,
+        uint256 gemAmt
+    ) external returns (uint256 usdsIn) {
         usdsIn = gemAmt * scale;
         require(usds.transferFrom(msg.sender, address(this), usdsIn), "!usds");
         gem.mint(usr, gemAmt);
@@ -115,7 +132,10 @@ contract MockSyrupRouter is ISyrupRouter {
         return address(0);
     }
 
-    function deposit(uint256 amount, bytes32 depositData) external returns (uint256 amountOut) {
+    function deposit(
+        uint256 amount,
+        bytes32 depositData
+    ) external returns (uint256 amountOut) {
         depositCalls += 1;
         lastAmount = amount;
         lastDepositData = depositData;
@@ -125,7 +145,14 @@ contract MockSyrupRouter is ISyrupRouter {
         return amount;
     }
 
-    function authorizeAndDeposit(uint256, bytes32, uint256, uint8, bytes32, bytes32) external pure returns (uint256) {
+    function authorizeAndDeposit(
+        uint256,
+        bytes32,
+        uint256,
+        uint8,
+        bytes32,
+        bytes32
+    ) external pure returns (uint256) {
         revert("!unused");
     }
 }
@@ -137,7 +164,11 @@ contract MockSUSDSVault is ERC4626 {
 
     constructor(ERC20 asset_) ERC20("Mock sUSDS", "msUSDS") ERC4626(asset_) {}
 
-    function deposit(uint256 assets, address receiver, uint16 referral) external returns (uint256 shares) {
+    function deposit(
+        uint256 assets,
+        address receiver,
+        uint16 referral
+    ) external returns (uint256 shares) {
         lastAssets = assets;
         lastReceiver = receiver;
         lastReferral = referral;
@@ -149,7 +180,10 @@ contract MockSUSDSVault is ERC4626 {
 contract MockOriginToken is MockERC20 {
     address internal originVault;
 
-    constructor(string memory name_, string memory symbol_) MockERC20(name_, symbol_) {}
+    constructor(
+        string memory name_,
+        string memory symbol_
+    ) MockERC20(name_, symbol_) {}
 
     function vaultAddress() external view returns (address) {
         return originVault;
@@ -189,14 +223,20 @@ contract MockStrategyForExchange {
         exchange = IExchange(_exchange);
     }
 
-    function approveToken(address token, address spender, uint256 amount) external {
+    function approveToken(
+        address token,
+        address spender,
+        uint256 amount
+    ) external {
         ERC20(token).approve(spender, amount);
     }
 
-    function swap(address from, address to, uint256 amountIn, uint256 minAmountOut)
-        external
-        returns (uint256 amountOut)
-    {
+    function swap(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) external returns (uint256 amountOut) {
         return exchange.exchange(from, to, amountIn, minAmountOut);
     }
 }
@@ -206,21 +246,34 @@ contract MockVenueExchange is BaseExchange {
     mapping(address => mapping(address => address)) public uniBases;
     mapping(address => mapping(address => address)) public fluidBases;
 
-    function setUniBaseForPair(address token0, address token1, address uniBase) external onlyConfigOperator {
+    function name() external pure override returns (string memory) {
+        return "MockVenueExchange";
+    }
+
+    function setUniBaseForPair(
+        address token0,
+        address token1,
+        address uniBase
+    ) external onlyConfigOperator {
         uniBases[token0][token1] = uniBase;
         uniBases[token1][token0] = uniBase;
     }
 
-    function setFluidBaseForPair(address token0, address token1, address fluidBase) external onlyConfigOperator {
+    function setFluidBaseForPair(
+        address token0,
+        address token1,
+        address fluidBase
+    ) external onlyConfigOperator {
         fluidBases[token0][token1] = fluidBase;
         fluidBases[token1][token0] = fluidBase;
     }
 
-    function _exchange(address from, address to, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         calls += 1;
         require(ERC20(from).transfer(address(0xdead), amountIn), "!fromSpend");
         amountOut = amountIn;
@@ -259,7 +312,8 @@ contract MetaExchangeTest is Test {
     MockStrategyForExchange internal strategy;
     MockStrategyForExchange internal secondStrategy;
 
-    address internal constant NATIVE_ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    address internal constant NATIVE_ETH_ADDRESS =
+        0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address internal governance = makeAddr("governance");
     address internal operator = makeAddr("operator");
@@ -290,7 +344,12 @@ contract MetaExchangeTest is Test {
         fluidExchange = new MockVenueExchange();
         pendleExchange = new MockVenueExchange();
         erc4626Exchange = new ERC4626Exchange();
-        litePsmExchange = new LitePsmExchange(address(usdc), address(usds), address(litePsm), 1e12);
+        litePsmExchange = new LitePsmExchange(
+            address(usdc),
+            address(usds),
+            address(litePsm),
+            1e12
+        );
         syrupExchange = new SyrupDepositExchange();
         susdsExchange = new SUSDSExchange();
         originExchange = new OriginMintExchange();
@@ -301,18 +360,66 @@ contract MetaExchangeTest is Test {
         strategy.setExchange(address(exchange));
         secondStrategy.setExchange(address(exchange));
 
-        strategy.approveToken(address(asset), address(exchange), type(uint256).max);
-        strategy.approveToken(address(vault), address(exchange), type(uint256).max);
-        strategy.approveToken(address(wrappedOriginVault), address(exchange), type(uint256).max);
-        strategy.approveToken(address(weth), address(exchange), type(uint256).max);
-        strategy.approveToken(address(usdc), address(exchange), type(uint256).max);
-        strategy.approveToken(address(usds), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(asset), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(vault), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(wrappedOriginVault), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(weth), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(usdc), address(exchange), type(uint256).max);
-        secondStrategy.approveToken(address(usds), address(exchange), type(uint256).max);
+        strategy.approveToken(
+            address(asset),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(vault),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(wrappedOriginVault),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(weth),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(usdc),
+            address(exchange),
+            type(uint256).max
+        );
+        strategy.approveToken(
+            address(usds),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(asset),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(vault),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(wrappedOriginVault),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(weth),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(usdc),
+            address(exchange),
+            type(uint256).max
+        );
+        secondStrategy.approveToken(
+            address(usds),
+            address(exchange),
+            type(uint256).max
+        );
     }
 
     function _allowTestExchanges() internal {
@@ -327,10 +434,67 @@ contract MetaExchangeTest is Test {
         exchange.setAllowedExchange(address(originExchange), true);
     }
 
+    function test_setAllowedExchange_tracksEnumerableSet() public {
+        assertEq(exchange.allowedExchangesLength(), 9, "!initial length");
+        assertEq(
+            exchange.allowedExchangeAt(0),
+            address(uniExchange),
+            "!first exchange"
+        );
+
+        address[] memory allowed = exchange.getAllowedExchanges();
+        assertEq(allowed.length, 9, "!allowed length");
+        assertTrue(_contains(allowed, address(uniExchange)), "!uni");
+        assertTrue(_contains(allowed, address(originExchange)), "!origin");
+
+        exchange.setAllowedExchange(address(pendleExchange), false);
+        allowed = exchange.getAllowedExchanges();
+        assertEq(exchange.allowedExchangesLength(), 8, "!removed length");
+        assertFalse(
+            exchange.allowedExchanges(address(pendleExchange)),
+            "!pendle mapping"
+        );
+        assertFalse(_contains(allowed, address(pendleExchange)), "!pendle set");
+
+        exchange.setAllowedExchange(address(pendleExchange), false);
+        assertEq(exchange.allowedExchangesLength(), 8, "!double remove");
+
+        exchange.setAllowedExchange(address(pendleExchange), true);
+        allowed = exchange.getAllowedExchanges();
+        assertEq(exchange.allowedExchangesLength(), 9, "!readded length");
+        assertTrue(
+            exchange.allowedExchanges(address(pendleExchange)),
+            "!pendle mapping readd"
+        );
+        assertTrue(
+            _contains(allowed, address(pendleExchange)),
+            "!pendle set readd"
+        );
+
+        exchange.setAllowedExchange(address(pendleExchange), true);
+        assertEq(exchange.allowedExchangesLength(), 9, "!double add");
+    }
+
+    function test_exchangeNames_areExposed() public view {
+        assertEq(exchange.name(), "MetaExchange", "!meta name");
+        assertEq(uniExchange.name(), "MockVenueExchange", "!mock name");
+        assertEq(erc4626Exchange.name(), "ERC4626Exchange", "!4626 name");
+        assertEq(litePsmExchange.name(), "LitePsmExchange", "!psm name");
+        assertEq(syrupExchange.name(), "SyrupDepositExchange", "!syrup name");
+        assertEq(susdsExchange.name(), "SUSDSExchange", "!susds name");
+        assertEq(originExchange.name(), "OriginMintExchange", "!origin name");
+    }
+
     function test_setRoute_requiresManagementOrOperator() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
-        route[0] = MetaExchange.RouteStep({exchange: address(uniExchange), tokenTo: address(asset)});
-        route[1] = MetaExchange.RouteStep({exchange: address(pendleExchange), tokenTo: address(finalToken)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(uniExchange),
+            tokenTo: address(asset)
+        });
+        route[1] = MetaExchange.RouteStep({
+            exchange: address(pendleExchange),
+            tokenTo: address(finalToken)
+        });
 
         vm.prank(stranger);
         vm.expectRevert("!operator");
@@ -341,14 +505,18 @@ contract MetaExchangeTest is Test {
         vm.prank(operator);
         exchange.setRoute(address(bridgeA), address(finalToken), route);
 
-        MetaExchange.RouteStep[] memory stored = exchange.getRoute(address(bridgeA), address(finalToken));
+        MetaExchange.RouteStep[] memory stored = exchange.getRoute(
+            address(bridgeA),
+            address(finalToken)
+        );
         assertEq(stored.length, 2, "!length");
         assertEq(stored[0].exchange, address(uniExchange), "!exchange0");
         assertEq(stored[0].tokenTo, address(asset), "!token0");
         assertEq(stored[1].exchange, address(pendleExchange), "!exchange1");
         assertEq(stored[1].tokenTo, address(finalToken), "!token1");
 
-        MetaExchange.RouteStep[] memory clearRoute = new MetaExchange.RouteStep[](0);
+        MetaExchange.RouteStep[]
+            memory clearRoute = new MetaExchange.RouteStep[](0);
         vm.prank(operator);
         exchange.setRoute(address(bridgeA), address(finalToken), clearRoute);
 
@@ -367,7 +535,10 @@ contract MetaExchangeTest is Test {
         exchange.setAllowedExchange(address(0), true);
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: address(unallowedExchange), tokenTo: address(finalToken)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(unallowedExchange),
+            tokenTo: address(finalToken)
+        });
 
         vm.expectRevert("!allowed");
         exchange.setRoute(address(asset), address(finalToken), route);
@@ -375,7 +546,10 @@ contract MetaExchangeTest is Test {
         exchange.setAllowedExchange(address(unallowedExchange), true);
         exchange.setRoute(address(asset), address(finalToken), route);
 
-        MetaExchange.RouteStep[] memory stored = exchange.getRoute(address(asset), address(finalToken));
+        MetaExchange.RouteStep[] memory stored = exchange.getRoute(
+            address(asset),
+            address(finalToken)
+        );
         assertEq(stored.length, 1, "!length");
         assertEq(stored[0].exchange, address(unallowedExchange), "!exchange");
 
@@ -386,40 +560,101 @@ contract MetaExchangeTest is Test {
         strategy.swap(address(asset), address(finalToken), 1e18, 0);
     }
 
+    function _contains(
+        address[] memory values,
+        address target
+    ) internal pure returns (bool) {
+        for (uint256 i; i < values.length; ) {
+            if (values[i] == target) return true;
+            unchecked {
+                ++i;
+            }
+        }
+        return false;
+    }
+
     function test_setUniBaseForPair_requiresManagementOrOperator() public {
         vm.prank(stranger);
         vm.expectRevert("!operator");
-        uniExchange.setUniBaseForPair(address(asset), address(finalToken), address(bridgeA));
+        uniExchange.setUniBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(bridgeA)
+        );
 
         uniExchange.setOperator(operator, true);
 
         vm.prank(operator);
-        uniExchange.setUniBaseForPair(address(asset), address(finalToken), address(bridgeA));
+        uniExchange.setUniBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(bridgeA)
+        );
 
-        assertEq(uniExchange.uniBases(address(asset), address(finalToken)), address(bridgeA), "!uni base");
-        assertEq(uniExchange.uniBases(address(finalToken), address(asset)), address(bridgeA), "!uni base reverse");
+        assertEq(
+            uniExchange.uniBases(address(asset), address(finalToken)),
+            address(bridgeA),
+            "!uni base"
+        );
+        assertEq(
+            uniExchange.uniBases(address(finalToken), address(asset)),
+            address(bridgeA),
+            "!uni base reverse"
+        );
 
         vm.prank(operator);
-        uniExchange.setUniBaseForPair(address(asset), address(finalToken), address(0));
-        assertEq(uniExchange.uniBases(address(asset), address(finalToken)), address(0), "!uni base cleared");
+        uniExchange.setUniBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(0)
+        );
+        assertEq(
+            uniExchange.uniBases(address(asset), address(finalToken)),
+            address(0),
+            "!uni base cleared"
+        );
     }
 
     function test_setFluidBaseForPair_requiresManagementOrOperator() public {
         vm.prank(stranger);
         vm.expectRevert("!operator");
-        fluidExchange.setFluidBaseForPair(address(asset), address(finalToken), address(bridgeB));
+        fluidExchange.setFluidBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(bridgeB)
+        );
 
         fluidExchange.setOperator(operator, true);
 
         vm.prank(operator);
-        fluidExchange.setFluidBaseForPair(address(asset), address(finalToken), address(bridgeB));
+        fluidExchange.setFluidBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(bridgeB)
+        );
 
-        assertEq(fluidExchange.fluidBases(address(asset), address(finalToken)), address(bridgeB), "!fluid base");
-        assertEq(fluidExchange.fluidBases(address(finalToken), address(asset)), address(bridgeB), "!fluid base reverse");
+        assertEq(
+            fluidExchange.fluidBases(address(asset), address(finalToken)),
+            address(bridgeB),
+            "!fluid base"
+        );
+        assertEq(
+            fluidExchange.fluidBases(address(finalToken), address(asset)),
+            address(bridgeB),
+            "!fluid base reverse"
+        );
 
         vm.prank(operator);
-        fluidExchange.setFluidBaseForPair(address(asset), address(finalToken), address(0));
-        assertEq(fluidExchange.fluidBases(address(asset), address(finalToken)), address(0), "!fluid base cleared");
+        fluidExchange.setFluidBaseForPair(
+            address(asset),
+            address(finalToken),
+            address(0)
+        );
+        assertEq(
+            fluidExchange.fluidBases(address(asset), address(finalToken)),
+            address(0),
+            "!fluid base cleared"
+        );
     }
 
     function test_exchange_revertsWithoutRoute() public {
@@ -432,28 +667,51 @@ contract MetaExchangeTest is Test {
     function test_exchange_sameToken_returnsInputWithoutRoute() public {
         asset.mint(address(strategy), 25e18);
 
-        uint256 amountOut = strategy.swap(address(asset), address(asset), 25e18, 0);
+        uint256 amountOut = strategy.swap(
+            address(asset),
+            address(asset),
+            25e18,
+            0
+        );
 
         assertEq(amountOut, 25e18, "!amountOut");
         assertEq(asset.balanceOf(address(strategy)), 25e18, "!balance");
     }
 
     function test_exchange_erc4626DepositAndRedeem() public {
-        MetaExchange.RouteStep[] memory depositRoute = new MetaExchange.RouteStep[](1);
-        depositRoute[0] = MetaExchange.RouteStep({exchange: address(erc4626Exchange), tokenTo: address(vault)});
+        MetaExchange.RouteStep[]
+            memory depositRoute = new MetaExchange.RouteStep[](1);
+        depositRoute[0] = MetaExchange.RouteStep({
+            exchange: address(erc4626Exchange),
+            tokenTo: address(vault)
+        });
         exchange.setRoute(address(asset), address(vault), depositRoute);
 
-        MetaExchange.RouteStep[] memory redeemRoute = new MetaExchange.RouteStep[](1);
-        redeemRoute[0] = MetaExchange.RouteStep({exchange: address(erc4626Exchange), tokenTo: address(asset)});
+        MetaExchange.RouteStep[]
+            memory redeemRoute = new MetaExchange.RouteStep[](1);
+        redeemRoute[0] = MetaExchange.RouteStep({
+            exchange: address(erc4626Exchange),
+            tokenTo: address(asset)
+        });
         exchange.setRoute(address(vault), address(asset), redeemRoute);
 
         asset.mint(address(strategy), 100e18);
 
-        uint256 sharesOut = strategy.swap(address(asset), address(vault), 100e18, 0);
+        uint256 sharesOut = strategy.swap(
+            address(asset),
+            address(vault),
+            100e18,
+            0
+        );
         assertEq(sharesOut, 100e18, "!sharesOut");
         assertEq(vault.balanceOf(address(strategy)), 100e18, "!shares");
 
-        uint256 assetOut = strategy.swap(address(vault), address(asset), sharesOut, 0);
+        uint256 assetOut = strategy.swap(
+            address(vault),
+            address(asset),
+            sharesOut,
+            0
+        );
         assertEq(assetOut, 100e18, "!assetOut");
         assertEq(asset.balanceOf(address(strategy)), 100e18, "!asset");
         assertEq(vault.balanceOf(address(strategy)), 0, "!vault");
@@ -461,27 +719,76 @@ contract MetaExchangeTest is Test {
 
     function test_exchange_dispatchesAcrossLinkedVenues() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](4);
-        route[0] = MetaExchange.RouteStep({exchange: address(uniExchange), tokenTo: address(bridgeA)});
-        route[1] = MetaExchange.RouteStep({exchange: address(curveExchange), tokenTo: address(bridgeB)});
-        route[2] = MetaExchange.RouteStep({exchange: address(fluidExchange), tokenTo: address(bridgeC)});
-        route[3] = MetaExchange.RouteStep({exchange: address(pendleExchange), tokenTo: address(finalToken)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(uniExchange),
+            tokenTo: address(bridgeA)
+        });
+        route[1] = MetaExchange.RouteStep({
+            exchange: address(curveExchange),
+            tokenTo: address(bridgeB)
+        });
+        route[2] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenTo: address(bridgeC)
+        });
+        route[3] = MetaExchange.RouteStep({
+            exchange: address(pendleExchange),
+            tokenTo: address(finalToken)
+        });
         exchange.setRoute(address(asset), address(finalToken), route);
 
-        assertEq(asset.allowance(address(exchange), address(uniExchange)), 0, "!allowance0");
-        assertEq(bridgeA.allowance(address(exchange), address(curveExchange)), 0, "!allowance1");
-        assertEq(bridgeB.allowance(address(exchange), address(fluidExchange)), 0, "!allowance2");
-        assertEq(bridgeC.allowance(address(exchange), address(pendleExchange)), 0, "!allowance3");
+        assertEq(
+            asset.allowance(address(exchange), address(uniExchange)),
+            0,
+            "!allowance0"
+        );
+        assertEq(
+            bridgeA.allowance(address(exchange), address(curveExchange)),
+            0,
+            "!allowance1"
+        );
+        assertEq(
+            bridgeB.allowance(address(exchange), address(fluidExchange)),
+            0,
+            "!allowance2"
+        );
+        assertEq(
+            bridgeC.allowance(address(exchange), address(pendleExchange)),
+            0,
+            "!allowance3"
+        );
 
         asset.mint(address(strategy), 50e18);
-        uint256 amountOut = strategy.swap(address(asset), address(finalToken), 50e18, 0);
+        uint256 amountOut = strategy.swap(
+            address(asset),
+            address(finalToken),
+            50e18,
+            0
+        );
 
         assertEq(amountOut, 50e18, "!amountOut");
         assertEq(finalToken.balanceOf(address(strategy)), 50e18, "!final");
         uint256 expectedAllowance = type(uint256).max;
-        assertEq(asset.allowance(address(exchange), address(uniExchange)), expectedAllowance, "!postAllowance0");
-        assertEq(bridgeA.allowance(address(exchange), address(curveExchange)), expectedAllowance, "!postAllowance1");
-        assertEq(bridgeB.allowance(address(exchange), address(fluidExchange)), expectedAllowance, "!postAllowance2");
-        assertEq(bridgeC.allowance(address(exchange), address(pendleExchange)), expectedAllowance, "!postAllowance3");
+        assertEq(
+            asset.allowance(address(exchange), address(uniExchange)),
+            expectedAllowance,
+            "!postAllowance0"
+        );
+        assertEq(
+            bridgeA.allowance(address(exchange), address(curveExchange)),
+            expectedAllowance,
+            "!postAllowance1"
+        );
+        assertEq(
+            bridgeB.allowance(address(exchange), address(fluidExchange)),
+            expectedAllowance,
+            "!postAllowance2"
+        );
+        assertEq(
+            bridgeC.allowance(address(exchange), address(pendleExchange)),
+            expectedAllowance,
+            "!postAllowance3"
+        );
         assertEq(uniExchange.calls(), 1, "!uniCalls");
         assertEq(curveExchange.calls(), 1, "!curveCalls");
         assertEq(fluidExchange.calls(), 1, "!fluidCalls");
@@ -490,28 +797,54 @@ contract MetaExchangeTest is Test {
 
     function test_exchange_allowsMultipleStrategies() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: address(uniExchange), tokenTo: address(finalToken)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(uniExchange),
+            tokenTo: address(finalToken)
+        });
         exchange.setRoute(address(asset), address(finalToken), route);
 
         asset.mint(address(strategy), 10e18);
         asset.mint(address(secondStrategy), 20e18);
 
-        uint256 firstOut = strategy.swap(address(asset), address(finalToken), 10e18, 0);
-        uint256 secondOut = secondStrategy.swap(address(asset), address(finalToken), 20e18, 0);
+        uint256 firstOut = strategy.swap(
+            address(asset),
+            address(finalToken),
+            10e18,
+            0
+        );
+        uint256 secondOut = secondStrategy.swap(
+            address(asset),
+            address(finalToken),
+            20e18,
+            0
+        );
 
         assertEq(firstOut, 10e18, "!firstOut");
         assertEq(secondOut, 20e18, "!secondOut");
         assertEq(finalToken.balanceOf(address(strategy)), 10e18, "!first");
-        assertEq(finalToken.balanceOf(address(secondStrategy)), 20e18, "!second");
+        assertEq(
+            finalToken.balanceOf(address(secondStrategy)),
+            20e18,
+            "!second"
+        );
     }
 
     function test_exchange_litePsmSwap_bothDirections() public {
-        MetaExchange.RouteStep[] memory sellRoute = new MetaExchange.RouteStep[](1);
-        sellRoute[0] = MetaExchange.RouteStep({exchange: address(litePsmExchange), tokenTo: address(usds)});
+        MetaExchange.RouteStep[]
+            memory sellRoute = new MetaExchange.RouteStep[](1);
+        sellRoute[0] = MetaExchange.RouteStep({
+            exchange: address(litePsmExchange),
+            tokenTo: address(usds)
+        });
         exchange.setRoute(address(usdc), address(usds), sellRoute);
 
-        MetaExchange.RouteStep[] memory buyRoute = new MetaExchange.RouteStep[](1);
-        buyRoute[0] = MetaExchange.RouteStep({exchange: address(litePsmExchange), tokenTo: address(usdc)});
+        MetaExchange.RouteStep[] memory buyRoute = new MetaExchange.RouteStep[](
+            1
+        );
+        buyRoute[0] = MetaExchange.RouteStep({
+            exchange: address(litePsmExchange),
+            tokenTo: address(usdc)
+        });
         exchange.setRoute(address(usds), address(usdc), buyRoute);
 
         usdc.mint(address(strategy), 15e6);
@@ -527,13 +860,21 @@ contract MetaExchangeTest is Test {
 
     function test_exchange_routesWethThroughLinkedExchange() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: address(uniExchange), tokenTo: address(finalToken)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(uniExchange),
+            tokenTo: address(finalToken)
+        });
         exchange.setRoute(address(weth), address(finalToken), route);
 
         vm.deal(address(weth), 3e18);
         weth.mint(address(strategy), 3e18);
 
-        uint256 amountOut = strategy.swap(address(weth), address(finalToken), 3e18, 0);
+        uint256 amountOut = strategy.swap(
+            address(weth),
+            address(finalToken),
+            3e18,
+            0
+        );
 
         assertEq(amountOut, 3e18, "!amountOut");
         assertEq(finalToken.balanceOf(address(strategy)), 3e18, "!final");
@@ -543,15 +884,27 @@ contract MetaExchangeTest is Test {
     }
 
     function test_exchange_syrupDeposit_usesRouterAndDepositData() public {
-        syrupExchange.setSyrupDepositConfig(address(syrupVault), address(syrupRouter), bytes32("Yearn"));
+        syrupExchange.setSyrupDepositConfig(
+            address(syrupVault),
+            address(syrupRouter),
+            bytes32("Yearn")
+        );
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: address(syrupExchange), tokenTo: address(syrupVault)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(syrupExchange),
+            tokenTo: address(syrupVault)
+        });
         exchange.setRoute(address(asset), address(syrupVault), route);
 
         asset.mint(address(strategy), 75e18);
 
-        uint256 sharesOut = strategy.swap(address(asset), address(syrupVault), 75e18, 0);
+        uint256 sharesOut = strategy.swap(
+            address(asset),
+            address(syrupVault),
+            75e18,
+            0
+        );
 
         assertEq(sharesOut, 75e18, "!sharesOut");
         assertEq(syrupVault.balanceOf(address(strategy)), 75e18, "!shares");
@@ -564,38 +917,80 @@ contract MetaExchangeTest is Test {
         susdsExchange.setSUSDSReferral(42);
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: address(susdsExchange), tokenTo: address(susdsVault)});
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(susdsExchange),
+            tokenTo: address(susdsVault)
+        });
         exchange.setRoute(address(usds), address(susdsVault), route);
 
         usds.mint(address(strategy), 25e18);
 
-        uint256 sharesOut = strategy.swap(address(usds), address(susdsVault), 25e18, 0);
+        uint256 sharesOut = strategy.swap(
+            address(usds),
+            address(susdsVault),
+            25e18,
+            0
+        );
 
         assertEq(sharesOut, 25e18, "!sharesOut");
         assertEq(susdsVault.balanceOf(address(strategy)), 25e18, "!shares");
         assertEq(susdsVault.lastAssets(), 25e18, "!assets");
-        assertEq(susdsVault.lastReceiver(), address(susdsExchange), "!receiver");
+        assertEq(
+            susdsVault.lastReceiver(),
+            address(susdsExchange),
+            "!receiver"
+        );
         assertEq(susdsVault.lastReferral(), 42, "!referral");
     }
 
     function test_exchange_originMintAndWrapsWousd() public {
-        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](2);
-        forward[0] = MetaExchange.RouteStep({exchange: address(originExchange), tokenTo: address(originToken)});
-        forward[1] = MetaExchange.RouteStep({exchange: address(erc4626Exchange), tokenTo: address(wrappedOriginVault)});
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            exchange: address(originExchange),
+            tokenTo: address(originToken)
+        });
+        forward[1] = MetaExchange.RouteStep({
+            exchange: address(erc4626Exchange),
+            tokenTo: address(wrappedOriginVault)
+        });
         exchange.setRoute(address(asset), address(wrappedOriginVault), forward);
 
-        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](2);
-        reverse[0] = MetaExchange.RouteStep({exchange: address(erc4626Exchange), tokenTo: address(originToken)});
-        reverse[1] = MetaExchange.RouteStep({exchange: address(curveExchange), tokenTo: address(asset)});
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            2
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            exchange: address(erc4626Exchange),
+            tokenTo: address(originToken)
+        });
+        reverse[1] = MetaExchange.RouteStep({
+            exchange: address(curveExchange),
+            tokenTo: address(asset)
+        });
         exchange.setRoute(address(wrappedOriginVault), address(asset), reverse);
 
         asset.mint(address(strategy), 33e18);
 
-        uint256 sharesOut = strategy.swap(address(asset), address(wrappedOriginVault), 33e18, 0);
+        uint256 sharesOut = strategy.swap(
+            address(asset),
+            address(wrappedOriginVault),
+            33e18,
+            0
+        );
         assertEq(sharesOut, 33e18, "!sharesOut");
-        assertEq(wrappedOriginVault.balanceOf(address(strategy)), 33e18, "!shares");
+        assertEq(
+            wrappedOriginVault.balanceOf(address(strategy)),
+            33e18,
+            "!shares"
+        );
 
-        uint256 assetOut = strategy.swap(address(wrappedOriginVault), address(asset), sharesOut, 0);
+        uint256 assetOut = strategy.swap(
+            address(wrappedOriginVault),
+            address(asset),
+            sharesOut,
+            0
+        );
         assertEq(assetOut, 33e18, "!assetOut");
         assertEq(asset.balanceOf(address(strategy)), 33e18, "!asset");
         assertEq(curveExchange.calls(), 1, "!curveCalls");

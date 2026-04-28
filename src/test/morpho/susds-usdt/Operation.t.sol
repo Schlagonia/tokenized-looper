@@ -124,11 +124,7 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
             "!forward ex 1"
         );
         assertEq(forward[1].tokenTo, USDS, "!forward token 1");
-        assertEq(
-            forward[2].exchange,
-            address(susdsExchange),
-            "!forward ex 2"
-        );
+        assertEq(forward[2].exchange, address(susdsExchange), "!forward ex 2");
         assertEq(forward[2].tokenTo, SUSDS, "!forward token 2");
 
         MetaExchange.RouteStep[] memory reverse = exchange.getRoute(

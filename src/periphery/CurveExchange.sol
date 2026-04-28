@@ -14,6 +14,10 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract CurveExchange is CurveSwapper, BaseExchange {
     using SafeERC20 for ERC20;
 
+    function name() external pure override returns (string memory) {
+        return "CurveExchange";
+    }
+
     function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
         _setMinAmountToSell(minAmount);
     }
@@ -33,15 +37,20 @@ contract CurveExchange is CurveSwapper, BaseExchange {
         _setCurveRoute(from, to, route, swapParams, pools);
     }
 
-    function _exchange(address from, address to, uint256 amountIn, uint256 amountOutMin)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal override returns (uint256 amountOut) {
         return _curveSwapFrom(from, to, amountIn, amountOutMin);
     }
 
-    function _checkAllowance(address spender, address token, uint256 amount) internal override {
+    function _checkAllowance(
+        address spender,
+        address token,
+        uint256 amount
+    ) internal override {
         if (ERC20(token).allowance(address(this), spender) < amount) {
             ERC20(token).forceApprove(spender, type(uint256).max);
         }

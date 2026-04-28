@@ -47,6 +47,10 @@ contract WETHWstETHExchange is BaseExchange {
 
     receive() external payable {}
 
+    function name() external pure override returns (string memory) {
+        return "WETHWstETHExchange";
+    }
+
     function _exchange(
         address from,
         address to,

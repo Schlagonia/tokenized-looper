@@ -15,11 +15,16 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract OriginMintExchange is BaseExchange {
     using SafeERC20 for ERC20;
 
-    function _exchange(address from, address to, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function name() external pure override returns (string memory) {
+        return "OriginMintExchange";
+    }
+
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         address vault = IOUSD(to).vaultAddress();
         require(vault != address(0), "!vault");
         require(IOUSDVault(vault).asset() == from, "!vaultAsset");

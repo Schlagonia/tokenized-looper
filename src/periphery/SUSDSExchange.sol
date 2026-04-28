@@ -17,15 +17,20 @@ contract SUSDSExchange is BaseExchange {
 
     uint16 public susdsReferral = 1007;
 
+    function name() external pure override returns (string memory) {
+        return "SUSDSExchange";
+    }
+
     function setSUSDSReferral(uint16 referral) external onlyGovernance {
         susdsReferral = referral;
     }
 
-    function _exchange(address from, address vault, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function _exchange(
+        address from,
+        address vault,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         require(IERC4626(vault).asset() == from, "!vaultAsset");
 
         ERC20(from).forceApprove(vault, amountIn);

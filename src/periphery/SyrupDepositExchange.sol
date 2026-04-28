@@ -22,25 +22,42 @@ contract SyrupDepositExchange is BaseExchange {
 
     mapping(address => SyrupDepositConfig) public syrupDepositConfigs;
 
-    event SyrupDepositConfigSet(address indexed vault, address indexed router, bytes32 depositData);
+    event SyrupDepositConfigSet(
+        address indexed vault,
+        address indexed router,
+        bytes32 depositData
+    );
 
-    function setSyrupDepositConfig(address vault, address router, bytes32 depositData) external onlyConfigOperator {
+    function name() external pure override returns (string memory) {
+        return "SyrupDepositExchange";
+    }
+
+    function setSyrupDepositConfig(
+        address vault,
+        address router,
+        bytes32 depositData
+    ) external onlyConfigOperator {
         require(vault != address(0) && router != address(0), "!syrup");
-        syrupDepositConfigs[vault] = SyrupDepositConfig({router: router, depositData: depositData});
+        syrupDepositConfigs[vault] = SyrupDepositConfig({
+            router: router,
+            depositData: depositData
+        });
         emit SyrupDepositConfigSet(vault, router, depositData);
     }
 
-    function _exchange(address from, address vault, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function _exchange(
+        address from,
+        address vault,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         require(IERC4626(vault).asset() == from, "!vaultAsset");
 
         SyrupDepositConfig memory config = syrupDepositConfigs[vault];
         require(config.router != address(0), "!syrup");
 
         ERC20(from).forceApprove(config.router, amountIn);
-        return ISyrupRouter(config.router).deposit(amountIn, config.depositData);
+        return
+            ISyrupRouter(config.router).deposit(amountIn, config.depositData);
     }
 }

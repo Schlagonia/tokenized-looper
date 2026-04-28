@@ -29,6 +29,10 @@ contract MockBudgetExchange is IExchange {
         collateral = _collateral;
     }
 
+    function name() external pure override returns (string memory) {
+        return "MockBudgetExchange";
+    }
+
     function setRates(
         uint256 _assetToCollateralBps,
         uint256 _collateralToAssetBps

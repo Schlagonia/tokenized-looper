@@ -20,18 +20,29 @@ contract LitePsmExchange is BaseExchange {
     uint256 public immutable scale;
 
     constructor(address _gem, address _usds, address _wrapper, uint256 _scale) {
-        require(_gem != address(0) && _usds != address(0) && _wrapper != address(0) && _scale != 0, "!psm");
+        require(
+            _gem != address(0) &&
+                _usds != address(0) &&
+                _wrapper != address(0) &&
+                _scale != 0,
+            "!psm"
+        );
         gem = _gem;
         usds = _usds;
         wrapper = _wrapper;
         scale = _scale;
     }
 
-    function _exchange(address from, address to, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function name() external pure override returns (string memory) {
+        return "LitePsmExchange";
+    }
+
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         if (from == gem && to == usds) {
             ERC20(from).forceApprove(wrapper, amountIn);
             return ILitePSMWrapper(wrapper).sellGem(address(this), amountIn);

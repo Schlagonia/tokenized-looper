@@ -14,11 +14,16 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract ERC4626Exchange is BaseExchange {
     using SafeERC20 for ERC20;
 
-    function _exchange(address from, address to, uint256 amountIn, uint256)
-        internal
-        override
-        returns (uint256 amountOut)
-    {
+    function name() external pure override returns (string memory) {
+        return "ERC4626Exchange";
+    }
+
+    function _exchange(
+        address from,
+        address to,
+        uint256 amountIn,
+        uint256
+    ) internal override returns (uint256 amountOut) {
         try IERC4626(to).asset() returns (address asset) {
             if (asset == from) {
                 ERC20(from).forceApprove(to, amountIn);
@@ -28,7 +33,8 @@ contract ERC4626Exchange is BaseExchange {
 
         try IERC4626(from).asset() returns (address asset) {
             require(asset == to, "!vaultAsset");
-            return IERC4626(from).redeem(amountIn, address(this), address(this));
+            return
+                IERC4626(from).redeem(amountIn, address(this), address(this));
         } catch {
             revert("!vaultAsset");
         }

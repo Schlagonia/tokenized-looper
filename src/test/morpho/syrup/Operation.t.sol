@@ -81,11 +81,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         assertEq(forward.length, 2, "!forward length");
         assertEq(forward[0].exchange, address(curveExchange), "!forward ex 0");
         assertEq(forward[0].tokenTo, USDC, "!forward token 0");
-        assertEq(
-            forward[1].exchange,
-            address(syrupExchange),
-            "!forward ex 1"
-        );
+        assertEq(forward[1].exchange, address(syrupExchange), "!forward ex 1");
         assertEq(forward[1].tokenTo, SYRUP_USDC, "!forward token 1");
 
         MetaExchange.RouteStep[] memory reverse = exchange.getRoute(
