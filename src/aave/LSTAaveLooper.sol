@@ -102,20 +102,6 @@ contract LSTAaveLooper is AaveLooper {
         delete pendingRedemptions;
     }
 
-    /// @dev Only needed if the hint and batch ID are too far from each other.
-    function manualClaimWithdrawals(
-        uint256[] calldata _requestIds,
-        uint256[] calldata _hints,
-        bool _zeroRedemptions
-    ) external onlyEmergencyAuthorized {
-        WITHDRAWAL_QUEUE.claimWithdrawals(_requestIds, _hints);
-        if (_zeroRedemptions) {
-            delete pendingRedemptions;
-        }
-
-        _wrapEthBalance();
-    }
-
     function _wrapEthBalance() private {
         IWETH(address(asset)).deposit{value: address(this).balance}();
     }
