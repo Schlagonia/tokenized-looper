@@ -349,10 +349,6 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         _setAuction(_auction);
     }
 
-    function setUseAuction(bool _useAuction) external onlyManagement {
-        _setUseAuction(_useAuction);
-    }
-
     function setEModeCategory(uint8 _eModeCategoryId) external onlyManagement {
         IPool(POOL).setUserEMode(_eModeCategoryId);
     }

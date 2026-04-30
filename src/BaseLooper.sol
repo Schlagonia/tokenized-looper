@@ -124,6 +124,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         maxAmountToSwap = type(uint256).max;
         maxGasPriceToTend = 50 * 1e9;
         slippage = 30;
+        minAmountToBorrow = 100;
 
         _setLossLimitRatio(10);
         _setProfitLimitRatio(500);
@@ -429,12 +430,8 @@ abstract contract BaseLooper is BaseHealthCheck {
 
         // If we are over the upper bound
         if (currentLeverage > _targetLeverageRatio + leverageBuffer) {
-            uint256 _minAmountToBorrow = minAmountToBorrow;
             // Over-leveraged: can repay with idle assets OR delever via flashloan
-            if (
-                balanceOfAsset() > _minAmountToBorrow ||
-                maxFlashloan() > _minAmountToBorrow
-            ) {
+            if (balanceOfAsset() + maxFlashloan() > minAmountToBorrow) {
                 return _isBaseFeeAcceptable();
             }
             return false;
@@ -482,8 +479,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             }
 
             if (flashloanAmount <= minAmountToBorrow) {
-                // Too small for flashloan, just repay debt with available assets
-                _repay(Math.min(_amount, balanceOfDebt()));
+                _convertAndSupplyCollateral(_amount);
                 return;
             }
 
@@ -516,7 +512,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             if (debtToRepay > maxDebtToRepay) debtToRepay = maxDebtToRepay;
 
-            if (debtToRepay == 0) return;
+            if (debtToRepay <= minAmountToBorrow) return;
 
             // Flashloan to repay debt, withdraw collateral to cover
             uint256 collateralToWithdraw = debtToRepay == currentDebt
@@ -540,7 +536,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     function _convertAndSupplyCollateral(uint256 _amount) internal virtual {
         _amount = Math.min(_amount, maxAmountToSwap);
-        if (_amount == 0) return;
+        if (_amount <= minAmountToBorrow) return;
         _convertAssetToCollateral(_amount);
         _supplyCollateral(
             Math.min(balanceOfCollateralToken(), _maxCollateralDeposit())
@@ -947,13 +943,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _emergencyWithdraw(
         uint256 _amount
     ) internal virtual override accrue {
-        // Try full unwind first
-        if (balanceOfDebt() > 0) {
-            _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
-        } else if (_amount > 0) {
-            _amount = Math.min(_amount, balanceOfCollateral());
-            _withdrawCollateral(_amount);
-            _convertCollateralToAsset(_amount);
-        }
+        _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
     }
 }

@@ -106,6 +106,10 @@ contract SetupWOUSDMorpho is Setup {
         _strategy.setEmergencyAdmin(emergencyAdmin);
         _strategy.setAllowed(user, true);
         _strategy.setMaxGasPriceToTend(type(uint256).max);
+        // OUSD trades slightly off peg on Curve and the OUSD/USDC pool fee
+        // alone can chew through the default 30 BPS. Lift to 99 BPS so the
+        // delever path's collateral haircut actually covers real swap loss.
+        _strategy.setSlippage(99);
         vm.stopPrank();
 
         return address(_strategy);

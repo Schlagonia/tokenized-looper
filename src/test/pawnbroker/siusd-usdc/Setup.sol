@@ -25,7 +25,7 @@ contract SetupPawnBrokerSIUSD is Setup {
 
     uint256 public constant PAWN_BROKER_LIQUIDITY = 5_000_000e6;
     uint256 public constant PAWN_BROKER_LLTV = 915e15;
-    uint256 public constant PAWN_BROKER_FIXED_RATE = 400;
+    uint256 public constant PAWN_BROKER_RATE = 400;
     uint256 public constant PAWN_BROKER_CALL_DURATION = 7 days;
 
     function setUp() public virtual override {
@@ -77,7 +77,7 @@ contract SetupPawnBrokerSIUSD is Setup {
                 SIUSD,
                 SIUSD_ORACLE,
                 PAWN_BROKER_LLTV,
-                PAWN_BROKER_FIXED_RATE,
+                PAWN_BROKER_RATE,
                 PAWN_BROKER_CALL_DURATION
             )
         );

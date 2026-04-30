@@ -17,7 +17,7 @@ test := test_
 # if we want to run tests by file path/glob or folder hint (e.g. aave, aave/lst)
 path := src/test
 PATH_GLOB := $(if $(filter %.t.sol,$(path)),$(path),$(if $(findstring src/,$(path)),$(path),src/test/**/$(path)/**/*.t.sol))
-EXCLUDED_TEST_PATHS := src/test/aave/**/*.t.sol
+EXCLUDED_TEST_PATHS := src/test/{aave,morpho/syrup-arb}/**/*.t.sol
 
 # local tests without fork
 test  :; forge test -vv --fork-url ${FORK_URL} --no-match-path '$(EXCLUDED_TEST_PATHS)'

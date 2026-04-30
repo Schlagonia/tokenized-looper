@@ -199,6 +199,12 @@ contract SlippageBudgetTest is Test {
             address(exchange),
             address(this)
         );
+
+        // The first swap only opens a new accounting period when
+        // block.timestamp >= slippagePeriodStart + SLIPPAGE_PERIOD. Foundry's
+        // default block.timestamp of 1 leaves that branch dormant, so warp
+        // past one full period before any test runs.
+        vm.warp(block.timestamp + 1 days + 1);
     }
 
     function test_dailyBudget_zeroLossStartsPeriodAndAddsNotional() public {

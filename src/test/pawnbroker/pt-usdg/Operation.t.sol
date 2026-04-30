@@ -47,7 +47,9 @@ contract PawnBrokerPTUSDGOperationTest is SetupPawnBrokerPTUSDG, OperationTest {
         assertEq(pawnBroker.BORROWER(), address(strategy));
         assertEq(pawnBroker.COLLATERAL_ASSET(), PT_USDG_28_MAY_2026);
         assertEq(pawnBroker.LLTV(), PAWN_BROKER_LLTV);
-        assertEq(pawnBroker.FIXED_RATE(), PAWN_BROKER_FIXED_RATE);
+        assertEq(pawnBroker.rate(), PAWN_BROKER_RATE);
+        assertEq(pawnBroker.pendingRate(), 0);
+        assertEq(pawnBroker.pendingRateEffectiveTime(), 0);
         assertEq(pawnBroker.CALL_DURATION(), PAWN_BROKER_CALL_DURATION);
         assertEq(oracle.price(), PT_ORACLE_PRICE);
     }

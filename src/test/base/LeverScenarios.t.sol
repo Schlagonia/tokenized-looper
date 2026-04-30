@@ -19,80 +19,53 @@ abstract contract LeverScenariosTest is Setup {
                             HELPER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Setup a position by depositing, tending, and then manually adjusting
-    /// @dev This creates a position and then verifies/adjusts to desired leverage
+    /// @notice Setup a position at `targetLeverage` using the strategy's
+    ///         real lever-up path.
+    /// @dev Temporarily reconfigures `setLeverageParams` so the strategy's own
+    ///      `tend()` flashloan path is what gets the position to the desired
+    ///      leverage — equity is preserved, and the strategy lands with no
+    ///      idle asset (just like in production). Original params are restored
+    ///      before returning, so the test sees `targetLeverage` as off-target
+    ///      relative to the strategy's normal config.
     /// @param depositAmount The amount to deposit
     /// @param targetLeverage The desired leverage ratio (WAD scale)
     function _setupPositionWithLeverage(
         uint256 depositAmount,
         uint256 targetLeverage
     ) internal {
-        // 1. Deposit the amount
+        require(targetLeverage >= WAD, "targetLeverage < 1x");
+
+        uint256 origTarget = strategy.targetLeverageRatio();
+        uint256 origBuffer = strategy.leverageBuffer();
+        uint256 origMax = strategy.maxLeverageRatio();
+
+        bool reconfigure = targetLeverage != origTarget;
+
+        if (reconfigure) {
+            uint256 maxLev = targetLeverage + origBuffer + 0.5e18;
+            if (maxLev < origMax) maxLev = origMax;
+            vm.prank(management);
+            strategy.setLeverageParams(targetLeverage, origBuffer, maxLev);
+        }
+
         mintAndDepositIntoStrategy(strategy, user, depositAmount);
 
-        // 2. Tend to create initial position at default target (3x)
         vm.prank(keeper);
         strategy.tend();
 
-        uint256 currentLeverage = strategy.getCurrentLeverageRatio();
-        if (_isWithinLeverageDust(currentLeverage, targetLeverage)) {
-            return;
+        if (reconfigure) {
+            vm.prank(management);
+            strategy.setLeverageParams(origTarget, origBuffer, origMax);
         }
 
-        // 3. Adjust to desired leverage by borrowing more or repaying
-        (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
-
-        // Calculate desired debt for target leverage
-        // leverage = collateral / equity => we need: currentDebt' such that leverage = targetLeverage
-        // newLeverage = currentCollateral / (currentCollateral - newDebt)
-        // targetLeverage = currentCollateral / (currentCollateral - newDebt)
-        // targetLeverage * (currentCollateral - newDebt) = currentCollateral
-        // currentCollateral - newDebt = currentCollateral / targetLeverage
-        // newDebt = currentCollateral - currentCollateral / targetLeverage
-        // newDebt = currentCollateral * (1 - 1/targetLeverage) = currentCollateral * (targetLeverage - 1) / targetLeverage
-
-        uint256 desiredDebt = (currentCollateral * (targetLeverage - WAD)) /
-            targetLeverage;
-
-        vm.startPrank(management);
-        if (desiredDebt > currentDebt) {
-            // Need more debt - borrow more
-            uint256 borrowMore = desiredDebt - currentDebt;
-            strategy.manualBorrow(borrowMore);
-        } else if (currentDebt > desiredDebt) {
-            // Need less debt - repay some
-            // To reduce debt, we need to:
-            // 1. Withdraw some collateral
-            // 2. Convert to asset
-            // 3. Repay debt
-            uint256 repayAmount = currentDebt - desiredDebt;
-
-            // Calculate collateral needed based on repayAmount + slippage (like actual code)
-            // position() returns collateral VALUE in asset terms, balanceOfCollateral() returns token units
-            uint256 collateralTokens = strategy.balanceOfCollateral();
-
-            // Convert repayAmount (asset terms) to collateral token units:
-            // collateralTokens / currentCollateral = tokens per asset value
-            // repayAmount * collateralTokens / currentCollateral = tokens needed
-            // Add slippage buffer
-            uint256 repayWithSlippage = (repayAmount *
-                (10_000 + strategy.slippage())) / 10_000;
-            uint256 collateralToWithdraw = (repayWithSlippage *
-                collateralTokens) / currentCollateral;
-
-            strategy.manualWithdrawCollateral(collateralToWithdraw);
-            strategy.convertCollateralToAsset(type(uint256).max);
-
-            // Now repay as much as needed (limited by what we have)
-            uint256 looseAsset = strategy.balanceOfAsset();
-            strategy.manualRepay(
-                looseAsset > repayAmount ? repayAmount : looseAsset
-            );
-
-            // Leave any leftover as loose asset to avoid slippage errors during conversion
-            // The position will be slightly under-leveraged which is fine for test setup
-        }
-        vm.stopPrank();
+        // Real production tends drain idle. If a setup leaves loose asset
+        // behind, the underlying strategy is masking a bug and we should not
+        // hide it by silently tolerating idle here.
+        assertLe(
+            strategy.balanceOfAsset(),
+            1,
+            "setup left idle asset; routing or strategy config is the issue"
+        );
     }
 
     /// @notice Setup an under-leveraged position (below target - buffer)
@@ -143,9 +116,13 @@ abstract contract LeverScenariosTest is Setup {
         (collateral, debt) = strategy.position();
     }
 
-    /// @notice Setup an over-leveraged position with no idle asset
-    /// @dev This forces Case 2b during tend so flashloan deleveraging is actually exercised.
-    function _setupOverLeveragedPositionWithoutIdle(
+    /// @notice Setup an over-leveraged position with idle loose asset.
+    /// @dev Specifically targets the case where a tend would otherwise take
+    ///      the simple-path repay (`_amount >= debtToRepay`) — used to drive
+    ///      tests through the residual flashloan branch where dust precision
+    ///      matters. Mirrors what would happen if the strategy borrowed but
+    ///      had not yet supplied collateral.
+    function _setupOverLeveragedPositionWithIdle(
         uint256 equity
     ) internal returns (uint256 collateral, uint256 debt) {
         mintAndDepositIntoStrategy(strategy, user, equity);
@@ -159,18 +136,22 @@ abstract contract LeverScenariosTest is Setup {
         uint256 buffer = strategy.leverageBuffer();
         uint256 overLeverage = targetLeverage + buffer + 0.3e18;
 
+        // Borrow more but DO NOT convert/supply: leaves loose asset behind so
+        // a follow-up tend hits Case 2 with `_amount > 0`.
         uint256 desiredCollateral = (currentEquity * overLeverage) / WAD;
         uint256 desiredDebt = desiredCollateral - currentEquity;
 
         vm.startPrank(management);
         if (desiredDebt > currentDebt) {
             strategy.manualBorrow(desiredDebt - currentDebt);
-            strategy.convertAssetToCollateral(type(uint256).max);
-            strategy.manualSupplyCollateral(type(uint256).max);
         }
         vm.stopPrank();
 
-        assertLe(strategy.balanceOfAsset(), 1, "idle asset too high");
+        assertGt(
+            strategy.balanceOfAsset(),
+            0,
+            "expected loose idle asset after manualBorrow"
+        );
 
         (collateral, debt) = strategy.position();
     }
@@ -279,31 +260,41 @@ abstract contract LeverScenariosTest is Setup {
         _assertLeverageWithinBuffer();
     }
 
-    /// @notice Test Case 1b: First deposit too small for flashloan, just supply
-    function test_lever_noPosition_smallAmount() public {
-        // Set min flashloan threshold high
+    /// @notice Case 1: when the required flashloan would land below
+    ///         `minAmountToBorrow`, lever-up does not take debt and the
+    ///         supply-only fallback is also gated by `minAmountToBorrow` —
+    ///         so a tend with a small deposit and a high min is a no-op.
+    function test_lever_noPosition_smallAmount_belowMin_skipsTend() public {
+        // Set min flashloan threshold high enough that the would-be
+        // flashloan (~2x deposit at 3x target) lands below it.
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000e6); // 1000 USDC minimum
+        strategy.setMinAmountToBorrow(1000e6); // 1000 USDC
 
-        // 1. Setup: Small deposit below flashloan threshold
         uint256 smallAmount = 100e6; // 100 USDC
         mintAndDepositIntoStrategy(strategy, user, smallAmount);
 
-        // 2. Verify no position before tend
         (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
         assertEq(collateralBefore, 0, "should have no collateral before");
         assertEq(debtBefore, 0, "should have no debt before");
 
-        // 3. Execute tend - should just repay (no debt to repay) and do nothing else
-        // Since there's no debt, the min check should result in no flashloan
         vm.prank(keeper);
         strategy.tend();
 
-        // 4. Verify: Since this is Case 1 with small amount, flashloan skipped
-        // The function should just call _repay(min(_amount, balanceOfDebt))
-        // Since balanceOfDebt = 0, this is effectively a no-op for borrowing
-        uint256 debt = strategy.balanceOfDebt();
-        assertEq(debt, 0, "should have no debt (flashloan skipped)");
+        // Flashloan-amount (200 USDC) <= min, so the case-1 small-flashloan
+        // branch fires and falls back to `_convertAndSupplyCollateral(_amount)`.
+        // `_amount` (100 USDC) is also <= min, so that path returns early too.
+        // Net effect: no debt, no collateral deployed, idle stays loose.
+        assertEq(strategy.balanceOfDebt(), 0, "no debt should be taken");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            0,
+            "no collateral should be supplied"
+        );
+        assertEq(
+            strategy.balanceOfAsset(),
+            smallAmount,
+            "idle should stay loose"
+        );
     }
 
     /// @notice Test Case 1: Existing under-leveraged position, add funds and lever up
@@ -442,15 +433,7 @@ abstract contract LeverScenariosTest is Setup {
         assertGt(leverageBefore, target + buffer, "should be over-leveraged");
 
         // 3. Get position state before tend
-        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
-
-        if (leverageBefore <= _upperLeverageBound(target, buffer)) {
-            return;
-        }
-
-        // Curve Router v1.0 leaves dust behind. Seed $0.01 so the test can
-        // exercise the real delever path instead of tripping on router crumbs.
-        airdrop(asset, address(strategy), 10_000);
+        (, uint256 debtBefore) = strategy.position();
 
         // 4. Execute tend with no new funds
         vm.prank(keeper);
@@ -616,7 +599,7 @@ abstract contract LeverScenariosTest is Setup {
         (
             uint256 collateralBefore,
             uint256 debtBefore
-        ) = _setupOverLeveragedPositionWithoutIdle(equityAmount);
+        ) = _setupOverLeveragedPosition(equityAmount);
 
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
@@ -661,7 +644,7 @@ abstract contract LeverScenariosTest is Setup {
     ) public {
         vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
 
-        _setupOverLeveragedPositionWithoutIdle(equityAmount);
+        _setupOverLeveragedPosition(equityAmount);
 
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
@@ -691,6 +674,47 @@ abstract contract LeverScenariosTest is Setup {
             strategy.getCurrentLeverageRatio(),
             target + buffer,
             "should stay over-leveraged"
+        );
+    }
+
+    /// @notice Over-leveraged with loose idle that almost-but-not-quite covers
+    ///         the over-leverage delta. Exercises Case 2's residual flashloan
+    ///         branch (`_amount > 0`, `_amount < debtToRepay`).
+    /// @dev `_setupOverLeveragedPositionWithIdle` is the only setup that
+    ///      leaves loose asset behind on purpose — every other setup helper
+    ///      drains idle so we don't hide this exact path. The path is
+    ///      vulnerable to a dust-flashloan revert when `debtToRepay - _amount`
+    ///      is small enough that swap-router rounding can't deliver enough
+    ///      asset to repay the flashloan; this test should catch that.
+    function test_lever_overLeveraged_withIdle_residualFlashloan(
+        uint256 equityAmount
+    ) public {
+        vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
+
+        (, uint256 debtBefore) = _setupOverLeveragedPositionWithIdle(
+            equityAmount
+        );
+
+        uint256 target = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(
+            leverageBefore,
+            target + buffer,
+            "!over-leveraged precondition"
+        );
+        assertGt(strategy.balanceOfAsset(), 0, "!idle precondition");
+
+        // Must not revert — the residual flashloan path is real production
+        // behavior and should never depend on swap-router dust luck.
+        vm.prank(keeper);
+        strategy.tend();
+
+        _assertLeverageWithinBuffer();
+        assertLt(
+            strategy.balanceOfDebt(),
+            debtBefore,
+            "debt should fall after delever"
         );
     }
 
@@ -771,16 +795,6 @@ abstract contract LeverScenariosTest is Setup {
             "should be within buffer (high)"
         );
 
-        // 3. Get position state before tend
-        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
-
-        if (
-            strategy.balanceOfAsset() <= 1 &&
-            _isWithinLeverageDust(leverageBefore, target)
-        ) {
-            return;
-        }
-
         // 4. Execute tend with no new funds
         vm.prank(keeper);
         strategy.tend();
@@ -810,22 +824,12 @@ abstract contract LeverScenariosTest is Setup {
         vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
 
         // 1. Setup: Create position above max leverage
-        (
-            uint256 initialCollateral,
-            uint256 initialDebt
-        ) = _setupAboveMaxLeveragePosition(equityAmount);
+        _setupAboveMaxLeveragePosition(equityAmount);
 
         // 2. Verify above max
         uint256 leverageBefore = strategy.getCurrentLeverageRatio();
         uint256 maxLeverage = strategy.maxLeverageRatio();
         assertGt(leverageBefore, maxLeverage, "should be above max leverage");
-
-        if (leverageBefore <= _upperLeverageBound(maxLeverage, 0)) {
-            return;
-        }
-
-        // Same router dust haircut as the standard over-leveraged path.
-        airdrop(asset, address(strategy), 10_000);
 
         // 3. Execute tend (should trigger emergency delever)
         vm.prank(keeper);
@@ -966,10 +970,6 @@ abstract contract LeverScenariosTest is Setup {
             "should be at upper bound",
             "should be at upper bound"
         );
-
-        if (_isWithinLeverageDust(leverageBefore, upperBoundLeverage)) {
-            return;
-        }
 
         // 3. Execute tend with no new funds
         vm.prank(keeper);
@@ -1147,42 +1147,58 @@ abstract contract LeverScenariosTest is Setup {
         );
     }
 
-    /// @notice Test that minAmountToBorrow threshold is respected
-    /// @dev When the required flashloan amount is below minAmountToBorrow,
-    ///      Case 1b is triggered: just repay min(_amount, balanceOfDebt) and return
-    function test_lever_respectsMinAmountToBorrow() public {
-        // 1. Set a high minimum borrow threshold
-        vm.prank(management);
-        strategy.setMinAmountToBorrow(1000000e6); // 1M USDC
-
-        // 2. Create a position that would need a small flashloan to reach target
-        // We'll create an under-leveraged position with equity that results in
-        // a target debt increase less than minAmountToBorrow
+    /// @notice `minAmountToBorrow` is a hard floor on lever-up: when set above
+    ///         the flashloan needed to reach target, an under-leveraged
+    ///         position stays under-leveraged on tend.
+    /// @dev Guards against a regression where someone removes the
+    ///      `flashloanAmount <= minAmountToBorrow` skip in `_lever` Case 1.
+    function test_lever_underLeveraged_belowMin_skipsTend() public {
+        // 1. Build a real under-leveraged position with the default min
+        //    (so the helper's internal tend reaches 3x normally before the
+        //    25% repay drops it under target).
         uint256 equity = 5000e6;
         _setupUnderLeveragedPosition(equity);
 
-        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertLt(
+            leverageBefore,
+            target - buffer,
+            "precondition: under-leveraged"
+        );
 
-        // Verify under-leveraged (Case 1 territory)
-        assertLt(leverageBefore, target - buffer, "should be under-leveraged");
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
 
-        // 3. Tend - flashloan should be skipped due to minAmountToBorrow
-        // Case 1b: flashloanAmount <= minAmountToBorrow, so just _repay and return
+        // 2. Now set min high so any rebalance flashloan falls below it.
+        vm.prank(management);
+        strategy.setMinAmountToBorrow(1000000e6); // 1M USDC
+
+        // 3. Tend should leave the position untouched: no flashloan executes,
+        //    no idle to deploy, so this is a clean no-op.
         vm.prank(keeper);
         strategy.tend();
 
-        // 4. Verify the position was not fully leveraged up
-        // Since flashloan was skipped, leverage should remain below target
-        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
-
-        // The position should NOT have reached target leverage
-        // (because the needed flashloan was too small and was skipped)
+        assertEq(
+            strategy.balanceOfDebt(),
+            debtBefore,
+            "debt should not change"
+        );
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "collateral should not change"
+        );
+        assertEq(
+            strategy.getCurrentLeverageRatio(),
+            leverageBefore,
+            "leverage should not change"
+        );
         assertLt(
-            leverageAfter,
-            target,
-            "leverage should remain below target when flashloan is too small"
+            strategy.getCurrentLeverageRatio(),
+            target - buffer,
+            "still under-leveraged"
         );
     }
 

@@ -98,7 +98,7 @@ contract SetupSyrupMorpho is Setup {
         vm.prank(management);
         _strategy.acceptManagement();
 
-        _authorizeExchangeForSyrupDeposit();
+        _authorizeSyrupParticipants(address(_strategy));
 
         vm.startPrank(management);
         uniExchange.setUniBase(USDC);
@@ -188,15 +188,19 @@ contract SetupSyrupMorpho is Setup {
         IMorpho(MORPHO).supply(params, amount, 0, address(this), "");
     }
 
-    function _authorizeExchangeForSyrupDeposit() internal {
+    function _authorizeSyrupParticipants(address _strategy) internal {
         address poolManager = ISyrupRouter(SYRUP_USDC_ROUTER).poolManager();
         address permissionManager = ISyrupRouter(SYRUP_USDC_ROUTER)
             .poolPermissionManager();
 
-        address[] memory lenders = new address[](1);
+        // Allowlist both the exchange (for deposits during tend) and the
+        // strategy (for direct-redemption flows: requestRedeem / removeShares).
+        address[] memory lenders = new address[](2);
         lenders[0] = address(syrupExchange);
-        bool[] memory isAllowed = new bool[](1);
+        lenders[1] = _strategy;
+        bool[] memory isAllowed = new bool[](2);
         isAllowed[0] = true;
+        isAllowed[1] = true;
 
         vm.prank(IPoolPermissionManager(permissionManager).admin());
         IPoolPermissionManager(permissionManager).setLenderAllowlist(
