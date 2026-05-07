@@ -422,8 +422,12 @@ abstract contract OperationTest is Setup {
 
         // Test setting a new value
         vm.prank(management);
-        strategy.setMaxAmountToSwap(1000e6);
-        assertEq(strategy.maxAmountToSwap(), 1000e6, "!new maxAmountToSwap");
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
+        assertEq(
+            strategy.maxAmountToSwap(),
+            _assetAmount(1000),
+            "!new maxAmountToSwap"
+        );
 
         // Test setting to 0
         vm.prank(management);
@@ -444,12 +448,12 @@ abstract contract OperationTest is Setup {
         // Non-management should not be able to set
         vm.prank(user);
         vm.expectRevert("!management");
-        strategy.setMaxAmountToSwap(1000e6);
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
 
         // Keeper should not be able to set
         vm.prank(keeper);
         vm.expectRevert("!management");
-        strategy.setMaxAmountToSwap(1000e6);
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
     }
 
     function test_setMinTendInterval() public {

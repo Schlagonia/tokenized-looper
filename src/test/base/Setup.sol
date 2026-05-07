@@ -209,6 +209,10 @@ contract Setup is Test, IEvents {
         return strategy.targetLeverageRatio() / TEST_LEVERAGE_DUST_BPS;
     }
 
+    function _assetAmount(uint256 wholeTokens) internal view returns (uint256) {
+        return wholeTokens * (10 ** decimals);
+    }
+
     function _lowerLeverageBound(
         uint256 targetLeverage,
         uint256 buffer
