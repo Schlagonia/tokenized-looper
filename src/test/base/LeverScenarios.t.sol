@@ -220,6 +220,15 @@ abstract contract LeverScenariosTest is Setup {
         return strategy.minAmountToBorrow();
     }
 
+    function _leverScenarioBaseAmount() internal view returns (uint256) {
+        uint256 min = minFuzzAmount;
+        uint256 max = maxFuzzAmount;
+        if (max <= min) return min;
+
+        uint256 mid = (min + max) / 2;
+        return mid > min ? mid : min;
+    }
+
     /// @notice Calculate target position for a given equity
     /// @dev Mirrors BaseLooper.getTargetPosition()
     function _getTargetPosition(
@@ -268,9 +277,9 @@ abstract contract LeverScenariosTest is Setup {
         // Set min flashloan threshold high enough that the would-be
         // flashloan (~2x deposit at 3x target) lands below it.
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000e6); // 1000 USDC
+        strategy.setMinAmountToBorrow(_assetAmount(1000));
 
-        uint256 smallAmount = 100e6; // 100 USDC
+        uint256 smallAmount = _assetAmount(100);
         mintAndDepositIntoStrategy(strategy, user, smallAmount);
 
         (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
@@ -302,7 +311,7 @@ abstract contract LeverScenariosTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // 1. Setup: Create under-leveraged position
-        uint256 equity = 10000e6; // 10k USDC
+        uint256 equity = _leverScenarioBaseAmount();
         (
             uint256 initialCollateral,
             uint256 initialDebt
@@ -344,10 +353,10 @@ abstract contract LeverScenariosTest is Setup {
     function test_lever_underLeveraged_smallAmount() public {
         // Set high min flashloan threshold
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000e6);
+        strategy.setMinAmountToBorrow(_assetAmount(1000));
 
         // 1. Setup: Create under-leveraged position
-        uint256 equity = 10000e6;
+        uint256 equity = _assetAmount(10_000);
         _setupUnderLeveragedPosition(equity);
 
         // 2. Verify under-leveraged
@@ -364,7 +373,7 @@ abstract contract LeverScenariosTest is Setup {
         uint256 debtBefore = strategy.balanceOfDebt();
 
         // 4. Add small amount (below flashloan threshold, so resulting flashloan amount would be small)
-        uint256 smallAmount = 50e6; // 50 USDC
+        uint256 smallAmount = _assetAmount(50);
         airdrop(asset, address(strategy), smallAmount);
 
         // 5. Execute tend
@@ -541,7 +550,7 @@ abstract contract LeverScenariosTest is Setup {
         _assertLeverageWithinBuffer();
 
         // 7. Verify collateral increased (remainder was supplied)
-        uint256 collateralAfter = strategy.balanceOfCollateral();
+        (uint256 collateralAfter, ) = strategy.position();
         assertGt(
             collateralAfter,
             initialCollateral,
@@ -760,7 +769,7 @@ abstract contract LeverScenariosTest is Setup {
 
         // 6. Verify position grew - both collateral and debt should increase
         // because we're levering up with the new funds
-        uint256 collateralAfter = strategy.balanceOfCollateral();
+        (uint256 collateralAfter, ) = strategy.position();
         uint256 debtAfter = strategy.balanceOfDebt();
         assertGt(
             collateralAfter,
@@ -1056,7 +1065,7 @@ abstract contract LeverScenariosTest is Setup {
 
     /// @notice Test Case 2: When _amount exactly pays off all target debt reduction
     function test_lever_overLeveraged_amountCoversExactDebtReduction() public {
-        uint256 equityAmount = 10000e6;
+        uint256 equityAmount = _assetAmount(10_000);
 
         // 1. Setup: Create moderately over-leveraged position
         uint256 targetLeverage = strategy.targetLeverageRatio();
@@ -1089,7 +1098,7 @@ abstract contract LeverScenariosTest is Setup {
 
     /// @notice Test that _getTargetPosition helper returns correct values
     function test_getTargetPosition(uint256 equity) public view {
-        vm.assume(equity > 1e6 && equity < maxFuzzAmount);
+        vm.assume(equity > _assetAmount(1) && equity < maxFuzzAmount);
 
         (uint256 targetCollateral, uint256 targetDebt) = _getTargetPosition(
             equity
@@ -1156,7 +1165,7 @@ abstract contract LeverScenariosTest is Setup {
         // 1. Build a real under-leveraged position with the default min
         //    (so the helper's internal tend reaches 3x normally before the
         //    25% repay drops it under target).
-        uint256 equity = 5000e6;
+        uint256 equity = _assetAmount(5_000);
         _setupUnderLeveragedPosition(equity);
 
         uint256 target = strategy.targetLeverageRatio();
@@ -1173,7 +1182,7 @@ abstract contract LeverScenariosTest is Setup {
 
         // 2. Now set min high so any rebalance flashloan falls below it.
         vm.prank(management);
-        strategy.setMinAmountToBorrow(1000000e6); // 1M USDC
+        strategy.setMinAmountToBorrow(_assetAmount(1_000_000));
 
         // 3. Tend should leave the position untouched: no flashloan executes,
         //    no idle to deploy, so this is a clean no-op.
@@ -1335,8 +1344,8 @@ abstract contract LeverScenariosTest is Setup {
     /// @notice Test Case 1 when _amount alone exceeds maxAmountToSwap
     /// @dev When _amount >= maxAmountToSwap, should just swap maxAmountToSwap and supply
     function test_lever_maxAmountToSwap_amountExceedsMax() public {
-        uint256 depositAmount = 10000e6;
-        uint256 maxSwap = 5000e6; // Less than deposit amount
+        uint256 depositAmount = _assetAmount(10_000);
+        uint256 maxSwap = _assetAmount(5_000); // Less than deposit amount
 
         // Set maxAmountToSwap less than deposit
         vm.prank(management);
@@ -1366,7 +1375,7 @@ abstract contract LeverScenariosTest is Setup {
     /// @notice Test Case 1 with maxAmountToSwap = 0 (edge case)
     /// @dev When maxAmountToSwap is 0, should not swap anything
     function test_lever_maxAmountToSwap_zero() public {
-        uint256 depositAmount = 10000e6;
+        uint256 depositAmount = _assetAmount(10_000);
         uint256 looseCollateralDust = 1;
 
         // Set maxAmountToSwap to 0
@@ -1483,7 +1492,7 @@ abstract contract LeverScenariosTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Set minAmountToBorrow
-        uint256 minBorrow = 100e6;
+        uint256 minBorrow = _assetAmount(100);
         vm.prank(management);
         strategy.setMinAmountToBorrow(minBorrow);
 
@@ -1511,17 +1520,17 @@ abstract contract LeverScenariosTest is Setup {
 
     /// @notice Test that reducing flashloan below minAmountToBorrow skips flashloan
     function test_lever_maxAmountToSwap_reducedFlashloanBelowMin() public {
-        uint256 depositAmount = 1000e6;
+        uint256 depositAmount = _assetAmount(1_000);
 
         // Set high minAmountToBorrow
-        uint256 minBorrow = 2000e6;
+        uint256 minBorrow = _assetAmount(2_000);
         vm.prank(management);
         strategy.setMinAmountToBorrow(minBorrow);
 
         // Set maxAmountToSwap that would reduce flashloan below minBorrow
         // Normal flashloan at 3x = 2 * 1000 = 2000
         // If we limit to 1500 total, flashloan = 500 which is < 2000 minBorrow
-        uint256 maxSwap = 1500e6;
+        uint256 maxSwap = _assetAmount(1_500);
         vm.prank(management);
         strategy.setMaxAmountToSwap(maxSwap);
 

@@ -33,8 +33,18 @@ contract PawnBrokerSIUSDOperationTest is SetupPawnBrokerSIUSD, OperationTest {
         assertEq(pawnBroker.COLLATERAL_ASSET(), SIUSD);
         assertEq(pawnBroker.LLTV(), PAWN_BROKER_LLTV);
         assertEq(pawnBroker.rate(), PAWN_BROKER_RATE);
-        assertEq(pawnBroker.pendingRate(), 0);
-        assertEq(pawnBroker.pendingRateEffectiveTime(), 0);
+        (uint256 pendingRate, uint256 pendingRateEffectiveTime) = pawnBroker
+            .pendingRateUpdate();
+        assertEq(pendingRate, 0);
+        assertEq(pendingRateEffectiveTime, 0);
+        assertEq(pawnBroker.liquidationBonusBps(), 100);
+        (
+            uint256 pendingLiquidationBonus,
+            uint256 pendingLiquidationBonusEffectiveTime
+        ) = pawnBroker.pendingLiquidationBonusUpdate();
+        assertEq(pendingLiquidationBonus, 0);
+        assertEq(pendingLiquidationBonusEffectiveTime, 0);
+        assertFalse(pawnBroker.paused());
         assertEq(pawnBroker.CALL_DURATION(), PAWN_BROKER_CALL_DURATION);
     }
 

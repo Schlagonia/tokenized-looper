@@ -118,6 +118,8 @@ contract Setup is Test, IEvents {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        _strategy.setProfitMaxUnlockTime(0);
+
         vm.stopPrank();
 
         return address(_strategy);
@@ -207,6 +209,10 @@ contract Setup is Test, IEvents {
 
     function _leverageDust() internal view returns (uint256) {
         return strategy.targetLeverageRatio() / TEST_LEVERAGE_DUST_BPS;
+    }
+
+    function _assetAmount(uint256 wholeTokens) internal view returns (uint256) {
+        return wholeTokens * (10 ** decimals);
     }
 
     function _lowerLeverageBound(

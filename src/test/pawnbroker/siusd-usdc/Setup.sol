@@ -104,6 +104,7 @@ contract SetupPawnBrokerSIUSD is Setup {
         _strategy.setAllowed(user, true);
         _strategy.setAllowed(user2, true);
         _strategy.setMaxGasPriceToTend(type(uint256).max);
+        _strategy.setProfitMaxUnlockTime(0);
         vm.stopPrank();
 
         _seedPawnBrokerLiquidity(PAWN_BROKER_LIQUIDITY);
