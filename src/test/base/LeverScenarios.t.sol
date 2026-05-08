@@ -220,6 +220,15 @@ abstract contract LeverScenariosTest is Setup {
         return strategy.minAmountToBorrow();
     }
 
+    function _leverScenarioBaseAmount() internal view returns (uint256) {
+        uint256 min = minFuzzAmount;
+        uint256 max = maxFuzzAmount;
+        if (max <= min) return min;
+
+        uint256 mid = (min + max) / 2;
+        return mid > min ? mid : min;
+    }
+
     /// @notice Calculate target position for a given equity
     /// @dev Mirrors BaseLooper.getTargetPosition()
     function _getTargetPosition(
@@ -302,7 +311,7 @@ abstract contract LeverScenariosTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // 1. Setup: Create under-leveraged position
-        uint256 equity = _assetAmount(10_000);
+        uint256 equity = _leverScenarioBaseAmount();
         (
             uint256 initialCollateral,
             uint256 initialDebt

@@ -104,15 +104,18 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
     }
 
     function _isSupplyPaused() internal view virtual override returns (bool) {
-        return false;
+        return PAWN_BROKER.paused();
     }
 
     function _isBorrowPaused() internal view virtual override returns (bool) {
-        return PAWN_BROKER.isShutdown() || PAWN_BROKER.calledDebt() > 0;
+        return
+            PAWN_BROKER.paused() ||
+            PAWN_BROKER.isShutdown() ||
+            PAWN_BROKER.calledDebt() > 0;
     }
 
     function _isLiquidatable() internal view virtual override returns (bool) {
-        return !PAWN_BROKER.isHealthy();
+        return !PAWN_BROKER.paused() && !PAWN_BROKER.isHealthy();
     }
 
     function _maxCollateralDeposit()

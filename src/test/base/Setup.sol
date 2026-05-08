@@ -118,6 +118,8 @@ contract Setup is Test, IEvents {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        _strategy.setProfitMaxUnlockTime(0);
+
         vm.stopPrank();
 
         return address(_strategy);
