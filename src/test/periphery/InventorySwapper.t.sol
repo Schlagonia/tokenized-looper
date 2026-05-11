@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {InventorySwapper} from "../../periphery/InventorySwapper.sol";
+import {InventorySwapper} from "../../periphery/exchanges/InventorySwapper.sol";
 
 contract MockInventoryToken is ERC20 {
     constructor(

@@ -80,7 +80,8 @@ contract MockBudgetLooper is BaseLooper {
             "Mock Budget Looper",
             _collateral,
             _governance,
-            _exchange
+            _exchange,
+            address(0)
         )
     {}
 

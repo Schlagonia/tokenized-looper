@@ -6,8 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAavesUSDeUSDC} from "./Setup.sol";
-import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 
 contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     uint256 internal constant SUSDE_UNWIND_DUST_BPS = 15; // 0.15%
@@ -77,15 +76,14 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     }
 
     function test_setExchange_onlyGovernance() public {
-        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
         MetaExchange newExchange = new MetaExchange(WETH);
 
         vm.prank(user);
         vm.expectRevert("!governance");
-        looper.setExchange(address(newExchange));
+        strategy.setExchange(address(newExchange));
 
         vm.prank(management);
-        looper.setExchange(address(newExchange));
+        strategy.setExchange(address(newExchange));
     }
 
     function test_exchange_setRoute_onlyGovernanceOrOperator() public {
@@ -124,18 +122,16 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     }
 
     function test_cooldown_functions_onlyEmergencyAuthorized() public {
-        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
+        vm.prank(user);
+        vm.expectRevert("!emergency authorized");
+        strategy.clearCooldown("");
 
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
-
-        vm.prank(user);
-        vm.expectRevert("!emergency authorized");
-        looper.convertUnderlyingToAsset(0);
+        strategy.convertCooldownTokenToAsset(0);
 
         vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
     }
 
     function test_estimatedTotalAssets_countsPendingCooldownSharesInAssetTerms()
@@ -147,32 +143,37 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         vm.prank(keeper);
         strategy.tend();
 
-        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-
-        uint256 withdrawShares = looper.balanceOfCollateral() / 20;
+        uint256 withdrawShares = strategy.balanceOfCollateral() / 20;
         assertGt(withdrawShares, 0, "!withdrawShares");
 
         vm.prank(emergencyAdmin);
-        looper.manualWithdrawCollateral(withdrawShares);
+        strategy.manualWithdrawCollateral(withdrawShares);
 
-        uint256 looseShares = looper.balanceOfCollateralToken();
+        uint256 looseShares = strategy.balanceOfCollateralToken();
         assertGt(looseShares, 0, "!looseShares");
 
-        uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
+        uint256 estimatedBeforeCooldown = strategy.estimatedTotalAssets();
 
         vm.prank(emergencyAdmin);
-        uint256 cooldownAssets = looper.initiateCooldown(looseShares);
+        uint256 cooldownAssets = abi.decode(
+            strategy.initiateCooldown(looseShares, ""),
+            (uint256)
+        );
 
         assertEq(
-            looper.pendingRedemptions(),
+            cooldownAdapter.pendingRedemptions(),
             cooldownAssets,
             "!pendingRedemptions"
         );
-        assertEq(looper.balanceOfCollateralToken(), 0, "!looseShares cleared");
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            0,
+            "!looseShares cleared"
+        );
 
-        uint256 estimatedAfterCooldown = looper.estimatedTotalAssets();
-        (uint256 collateralValueAfter, uint256 debtAfter) = looper.position();
-        uint256 estimatedWithoutPending = looper.balanceOfAsset() +
+        uint256 estimatedAfterCooldown = strategy.estimatedTotalAssets();
+        (uint256 collateralValueAfter, uint256 debtAfter) = strategy.position();
+        uint256 estimatedWithoutPending = strategy.balanceOfAsset() +
             collateralValueAfter -
             debtAfter;
 
@@ -198,40 +199,51 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         vm.prank(keeper);
         strategy.tend();
 
-        sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-
-        uint256 withdrawShares = looper.balanceOfCollateral() / 20;
+        uint256 withdrawShares = strategy.balanceOfCollateral() / 20;
         assertGt(withdrawShares, 0, "!withdrawShares");
 
         vm.prank(emergencyAdmin);
-        looper.manualWithdrawCollateral(withdrawShares);
+        strategy.manualWithdrawCollateral(withdrawShares);
 
-        uint256 looseShares = looper.balanceOfCollateralToken();
+        uint256 looseShares = strategy.balanceOfCollateralToken();
         assertGt(looseShares, 0, "!looseShares");
 
         vm.prank(emergencyAdmin);
-        uint256 cooldownAssets = looper.initiateCooldown(looseShares);
+        uint256 cooldownAssets = abi.decode(
+            strategy.initiateCooldown(looseShares, ""),
+            (uint256)
+        );
 
         assertGt(cooldownAssets, 0, "!cooldownAssets");
-        assertEq(looper.pendingRedemptions(), cooldownAssets, "!pending");
+        assertEq(
+            cooldownAdapter.pendingRedemptions(),
+            cooldownAssets,
+            "!pending"
+        );
 
         skip(8 days);
 
         vm.prank(emergencyAdmin);
-        looper.claimCooldown();
+        strategy.claimCooldown("");
 
-        uint256 underlyingBalance = looper.balanceOfUnderlying();
-        uint256 assetBefore = looper.balanceOfAsset();
+        uint256 underlyingBalance = ERC20(USDE).balanceOf(address(strategy));
+        uint256 assetBefore = strategy.balanceOfAsset();
 
         assertGt(underlyingBalance, 0, "!underlying");
-        assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
+        assertEq(cooldownAdapter.pendingRedemptions(), 0, "!pending cleared");
 
         vm.prank(emergencyAdmin);
-        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+        uint256 amountOut = strategy.convertCooldownTokenToAsset(
+            type(uint256).max
+        );
 
         assertGt(amountOut, 0, "!amountOut");
-        assertEq(looper.balanceOfUnderlying(), 0, "!underlying cleared");
-        assertEq(looper.balanceOfAsset(), assetBefore + amountOut, "!asset");
+        assertEq(
+            ERC20(USDE).balanceOf(address(strategy)),
+            0,
+            "!underlying cleared"
+        );
+        assertEq(strategy.balanceOfAsset(), assetBefore + amountOut, "!asset");
     }
 
     function test_exchange_sweep_onlyGovernance() public {

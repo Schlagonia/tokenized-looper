@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSUSDSUSDT} from "./Setup.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 
 /// @notice sUSDS/USDT Operation tests - inherits all tests from OperationTest
 contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {

@@ -9,9 +9,9 @@ import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IPawnBroker} from "pawn-broker/interfaces/IPawnBroker.sol";
 import {PawnBrokerFactory} from "pawn-broker/PawnBrokerFactory.sol";
 import {MockMorphoOracle} from "pawn-broker/test/mocks/MockMorphoOracle.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {CurveExchange} from "../../../periphery/CurveExchange.sol";
-import {PendleExchange} from "../../../periphery/PendleExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/exchanges/CurveExchange.sol";
+import {PendleExchange} from "../../../periphery/exchanges/PendleExchange.sol";
 
 /// @notice Setup for a USDC / PT-USDG Pendle pawn broker looper.
 contract SetupPawnBrokerPTUSDG is Setup {
@@ -117,7 +117,8 @@ contract SetupPawnBrokerPTUSDG is Setup {
             MORPHO,
             address(pawnBroker),
             address(exchange),
-            management
+            management,
+            address(0)
         );
 
         exchange.transferGovernance(management);

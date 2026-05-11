@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {MarketParams} from "../interfaces/morpho/IMorpho.sol";
 import {Governance} from "@periphery/utils/Governance.sol";
 import {IStrategyInterface} from "../interfaces/IStrategyInterface.sol";
+
 interface IPublicAllocator {
     struct Withdrawal {
         MarketParams marketParams;
@@ -24,6 +25,7 @@ interface IKeeperRelayer {
 /// @notice Simple executor that reallocates liquidity, runs arbitrary calls, then tend().
 contract LooperKeeper is Governance {
     event AllowedSet(address indexed _address, bool indexed _allowed);
+
     struct Call {
         address target;
         uint256 value;

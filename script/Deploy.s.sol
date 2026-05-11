@@ -6,22 +6,21 @@ import "forge-std/Script.sol";
 import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
-import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {AaveLooper} from "../src/aave/AaveLooper.sol";
-import {LSTAaveLooper} from "../src/aave/LSTAaveLooper.sol";
-import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
-import {sUSDeAaveLooper} from "../src/aave/sUSDeAaveLooper.sol";
-import {MetaExchange} from "../src/periphery/MetaExchange.sol";
-import {CurveExchange} from "../src/periphery/CurveExchange.sol";
-import {ERC4626Exchange} from "../src/periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../src/periphery/FluidExchange.sol";
-import {LitePsmExchange} from "../src/periphery/LitePsmExchange.sol";
-import {OriginMintExchange} from "../src/periphery/OriginMintExchange.sol";
-import {PendleExchange} from "../src/periphery/PendleExchange.sol";
-import {SUSDSExchange} from "../src/periphery/SUSDSExchange.sol";
-import {SyrupDepositExchange} from "../src/periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
-import {WETHWstETHExchange} from "../src/periphery/WETHWstETHExchange.sol";
+import {SyrupCooldownAdapter} from "../src/periphery/cooldowns/SyrupCooldownAdapter.sol";
+import {SUSDeCooldownAdapter} from "../src/periphery/cooldowns/SUSDeCooldownAdapter.sol";
+import {LidoWstETHCooldownAdapter} from "../src/periphery/cooldowns/LidoWstETHCooldownAdapter.sol";
+import {MetaExchange} from "../src/periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../src/periphery/exchanges/CurveExchange.sol";
+import {ERC4626Exchange} from "../src/periphery/exchanges/ERC4626Exchange.sol";
+import {FluidExchange} from "../src/periphery/exchanges/FluidExchange.sol";
+import {LitePsmExchange} from "../src/periphery/exchanges/LitePsmExchange.sol";
+import {OriginMintExchange} from "../src/periphery/exchanges/OriginMintExchange.sol";
+import {PendleExchange} from "../src/periphery/exchanges/PendleExchange.sol";
+import {SUSDSExchange} from "../src/periphery/exchanges/SUSDSExchange.sol";
+import {SyrupDepositExchange} from "../src/periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../src/periphery/exchanges/UniswapUniversalRouterExchange.sol";
+import {WETHWstETHExchange} from "../src/periphery/exchanges/WETHWstETHExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 import {AaveStrategyAprOracle} from "../src/periphery/AaveStrategyAprOracle.sol";
@@ -423,7 +422,8 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            address(0)
         );
         exchange.transferGovernance(LOOPER_GOVERNANCE);
 
@@ -456,7 +456,8 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            address(0)
         );
 
         _finalizeMetaExchange(exchange, fresh);
@@ -466,15 +467,20 @@ contract Deploy is Script {
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
         (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.weth);
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(msg.sender, vm.getNonce(msg.sender) + 1);
+
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            expectedCooldownAdapter
         );
+        SyrupCooldownAdapter cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        require(address(cooldownAdapter) == expectedCooldownAdapter, "!cooldown");
 
         _finalizeMetaExchange(exchange, fresh);
         return address(looper);
@@ -483,15 +489,20 @@ contract Deploy is Script {
     function deploySyrupArbitrum(SyrupArbConfig memory cfg) internal returns (address) {
         (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.weth);
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(msg.sender, vm.getNonce(msg.sender) + 1);
+
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            expectedCooldownAdapter
         );
+        SyrupCooldownAdapter cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        require(address(cooldownAdapter) == expectedCooldownAdapter, "!cooldown");
 
         _finalizeMetaExchange(exchange, fresh);
         return address(looper);
@@ -508,7 +519,8 @@ contract Deploy is Script {
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            address(0)
         );
 
         _finalizeMetaExchange(exchange, fresh);
@@ -528,7 +540,8 @@ contract Deploy is Script {
             cfg.morpho,
             Id.wrap(cfg.marketId),
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            address(0)
         );
 
         _finalizeMetaExchange(exchange, fresh);
@@ -545,7 +558,8 @@ contract Deploy is Script {
             cfg.morpho,
             cfg.eModeCategoryId,
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            address(0)
         );
 
         _finalizeMetaExchange(exchange, fresh);
@@ -554,7 +568,9 @@ contract Deploy is Script {
 
     function deployAaveLST(AaveConfig memory cfg) internal returns (address) {
         WETHWstETHExchange exchange = new WETHWstETHExchange();
-        LSTAaveLooper looper = new LSTAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(msg.sender, vm.getNonce(msg.sender) + 1);
+
+        AaveLooper looper = new AaveLooper(
             cfg.asset,
             cfg.name,
             cfg.collateralToken,
@@ -562,8 +578,11 @@ contract Deploy is Script {
             cfg.morpho,
             cfg.eModeCategoryId,
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            expectedCooldownAdapter
         );
+        LidoWstETHCooldownAdapter cooldownAdapter = new LidoWstETHCooldownAdapter(address(looper));
+        require(address(cooldownAdapter) == expectedCooldownAdapter, "!cooldown");
         exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
@@ -571,7 +590,9 @@ contract Deploy is Script {
 
     function deployAaveSUSDe(AaveSUSDeConfig memory cfg) internal returns (address) {
         (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.base.weth);
-        sUSDeAaveLooper looper = new sUSDeAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(msg.sender, vm.getNonce(msg.sender) + 1);
+
+        AaveLooper looper = new AaveLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
@@ -579,8 +600,11 @@ contract Deploy is Script {
             cfg.base.morpho,
             cfg.base.eModeCategoryId,
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            expectedCooldownAdapter
         );
+        SUSDeCooldownAdapter cooldownAdapter = new SUSDeCooldownAdapter(address(looper));
+        require(address(cooldownAdapter) == expectedCooldownAdapter, "!cooldown");
 
         _finalizeMetaExchange(exchange, fresh);
         return address(looper);
@@ -588,7 +612,9 @@ contract Deploy is Script {
 
     function deployAaveSyrup(AaveSyrupConfig memory cfg) internal returns (address) {
         (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.base.weth);
-        SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(msg.sender, vm.getNonce(msg.sender) + 1);
+
+        AaveLooper looper = new AaveLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
@@ -596,8 +622,11 @@ contract Deploy is Script {
             cfg.base.morpho,
             cfg.base.eModeCategoryId,
             address(exchange),
-            LOOPER_GOVERNANCE
+            LOOPER_GOVERNANCE,
+            expectedCooldownAdapter
         );
+        SyrupCooldownAdapter cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        require(address(cooldownAdapter) == expectedCooldownAdapter, "!cooldown");
 
         _finalizeMetaExchange(exchange, fresh);
         return address(looper);

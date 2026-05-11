@@ -42,6 +42,10 @@ abstract contract OperationTest is Setup {
         return 1e18 - (1e36 / strategy.maxLeverageRatio());
     }
 
+    function _skipPastMinTendInterval() internal virtual {
+        skip(strategy.minTendInterval() + 1);
+    }
+
     function test_setupStrategyOK() public virtual {
         console2.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
@@ -720,7 +724,7 @@ abstract contract OperationTest is Setup {
         );
     }
 
-    function test_lastTend_updatesAfterTend(uint256 _amount) public {
+    function test_lastTend_updatesAfterTend(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Verify lastTend starts at 0
@@ -845,7 +849,7 @@ abstract contract OperationTest is Setup {
         _createOverLeveragedPosition(equity);
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Airdrop idle assets to the strategy
         uint256 idleAmount = _baseIdleAmount();
@@ -878,7 +882,7 @@ abstract contract OperationTest is Setup {
         _createOverLeveragedPosition(equity);
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Ensure NO idle assets
         assertEq(strategy.balanceOfAsset(), 0, "should have no idle assets");
@@ -928,7 +932,7 @@ abstract contract OperationTest is Setup {
         _createOverLeveragedPosition(equity);
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Ensure NO idle assets
         assertEq(strategy.balanceOfAsset(), 0, "should have no idle assets");
@@ -969,7 +973,7 @@ abstract contract OperationTest is Setup {
         _createUnderLeveragedPosition(equity);
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Verify under-leveraged
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
@@ -1000,7 +1004,7 @@ abstract contract OperationTest is Setup {
         _createUnderLeveragedPosition(equity);
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Set deposit limit to 0 to simulate no deposit capacity
         // This makes availableDepositLimit return 0
@@ -1040,7 +1044,7 @@ abstract contract OperationTest is Setup {
         strategy.tend();
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Airdrop meaningful idle assets
         // At 3x leverage, idle * (L - 1) / 1 = idle * 2 should be > minAmountToBorrow
@@ -1090,7 +1094,7 @@ abstract contract OperationTest is Setup {
         strategy.tend();
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Airdrop meaningful idle assets
         uint256 idleAmount = _baseIdleAmount();
@@ -1127,7 +1131,7 @@ abstract contract OperationTest is Setup {
         strategy.tend();
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Set a high minAmountToBorrow
         vm.prank(management);
@@ -1186,7 +1190,7 @@ abstract contract OperationTest is Setup {
         strategy.tend();
 
         // Skip past minTendInterval
-        skip(strategy.minTendInterval() + 1);
+        _skipPastMinTendInterval();
 
         // Verify NO idle assets
         assertEq(strategy.balanceOfAsset(), 0, "should have no idle assets");

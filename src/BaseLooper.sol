@@ -5,6 +5,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+import {ICooldownAdapter} from "./interfaces/ICooldownAdapter.sol";
 import {IExchange} from "./interfaces/IExchange.sol";
 
 /**
@@ -48,6 +49,9 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Governance address allowed to update exchange configuration.
     address public immutable GOVERNANCE;
+
+    /// @notice Optional adapter for async collateral exits. Zero address disables cooldowns.
+    address public immutable COOLDOWN_ADAPTER;
 
     /// @notice Slippage parameter in basis points for swaps and the 1-day budget.
     uint64 public slippage;
@@ -105,11 +109,13 @@ abstract contract BaseLooper is BaseHealthCheck {
         string memory _name,
         address _collateralToken,
         address _governance,
-        address _exchange
+        address _exchange,
+        address _cooldownAdapter
     ) BaseHealthCheck(_asset, _name) {
         require(_governance != address(0), "!governance");
         collateralToken = _collateralToken;
         GOVERNANCE = _governance;
+        COOLDOWN_ADAPTER = _cooldownAdapter;
 
         depositLimit = type(uint256).max;
         // Allow self so helper flows can still query deposit capacity through the inherited allowlist.
@@ -225,8 +231,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slippage");
-        if (!TokenizedStrategy.isShutdown())
+        if (!TokenizedStrategy.isShutdown()) {
             require(_slippage < MAX_SLIPPAGE, "slippage too high");
+        }
         slippage = uint64(_slippage);
     }
 
@@ -319,6 +326,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         accrue
         returns (uint256 _totalAssets)
     {
+        require(pendingCooldownValue() == 0, "pending cooldown");
+
         _claimAndSellRewards();
         if (getCurrentLeverageRatio() > maxLeverageRatio) {
             _lever(balanceOfAsset());
@@ -333,7 +342,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function estimatedTotalAssets() public view virtual returns (uint256) {
         // Collateral value discounted by the report buffer.
         uint256 collateralValue = (_collateralToAsset(
-            balanceOfCollateral() + balanceOfCollateralToken()
+            balanceOfCollateral() +
+                balanceOfCollateralToken() +
+                pendingCooldownValue()
         ) * (MAX_BPS - reportBuffer)) / MAX_BPS;
 
         return balanceOfAsset() + collateralValue - balanceOfDebt();
@@ -498,8 +509,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (_amount >= debtToRepay) {
                 // _amount covers the debt repayment, just repay and supply the rest
                 _repay(debtToRepay);
-                if (targetLeverageRatio > 0)
+                if (targetLeverageRatio > 0) {
                     _convertAndSupplyCollateral(_amount - debtToRepay);
+                }
                 return;
             }
 
@@ -796,8 +808,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _collateralToAsset(
         uint256 collateralAmount
     ) internal view virtual returns (uint256) {
-        if (collateralAmount == 0 || collateralAmount == type(uint256).max)
+        if (collateralAmount == 0 || collateralAmount == type(uint256).max) {
             return collateralAmount;
+        }
         return (collateralAmount * _getCollateralPrice()) / ORACLE_PRICE_SCALE;
     }
 
@@ -806,8 +819,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _assetToCollateral(
         uint256 assetAmount
     ) internal view virtual returns (uint256) {
-        if (assetAmount == 0 || assetAmount == type(uint256).max)
+        if (assetAmount == 0 || assetAmount == type(uint256).max) {
             return assetAmount;
+        }
         uint256 price = _getCollateralPrice();
         return (assetAmount * ORACLE_PRICE_SCALE) / price;
     }
@@ -876,6 +890,12 @@ abstract contract BaseLooper is BaseHealthCheck {
         );
     }
 
+    function pendingCooldownValue() public view returns (uint256) {
+        if (COOLDOWN_ADAPTER == address(0)) return 0;
+
+        return ICooldownAdapter(COOLDOWN_ADAPTER).pendingValue();
+    }
+
     /// @notice Check if the current base fee is acceptable for tending
     /// @dev Override to customize gas price checks or disable them entirely.
     /// @return True if the base fee is at or below maxGasPriceToTend
@@ -930,6 +950,62 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
         _convertAssetToCollateral(Math.min(amount, balanceOfAsset()));
+    }
+
+    function initiateCooldown(
+        uint256 collateralAmount,
+        bytes calldata data
+    ) external onlyEmergencyAuthorized returns (bytes memory) {
+        collateralAmount = Math.min(
+            collateralAmount,
+            balanceOfCollateralToken()
+        );
+
+        ERC20(collateralToken).forceApprove(COOLDOWN_ADAPTER, collateralAmount);
+
+        return
+            ICooldownAdapter(COOLDOWN_ADAPTER).initiate(collateralAmount, data);
+    }
+
+    function claimCooldown(
+        bytes calldata data
+    ) external onlyEmergencyAuthorized returns (bytes memory) {
+        return ICooldownAdapter(COOLDOWN_ADAPTER).claim(data);
+    }
+
+    function cancelCooldown(
+        uint256 amount,
+        bytes calldata data
+    ) external onlyEmergencyAuthorized returns (bytes memory) {
+        return ICooldownAdapter(COOLDOWN_ADAPTER).cancel(amount, data);
+    }
+
+    function clearCooldown(
+        bytes calldata data
+    ) external onlyEmergencyAuthorized {
+        ICooldownAdapter(COOLDOWN_ADAPTER).clear(data);
+    }
+
+    function convertCooldownTokenToAsset(
+        uint256 amount
+    ) external onlyEmergencyAuthorized returns (uint256 amountOut) {
+        address token = ICooldownAdapter(COOLDOWN_ADAPTER).UNDERLYING();
+        amount = Math.min(amount, ERC20(token).balanceOf(address(this)));
+        require(amount > 0, "!amount");
+
+        uint256 collateralEquivalent = ICooldownAdapter(COOLDOWN_ADAPTER)
+            .tokenValue(token, amount);
+        uint256 expectedAmountOut = _collateralToAsset(collateralEquivalent);
+        require(expectedAmountOut > 0, "!value");
+
+        ERC20(token).forceApprove(exchange, amount);
+        amountOut = IExchange(exchange).exchange(
+            token,
+            address(asset),
+            amount,
+            0
+        );
+        _recordSlippage(expectedAmountOut, amountOut);
     }
 
     /*//////////////////////////////////////////////////////////////

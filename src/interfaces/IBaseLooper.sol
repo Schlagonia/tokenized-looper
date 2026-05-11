@@ -10,6 +10,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function GOVERNANCE() external view returns (address);
 
+    function COOLDOWN_ADAPTER() external view returns (address);
+
     function exchange() external view returns (address);
 
     /// @notice Target leverage ratio in WAD (e.g., 3e18 = 3x leverage)
@@ -64,6 +66,8 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function estimatedTotalAssets() external view returns (uint256);
 
+    function pendingCooldownValue() external view returns (uint256);
+
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() external view returns (uint256);
 
@@ -108,6 +112,24 @@ interface IBaseLooper is IBaseHealthCheck {
 
     /// @notice Manual: convert asset to collateral
     function convertAssetToCollateral(uint256 amount) external;
+
+    function initiateCooldown(
+        uint256 collateralAmount,
+        bytes calldata data
+    ) external returns (bytes memory);
+
+    function claimCooldown(bytes calldata data) external returns (bytes memory);
+
+    function cancelCooldown(
+        uint256 amount,
+        bytes calldata data
+    ) external returns (bytes memory);
+
+    function clearCooldown(bytes calldata data) external;
+
+    function convertCooldownTokenToAsset(
+        uint256 amount
+    ) external returns (uint256 amountOut);
 
     /// @notice Set target leverage ratio, buffer, and max leverage.
     /// @dev Management-only path for changing the hard max leverage ratio.

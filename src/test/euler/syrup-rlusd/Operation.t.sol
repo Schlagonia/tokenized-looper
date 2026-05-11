@@ -10,7 +10,7 @@ import {SetupEulerSyrupRLUSD} from "./Setup.sol";
 import {EulerLooper} from "../../../euler/EulerLooper.sol";
 import {IEVault} from "../../../interfaces/euler/IEVault.sol";
 import {IEulerPriceOracle} from "../../../interfaces/euler/IEulerPriceOracle.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 
 /// @notice syrupUSDC/RLUSD Euler operation tests.
 contract EulerSyrupRLUSDOperationTest is SetupEulerSyrupRLUSD, OperationTest {
@@ -40,6 +40,12 @@ contract EulerSyrupRLUSDOperationTest is SetupEulerSyrupRLUSD, OperationTest {
             relativeDust > MIN_UNWIND_COLLATERAL_DUST
                 ? relativeDust
                 : MIN_UNWIND_COLLATERAL_DUST;
+    }
+
+    function _skipPastMinTendInterval() internal override {
+        vm.prank(management);
+        strategy.setMinTendInterval(0);
+        skip(1);
     }
 
     function test_eulerMarketConfigured() public view {
@@ -110,6 +116,34 @@ contract EulerSyrupRLUSDOperationTest is SetupEulerSyrupRLUSD, OperationTest {
         assertGt(strategy.balanceOfCollateral(), 0, "!collateral");
         assertGt(strategy.balanceOfDebt(), 0, "!debt");
         _assertEulerAccountEnabled(address(strategy));
+    }
+
+    function test_lastTend_updatesAfterTend(uint256 _amount) public override {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        assertEq(strategy.lastTend(), 0, "!lastTend should start at 0");
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(
+            strategy.lastTend(),
+            block.timestamp,
+            "!lastTend should update"
+        );
+
+        // The forked RLUSD oracle can be close to Euler's max staleness window.
+        skip(1);
+        airdrop(asset, address(strategy), _amount / 30);
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(
+            strategy.lastTend(),
+            block.timestamp,
+            "!lastTend should update again"
+        );
     }
 
     function test_positionPricing_matchesEulerCollateralVaultOracle() public {

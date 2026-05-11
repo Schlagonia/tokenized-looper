@@ -26,8 +26,18 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         address _morpho,
         address _pawnBroker,
         address _exchange,
-        address _governance
-    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
+        address _governance,
+        address _cooldownAdapter
+    )
+        BaseLooper(
+            _asset,
+            _name,
+            _collateralToken,
+            _governance,
+            _exchange,
+            _cooldownAdapter
+        )
+    {
         require(_morpho != address(0), "!morpho");
         require(_pawnBroker != address(0), "!pawnBroker");
 

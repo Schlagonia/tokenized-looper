@@ -5,7 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {IExchange} from "../interfaces/IExchange.sol";
+import {IExchange} from "../../interfaces/IExchange.sol";
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**

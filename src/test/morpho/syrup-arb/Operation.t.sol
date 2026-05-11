@@ -4,8 +4,7 @@ pragma solidity ^0.8.18;
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSyrupUsdcArbMorpho} from "./Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 
 contract SyrupUsdcArbMorphoOperationTest is
     SetupSyrupUsdcArbMorpho,
@@ -41,16 +40,12 @@ contract SyrupUsdcArbMorphoOperationTest is
     }
 
     function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
 
         vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
     }
 
     function test_exchange_routes_areConfiguredForArbSyrupMarket() public view {

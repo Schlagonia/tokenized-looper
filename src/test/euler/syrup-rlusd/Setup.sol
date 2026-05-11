@@ -10,10 +10,10 @@ import {IEVault} from "../../../interfaces/euler/IEVault.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {CurveExchange} from "../../../periphery/CurveExchange.sol";
-import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/exchanges/CurveExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDC/RLUSD Euler looper tests.
 contract SetupEulerSyrupRLUSD is Setup {
@@ -96,7 +96,8 @@ contract SetupEulerSyrupRLUSD is Setup {
             EULER_RLUSD_VAULT,
             MORPHO,
             address(exchange),
-            management
+            management,
+            address(0)
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));

@@ -9,15 +9,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IExchange} from "../../interfaces/IExchange.sol";
 import {IPoolPermissionManager} from "../../interfaces/syrup/IPoolPermissionManager.sol";
 import {ISyrupRouter} from "../../interfaces/syrup/ISyrupRouter.sol";
-import {MetaExchange} from "../../periphery/MetaExchange.sol";
-import {CurveExchange} from "../../periphery/CurveExchange.sol";
-import {ERC4626Exchange} from "../../periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../../periphery/FluidExchange.sol";
-import {LitePsmExchange} from "../../periphery/LitePsmExchange.sol";
-import {OriginMintExchange} from "../../periphery/OriginMintExchange.sol";
-import {SUSDSExchange} from "../../periphery/SUSDSExchange.sol";
-import {SyrupDepositExchange} from "../../periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../../periphery/UniswapUniversalRouterExchange.sol";
+import {MetaExchange} from "../../periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../../periphery/exchanges/CurveExchange.sol";
+import {ERC4626Exchange} from "../../periphery/exchanges/ERC4626Exchange.sol";
+import {FluidExchange} from "../../periphery/exchanges/FluidExchange.sol";
+import {LitePsmExchange} from "../../periphery/exchanges/LitePsmExchange.sol";
+import {OriginMintExchange} from "../../periphery/exchanges/OriginMintExchange.sol";
+import {SUSDSExchange} from "../../periphery/exchanges/SUSDSExchange.sol";
+import {SyrupDepositExchange} from "../../periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 contract MockStrategyForExchange {
     using SafeERC20 for ERC20;

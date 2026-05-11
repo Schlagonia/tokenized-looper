@@ -30,7 +30,8 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
             _morpho,
             _pawnBroker,
             address(0),
-            _governance
+            _governance,
+            address(0)
         )
     {
         ERC20(_asset).forceApprove(GATEWAY, type(uint256).max);

@@ -6,15 +6,16 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {CurveExchange} from "../../../periphery/CurveExchange.sol";
-import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupCooldownAdapter} from "../../../periphery/cooldowns/SyrupCooldownAdapter.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/exchanges/CurveExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDC/PYUSD Morpho looper tests
 contract SetupSyrupMorpho is Setup {
@@ -22,6 +23,7 @@ contract SetupSyrupMorpho is Setup {
     UniswapUniversalRouterExchange public uniExchange;
     CurveExchange public curveExchange;
     SyrupDepositExchange public syrupExchange;
+    SyrupCooldownAdapter public cooldownAdapter;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
     bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
@@ -78,14 +80,26 @@ contract SetupSyrupMorpho is Setup {
         curveExchange = new CurveExchange();
         syrupExchange = new SyrupDepositExchange();
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        MorphoLooper looper = new MorphoLooper(
             address(asset),
             "syrupUSDC/PYUSD Morpho Looper",
             SYRUP_USDC,
             MORPHO,
             SYRUP_USDC_PYUSD_MARKET_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
@@ -98,7 +112,7 @@ contract SetupSyrupMorpho is Setup {
         vm.prank(management);
         _strategy.acceptManagement();
 
-        _authorizeSyrupParticipants(address(_strategy));
+        _authorizeSyrupParticipants(address(cooldownAdapter));
 
         vm.startPrank(management);
         uniExchange.setUniBase(USDC);
@@ -188,16 +202,16 @@ contract SetupSyrupMorpho is Setup {
         IMorpho(MORPHO).supply(params, amount, 0, address(this), "");
     }
 
-    function _authorizeSyrupParticipants(address _strategy) internal {
+    function _authorizeSyrupParticipants(address _adapter) internal {
         address poolManager = ISyrupRouter(SYRUP_USDC_ROUTER).poolManager();
         address permissionManager = ISyrupRouter(SYRUP_USDC_ROUTER)
             .poolPermissionManager();
 
         // Allowlist both the exchange (for deposits during tend) and the
-        // strategy (for direct-redemption flows: requestRedeem / removeShares).
+        // adapter (for direct-redemption flows: requestRedeem / removeShares).
         address[] memory lenders = new address[](2);
         lenders[0] = address(syrupExchange);
-        lenders[1] = _strategy;
+        lenders[1] = _adapter;
         bool[] memory isAllowed = new bool[](2);
         isAllowed[0] = true;
         isAllowed[1] = true;

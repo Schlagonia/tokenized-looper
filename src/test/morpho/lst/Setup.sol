@@ -7,7 +7,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
-import {WETHWstETHExchange} from "../../../periphery/WETHWstETHExchange.sol";
+import {WETHWstETHExchange} from "../../../periphery/exchanges/WETHWstETHExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
 
@@ -66,7 +66,8 @@ contract SetupLST is Setup {
                     MORPHO,
                     LST_MARKET_ID,
                     address(exchange),
-                    management
+                    management,
+                    address(0)
                 )
             )
         );

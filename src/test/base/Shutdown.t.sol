@@ -23,6 +23,14 @@ abstract contract ShutdownTest is Setup {
                 : MIN_UNWIND_COLLATERAL_DUST;
     }
 
+    function _assertIdleCollateralUnchanged(
+        uint256 actual,
+        uint256 expected,
+        string memory message
+    ) internal virtual {
+        assertEq(actual, expected, message);
+    }
+
     function test_shutdownCanWithdraw(uint256 _amount) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
@@ -247,7 +255,7 @@ abstract contract ShutdownTest is Setup {
 
         assertEq(strategy.balanceOfDebt(), debtBefore, "!debt changed");
         assertEq(strategy.balanceOfAsset(), assetBefore, "!asset changed");
-        assertEq(
+        _assertIdleCollateralUnchanged(
             strategy.balanceOfCollateral(),
             collateralBefore,
             "!collateral changed"
@@ -278,7 +286,7 @@ abstract contract ShutdownTest is Setup {
 
         assertEq(strategy.balanceOfDebt(), 0, "!debt");
         assertEq(strategy.balanceOfAsset(), assetBefore, "!asset");
-        assertEq(
+        _assertIdleCollateralUnchanged(
             strategy.balanceOfCollateral(),
             collateralBefore,
             "!collateral"
@@ -316,7 +324,7 @@ abstract contract ShutdownTest is Setup {
         strategy.tend();
 
         assertEq(strategy.balanceOfDebt(), 0, "!debt");
-        assertEq(
+        _assertIdleCollateralUnchanged(
             strategy.balanceOfCollateral(),
             collateralBefore,
             "!collateral changed"

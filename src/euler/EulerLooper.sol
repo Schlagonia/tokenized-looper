@@ -46,8 +46,18 @@ contract EulerLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         address _borrowVault,
         address _morpho,
         address _exchange,
-        address _governance
-    ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
+        address _governance,
+        address _cooldownAdapter
+    )
+        BaseLooper(
+            _asset,
+            _name,
+            _collateralToken,
+            _governance,
+            _exchange,
+            _cooldownAdapter
+        )
+    {
         require(_collateralVault != address(0), "!collateralVault");
         require(_borrowVault != address(0), "!borrowVault");
         require(_morpho != address(0), "!morpho");

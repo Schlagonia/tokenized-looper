@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {ILitePSMWrapper} from "../interfaces/sky/ILitePSMWrapper.sol";
+import {ILitePSMWrapper} from "../../interfaces/sky/ILitePSMWrapper.sol";
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**

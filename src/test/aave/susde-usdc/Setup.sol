@@ -4,17 +4,19 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
+import {AaveLooper} from "../../../aave/AaveLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../../../periphery/FluidExchange.sol";
+import {SUSDeCooldownAdapter} from "../../../periphery/cooldowns/SUSDeCooldownAdapter.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/exchanges/ERC4626Exchange.sol";
+import {FluidExchange} from "../../../periphery/exchanges/FluidExchange.sol";
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
     MetaExchange public exchange;
     FluidExchange public fluidExchange;
     ERC4626Exchange public erc4626Exchange;
+    SUSDeCooldownAdapter public cooldownAdapter;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -75,7 +77,12 @@ contract SetupAavesUSDeUSDC is Setup {
         fluidExchange = new FluidExchange(WETH);
         erc4626Exchange = new ERC4626Exchange();
 
-        sUSDeAaveLooper looper = new sUSDeAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        AaveLooper looper = new AaveLooper(
             address(asset),
             "sUSDe/USDC Aave Looper",
             SUSDE,
@@ -83,7 +90,14 @@ contract SetupAavesUSDeUSDC is Setup {
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new SUSDeCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));

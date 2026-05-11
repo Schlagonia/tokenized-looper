@@ -40,7 +40,8 @@ contract InfinifiMorphoLooper is MorphoLooper {
             _morpho,
             _marketId,
             address(0),
-            _governance
+            _governance,
+            address(0)
         )
     {
         // Approvals for gateway and Morpho.

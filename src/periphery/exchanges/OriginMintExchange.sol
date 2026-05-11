@@ -4,8 +4,8 @@ pragma solidity ^0.8.23;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {IOUSD} from "../interfaces/origin/IOUSD.sol";
-import {IOUSDVault} from "../interfaces/origin/IOUSDVault.sol";
+import {IOUSD} from "../../interfaces/origin/IOUSD.sol";
+import {IOUSDVault} from "../../interfaces/origin/IOUSDVault.sol";
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**

@@ -9,11 +9,11 @@ import {Setup} from "../../base/Setup.sol";
 import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
-import {LitePsmExchange} from "../../../periphery/LitePsmExchange.sol";
-import {SUSDSExchange} from "../../../periphery/SUSDSExchange.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/exchanges/ERC4626Exchange.sol";
+import {LitePsmExchange} from "../../../periphery/exchanges/LitePsmExchange.sol";
+import {SUSDSExchange} from "../../../periphery/exchanges/SUSDSExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for sUSDS/USDT Morpho Looper tests
 contract SetupSUSDSUSDT is Setup {
@@ -87,7 +87,8 @@ contract SetupSUSDSUSDT is Setup {
             MORPHO,
             SUSDS_USDT_MARKET_ID,
             address(exchange),
-            management
+            management,
+            address(0)
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);

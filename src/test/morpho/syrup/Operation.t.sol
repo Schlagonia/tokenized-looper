@@ -6,9 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSyrupMorpho} from "./Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {ISyrupPool} from "../../../interfaces/syrup/ISyrupPool.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 
 /// @notice syrup/PYUSD Morpho operation tests
 contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
@@ -42,16 +40,12 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     }
 
     function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
 
         vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -78,26 +72,18 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     }
 
     function test_initiateDirectRedemption_onlyEmergencyAuthorized() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.initiateDirectRedemption(1);
+        strategy.initiateCooldown(1, "");
     }
 
     function test_initiateDirectRedemption_revertsWithoutShares() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
         // No loose shares + clamp to balance => 0 => "!shares"
-        assertEq(looper.balanceOfCollateralToken(), 0, "!precondition");
+        assertEq(strategy.balanceOfCollateralToken(), 0, "!precondition");
 
         vm.prank(emergencyAdmin);
         vm.expectRevert("!shares");
-        looper.initiateDirectRedemption(type(uint256).max);
+        strategy.initiateCooldown(type(uint256).max, "");
     }
 
     function test_initiateDirectRedemption_queuesRealSharesOnSyrupPool()
@@ -106,21 +92,25 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
         assertGt(loose, 0, "!loose");
 
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
+        assertEq(
+            cooldownAdapter.pendingRedemptionShares(),
+            0,
+            "!initial pending"
         );
-        assertEq(looper.pendingRedemptionShares(), 0, "!initial pending");
 
         uint256 strategyBalanceBefore = ERC20(SYRUP_USDC).balanceOf(
             address(strategy)
         );
 
         vm.prank(emergencyAdmin);
-        uint256 exitShares = looper.initiateDirectRedemption(loose);
+        uint256 exitShares = abi.decode(
+            strategy.initiateCooldown(loose, ""),
+            (uint256)
+        );
 
         assertGt(exitShares, 0, "!exitShares");
         assertEq(
-            looper.pendingRedemptionShares(),
+            cooldownAdapter.pendingRedemptionShares(),
             exitShares,
             "!pending tracked"
         );
@@ -134,24 +124,17 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     }
 
     function test_cancelDirectRedemption_onlyEmergencyAuthorized() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.cancelDirectRedemption(1);
+        strategy.cancelCooldown(1, "");
     }
 
     function test_cancelDirectRedemption_revertsWithoutPending() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-        assertEq(looper.pendingRedemptionShares(), 0, "!precondition");
+        assertEq(cooldownAdapter.pendingRedemptionShares(), 0, "!precondition");
 
         vm.prank(emergencyAdmin);
         vm.expectRevert("!shares");
-        looper.cancelDirectRedemption(type(uint256).max);
+        strategy.cancelCooldown(type(uint256).max, "");
     }
 
     function test_cancelDirectRedemption_clearsPendingAndReturnsShares()
@@ -159,22 +142,33 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
 
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
         vm.prank(emergencyAdmin);
-        uint256 exitShares = looper.initiateDirectRedemption(loose);
-        assertEq(looper.pendingRedemptionShares(), exitShares, "!queued");
+        uint256 exitShares = abi.decode(
+            strategy.initiateCooldown(loose, ""),
+            (uint256)
+        );
+        assertEq(
+            cooldownAdapter.pendingRedemptionShares(),
+            exitShares,
+            "!queued"
+        );
 
         uint256 strategyBalanceMid = ERC20(SYRUP_USDC).balanceOf(
             address(strategy)
         );
 
         vm.prank(emergencyAdmin);
-        uint256 removed = looper.cancelDirectRedemption(type(uint256).max);
+        uint256 removed = abi.decode(
+            strategy.cancelCooldown(type(uint256).max, ""),
+            (uint256)
+        );
 
         assertGt(removed, 0, "!removed");
-        assertEq(looper.pendingRedemptionShares(), 0, "!pending cleared");
+        assertEq(
+            cooldownAdapter.pendingRedemptionShares(),
+            0,
+            "!pending cleared"
+        );
         // Cancelled shares come back to the strategy.
         assertGt(
             ERC20(SYRUP_USDC).balanceOf(address(strategy)),
@@ -186,16 +180,13 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     function test_report_revertsWhilePendingRedemptionsOutstanding() public {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
 
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
         vm.prank(emergencyAdmin);
-        looper.initiateDirectRedemption(loose);
+        strategy.initiateCooldown(loose, "");
 
-        assertGt(looper.pendingRedemptionShares(), 0, "!pending");
+        assertGt(cooldownAdapter.pendingRedemptionShares(), 0, "!pending");
 
         vm.prank(keeper);
-        vm.expectRevert("pending redemptions");
+        vm.expectRevert("pending cooldown");
         strategy.report();
     }
 
@@ -204,11 +195,8 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
         uint256 totalBefore = strategy.estimatedTotalAssets();
 
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
         vm.prank(emergencyAdmin);
-        looper.initiateDirectRedemption(loose);
+        strategy.initiateCooldown(loose, "");
 
         // After request, the strategy no longer holds the loose shares but
         // estimatedTotalAssets() should still include them via the pending
@@ -225,19 +213,20 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
     function test_zeroPendingRedemptions_clearsAccountingOnly() public {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
 
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
         vm.prank(emergencyAdmin);
-        looper.initiateDirectRedemption(loose);
-        assertGt(looper.pendingRedemptionShares(), 0, "!pending");
+        strategy.initiateCooldown(loose, "");
+        assertGt(cooldownAdapter.pendingRedemptionShares(), 0, "!pending");
 
         // zeroPendingRedemptions must not call into Maple; it is purely a
         // bookkeeping reset to be used after Maple has filled the request.
         vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
 
-        assertEq(looper.pendingRedemptionShares(), 0, "!pending cleared");
+        assertEq(
+            cooldownAdapter.pendingRedemptionShares(),
+            0,
+            "!pending cleared"
+        );
 
         // With pending zeroed, report() must succeed again.
         vm.prank(management);

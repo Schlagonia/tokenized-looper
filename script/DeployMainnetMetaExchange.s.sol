@@ -6,16 +6,16 @@ import {console2} from "forge-std/console2.sol";
 
 import {IPoolPermissionManager} from "../src/interfaces/syrup/IPoolPermissionManager.sol";
 import {ISyrupRouter} from "../src/interfaces/syrup/ISyrupRouter.sol";
-import {CurveExchange} from "../src/periphery/CurveExchange.sol";
-import {ERC4626Exchange} from "../src/periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../src/periphery/FluidExchange.sol";
-import {LitePsmExchange} from "../src/periphery/LitePsmExchange.sol";
-import {MetaExchange} from "../src/periphery/MetaExchange.sol";
-import {OriginMintExchange} from "../src/periphery/OriginMintExchange.sol";
-import {PendleExchange} from "../src/periphery/PendleExchange.sol";
-import {SUSDSExchange} from "../src/periphery/SUSDSExchange.sol";
-import {SyrupDepositExchange} from "../src/periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
+import {CurveExchange} from "../src/periphery/exchanges/CurveExchange.sol";
+import {ERC4626Exchange} from "../src/periphery/exchanges/ERC4626Exchange.sol";
+import {FluidExchange} from "../src/periphery/exchanges/FluidExchange.sol";
+import {LitePsmExchange} from "../src/periphery/exchanges/LitePsmExchange.sol";
+import {MetaExchange} from "../src/periphery/exchanges/MetaExchange.sol";
+import {OriginMintExchange} from "../src/periphery/exchanges/OriginMintExchange.sol";
+import {PendleExchange} from "../src/periphery/exchanges/PendleExchange.sol";
+import {SUSDSExchange} from "../src/periphery/exchanges/SUSDSExchange.sol";
+import {SyrupDepositExchange} from "../src/periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../src/periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 contract DeployMainnetMetaExchange is Script {
     struct Deployment {

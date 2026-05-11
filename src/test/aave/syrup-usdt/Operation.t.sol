@@ -4,8 +4,7 @@ pragma solidity ^0.8.18;
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAaveSyrupUSDT} from "./Setup.sol";
-import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @notice Aave syrupUSDT operation tests
@@ -29,30 +28,23 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
-        SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
-            payable(address(strategy))
-        );
-
         vm.prank(user);
         vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
 
         vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        strategy.clearCooldown("");
     }
 
     function test_setExchange_onlyGovernance() public {
-        SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
-            payable(address(strategy))
-        );
         MetaExchange newExchange = new MetaExchange(WETH);
 
         vm.prank(user);
         vm.expectRevert("!governance");
-        looper.setExchange(address(newExchange));
+        strategy.setExchange(address(newExchange));
 
         vm.prank(management);
-        looper.setExchange(address(newExchange));
+        strategy.setExchange(address(newExchange));
     }
 
     function test_exchange_setV4Pool_onlyGovernanceOrOperator() public {

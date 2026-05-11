@@ -2,9 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup} from "../../base/Setup.sol";
 import {SetupAaveLST} from "./Setup.sol";
-import {LSTAaveLooper} from "../../../aave/LSTAaveLooper.sol";
 import {IQueue, IwstETH} from "../../../interfaces/IStethInterfaces.sol";
 
 interface IQueueExtended is IQueue {
@@ -43,9 +41,8 @@ contract MockWithdrawalQueue {
     }
 }
 
-/// @notice Tests for LSTAaveLooper manual LST withdrawal functions
+/// @notice Tests for Lido cooldown adapter withdrawal functions
 contract LSTWithdrawalTest is SetupAaveLST {
-    LSTAaveLooper public lstLooper;
     IQueueExtended public withdrawalQueue;
     IwstETH public wstETH;
 
@@ -54,7 +51,6 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
     function setUp() public override {
         super.setUp();
-        lstLooper = LSTAaveLooper(payable(address(strategy)));
         withdrawalQueue = IQueueExtended(WITHDRAWAL_QUEUE_ADDR);
         wstETH = IwstETH(WSTETH);
 
@@ -90,8 +86,24 @@ contract LSTWithdrawalTest is SetupAaveLST {
         vm.prank(emergencyAdmin);
         strategy.convertAssetToCollateral(looseWeth);
 
-        wstETHAmount = lstLooper.balanceOfCollateralToken();
+        wstETHAmount = strategy.balanceOfCollateralToken();
         assertGt(wstETHAmount, 0, "!wstETH after conversion");
+    }
+
+    function _pendingRedemptions() internal view returns (uint256) {
+        return cooldownAdapter.pendingRedemptions();
+    }
+
+    function _initiateLSTWithdrawal(uint256 amount) internal returns (uint256) {
+        return abi.decode(strategy.initiateCooldown(amount, ""), (uint256));
+    }
+
+    function _claimLSTWithdrawal(uint256 requestId) internal returns (uint256) {
+        return
+            abi.decode(
+                strategy.claimCooldown(abi.encode(requestId)),
+                (uint256)
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -116,17 +128,17 @@ contract LSTWithdrawalTest is SetupAaveLST {
             withdrawAmount = wstETH.getWstETHByStETH(maxWithdrawal - 1e16);
         }
 
-        uint256 pendingBefore = lstLooper.pendingRedemptions();
+        uint256 pendingBefore = _pendingRedemptions();
 
         // Initiate withdrawal
         vm.prank(emergencyAdmin);
-        uint256 nftId = lstLooper.initiateLSTWithdrawal(withdrawAmount);
+        uint256 nftId = _initiateLSTWithdrawal(withdrawAmount);
 
         // Verify NFT was created
         assertGt(nftId, 0, "!nftId");
 
         // Verify pending redemptions increased
-        uint256 pendingAfter = lstLooper.pendingRedemptions();
+        uint256 pendingAfter = _pendingRedemptions();
         assertGt(pendingAfter, pendingBefore, "!pending increased");
     }
 
@@ -139,21 +151,21 @@ contract LSTWithdrawalTest is SetupAaveLST {
         // Random user should fail
         vm.expectRevert("!emergency authorized");
         vm.prank(user);
-        lstLooper.initiateLSTWithdrawal(1e18);
+        strategy.initiateCooldown(1e18, "");
 
         // Keeper should fail
         vm.expectRevert("!emergency authorized");
         vm.prank(keeper);
-        lstLooper.initiateLSTWithdrawal(1e18);
+        strategy.initiateCooldown(1e18, "");
 
         // Management should succeed
         vm.prank(management);
-        uint256 nftId = lstLooper.initiateLSTWithdrawal(1e18);
+        uint256 nftId = _initiateLSTWithdrawal(1e18);
         assertGt(nftId, 0, "!management call");
 
         // EmergencyAdmin should succeed (using remaining wstETH)
         vm.prank(emergencyAdmin);
-        nftId = lstLooper.initiateLSTWithdrawal(1e18);
+        nftId = _initiateLSTWithdrawal(1e18);
         assertGt(nftId, 0, "!emergencyAdmin call");
     }
 
@@ -169,7 +181,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
         vm.expectRevert();
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(tooSmall);
+        strategy.initiateCooldown(tooSmall, "");
     }
 
     function test_initiateLSTWithdrawal_aboveMaximum() public {
@@ -197,7 +209,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
         // Should revert if stETH equivalent exceeds max
         vm.expectRevert();
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(tooLarge);
+        strategy.initiateCooldown(tooLarge, "");
     }
 
     function test_initiateLSTWithdrawal_capsToBalance() public {
@@ -208,13 +220,13 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
         // Request more than available - should cap to balance
         uint256 requestAmount = wstETHBalance * 2;
-        uint256 pendingBefore = lstLooper.pendingRedemptions();
+        uint256 pendingBefore = _pendingRedemptions();
 
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(requestAmount);
+        strategy.initiateCooldown(requestAmount, "");
 
         // Pending should reflect the capped amount (actual stETH from unwrap)
-        uint256 pendingAfter = lstLooper.pendingRedemptions();
+        uint256 pendingAfter = _pendingRedemptions();
         uint256 expectedStETH = wstETH.getStETHByWstETH(wstETHBalance);
 
         // Allow for some rounding (stETH has rounding)
@@ -235,15 +247,15 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
         // First withdrawal
         vm.prank(emergencyAdmin);
-        uint256 nftId1 = lstLooper.initiateLSTWithdrawal(halfBalance);
+        uint256 nftId1 = _initiateLSTWithdrawal(halfBalance);
 
-        uint256 pendingAfterFirst = lstLooper.pendingRedemptions();
+        uint256 pendingAfterFirst = _pendingRedemptions();
 
         // Second withdrawal (uses remaining wstETH)
         vm.prank(emergencyAdmin);
-        uint256 nftId2 = lstLooper.initiateLSTWithdrawal(halfBalance);
+        uint256 nftId2 = _initiateLSTWithdrawal(halfBalance);
 
-        uint256 pendingAfterSecond = lstLooper.pendingRedemptions();
+        uint256 pendingAfterSecond = _pendingRedemptions();
 
         // Verify both NFTs created and pending accumulated
         assertGt(nftId1, 0, "!nftId1");
@@ -263,12 +275,12 @@ contract LSTWithdrawalTest is SetupAaveLST {
         // Random user should fail
         vm.expectRevert("!emergency authorized");
         vm.prank(user);
-        lstLooper.claimLSTWithdrawal(fakeClaimId);
+        strategy.claimCooldown(abi.encode(fakeClaimId));
 
         // Keeper should fail
         vm.expectRevert("!emergency authorized");
         vm.prank(keeper);
-        lstLooper.claimLSTWithdrawal(fakeClaimId);
+        strategy.claimCooldown(abi.encode(fakeClaimId));
     }
 
     function test_claimLSTWithdrawal_withMock(uint256 _amount) public {
@@ -289,23 +301,23 @@ contract LSTWithdrawalTest is SetupAaveLST {
         }
 
         vm.prank(emergencyAdmin);
-        uint256 nftId = lstLooper.initiateLSTWithdrawal(withdrawAmount);
+        uint256 nftId = _initiateLSTWithdrawal(withdrawAmount);
 
-        uint256 pendingBefore = lstLooper.pendingRedemptions();
-        uint256 wethBefore = asset.balanceOf(address(lstLooper));
+        uint256 pendingBefore = _pendingRedemptions();
+        uint256 wethBefore = asset.balanceOf(address(strategy));
 
         // Setup mock withdrawal queue that sends ETH on claim
         _setupMockWithdrawalQueue(pendingBefore);
 
         vm.prank(emergencyAdmin);
-        lstLooper.claimLSTWithdrawal(nftId);
+        _claimLSTWithdrawal(nftId);
 
         // Verify WETH balance increased
-        uint256 wethAfter = asset.balanceOf(address(lstLooper));
+        uint256 wethAfter = asset.balanceOf(address(strategy));
         assertGt(wethAfter, wethBefore, "!weth increased");
 
         // Verify pending reduced (should be 0 since we claimed exact amount)
-        uint256 pendingAfter = lstLooper.pendingRedemptions();
+        uint256 pendingAfter = _pendingRedemptions();
         assertEq(pendingAfter, 0, "!pending cleared");
     }
 
@@ -318,15 +330,15 @@ contract LSTWithdrawalTest is SetupAaveLST {
 
         // First withdrawal
         vm.prank(emergencyAdmin);
-        uint256 nftId1 = lstLooper.initiateLSTWithdrawal(halfBalance);
+        uint256 nftId1 = _initiateLSTWithdrawal(halfBalance);
 
-        uint256 pendingAfterFirst = lstLooper.pendingRedemptions();
+        uint256 pendingAfterFirst = _pendingRedemptions();
 
         // Second withdrawal (uses remaining wstETH)
         vm.prank(emergencyAdmin);
-        uint256 nftId2 = lstLooper.initiateLSTWithdrawal(halfBalance);
+        uint256 nftId2 = _initiateLSTWithdrawal(halfBalance);
 
-        uint256 totalPending = lstLooper.pendingRedemptions();
+        uint256 totalPending = _pendingRedemptions();
         assertGt(totalPending, pendingAfterFirst, "!total pending");
 
         // Claim first withdrawal - setup mock with exact amount for first claim
@@ -334,9 +346,9 @@ contract LSTWithdrawalTest is SetupAaveLST {
         _setupMockWithdrawalQueue(claimAmount1);
 
         vm.prank(emergencyAdmin);
-        lstLooper.claimLSTWithdrawal(nftId1);
+        _claimLSTWithdrawal(nftId1);
 
-        uint256 pendingAfterFirstClaim = lstLooper.pendingRedemptions();
+        uint256 pendingAfterFirstClaim = _pendingRedemptions();
         assertLt(
             pendingAfterFirstClaim,
             totalPending,
@@ -348,9 +360,9 @@ contract LSTWithdrawalTest is SetupAaveLST {
         _setupMockWithdrawalQueue(pendingAfterFirstClaim);
 
         vm.prank(emergencyAdmin);
-        lstLooper.claimLSTWithdrawal(nftId2);
+        _claimLSTWithdrawal(nftId2);
 
-        uint256 pendingAfterSecondClaim = lstLooper.pendingRedemptions();
+        uint256 pendingAfterSecondClaim = _pendingRedemptions();
 
         // After claiming both, pending should be 0
         assertEq(
@@ -367,23 +379,24 @@ contract LSTWithdrawalTest is SetupAaveLST {
         _setupWstETHForWithdrawal(_amount);
 
         vm.prank(emergencyAdmin);
-        uint256 nftId = lstLooper.initiateLSTWithdrawal(1e18);
+        uint256 nftId = _initiateLSTWithdrawal(1e18);
 
-        uint256 wethBefore = asset.balanceOf(address(lstLooper));
-        uint256 pendingAmount = lstLooper.pendingRedemptions();
+        uint256 wethBefore = asset.balanceOf(address(strategy));
+        uint256 pendingAmount = _pendingRedemptions();
 
         // Setup mock to send exact pending amount
         _setupMockWithdrawalQueue(pendingAmount);
 
         vm.prank(emergencyAdmin);
-        lstLooper.claimLSTWithdrawal(nftId);
+        _claimLSTWithdrawal(nftId);
 
         // All ETH should be converted to WETH
-        uint256 wethAfter = asset.balanceOf(address(lstLooper));
-        assertEq(address(lstLooper).balance, 0, "!eth should be 0");
-        assertEq(
+        uint256 wethAfter = asset.balanceOf(address(strategy));
+        assertEq(address(cooldownAdapter).balance, 0, "!eth should be 0");
+        assertApproxEqAbs(
             wethAfter - wethBefore,
             pendingAmount,
+            1,
             "!weth increase matches eth received"
         );
     }
@@ -417,7 +430,7 @@ contract LSTWithdrawalTest is SetupAaveLST {
         vm.prank(emergencyAdmin);
         strategy.convertAssetToCollateral(looseAssets);
 
-        uint256 wstETHBalance = lstLooper.balanceOfCollateralToken();
+        uint256 wstETHBalance = strategy.balanceOfCollateralToken();
         assertGt(wstETHBalance, 0, "!wstETH after conversion");
 
         // 4. Initiate LST withdrawal
@@ -433,36 +446,36 @@ contract LSTWithdrawalTest is SetupAaveLST {
         }
 
         vm.prank(emergencyAdmin);
-        uint256 nftId = lstLooper.initiateLSTWithdrawal(withdrawAmount);
+        uint256 nftId = _initiateLSTWithdrawal(withdrawAmount);
 
         assertGt(nftId, 0, "!nft created");
-        uint256 pendingAmount = lstLooper.pendingRedemptions();
+        uint256 pendingAmount = _pendingRedemptions();
         assertGt(pendingAmount, 0, "!pending set");
 
         // 5. Setup mock to send ETH on claim
         _setupMockWithdrawalQueue(pendingAmount);
 
-        uint256 wethBefore = asset.balanceOf(address(lstLooper));
+        uint256 wethBefore = asset.balanceOf(address(strategy));
 
         vm.prank(emergencyAdmin);
-        lstLooper.claimLSTWithdrawal(nftId);
+        _claimLSTWithdrawal(nftId);
 
         // 6. Verify final state
-        uint256 wethAfter = asset.balanceOf(address(lstLooper));
+        uint256 wethAfter = asset.balanceOf(address(strategy));
         assertGt(wethAfter, wethBefore, "!weth recovered");
 
         // Pending should be cleared (claimed amount >= pending)
-        assertEq(lstLooper.pendingRedemptions(), 0, "!pending cleared");
+        assertEq(_pendingRedemptions(), 0, "!pending cleared");
     }
 
     function test_pendingRedemptions_initiallyZero() public view {
-        assertEq(lstLooper.pendingRedemptions(), 0, "!initial pending");
+        assertEq(_pendingRedemptions(), 0, "!initial pending");
     }
 
     function test_receive_acceptsEth() public {
-        // Strategy should accept ETH (needed for withdrawal claims)
+        // Adapter should accept ETH (needed for withdrawal claims)
         vm.deal(address(this), 1 ether);
-        (bool success, ) = address(lstLooper).call{value: 1 ether}("");
+        (bool success, ) = address(cooldownAdapter).call{value: 1 ether}("");
         assertTrue(success, "!receive eth");
     }
 
@@ -473,13 +486,13 @@ contract LSTWithdrawalTest is SetupAaveLST {
         strategy.tend();
 
         // No loose wstETH in strategy
-        assertEq(lstLooper.balanceOfCollateralToken(), 0, "!no wstETH");
+        assertEq(strategy.balanceOfCollateralToken(), 0, "!no wstETH");
 
         // Should revert because there's no wstETH to withdraw
-        // (amount gets capped to 0, unwrap(0) reverts from wstETH contract)
-        vm.expectRevert("wstETH: zero amount unwrap not allowed");
+        // (amount gets capped to 0 before adapter execution)
+        vm.expectRevert("!amount");
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(1e18);
+        strategy.initiateCooldown(1e18, "");
     }
 
     function test_pendingRedemptions_accumulates() public {
@@ -489,24 +502,24 @@ contract LSTWithdrawalTest is SetupAaveLST {
         uint256 wstETHBalance = _setupWstETHForWithdrawal(_amount);
         uint256 thirdBalance = wstETHBalance / 3;
 
-        assertEq(lstLooper.pendingRedemptions(), 0, "!initial zero");
+        assertEq(_pendingRedemptions(), 0, "!initial zero");
 
         // First withdrawal
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(thirdBalance);
-        uint256 pending1 = lstLooper.pendingRedemptions();
+        strategy.initiateCooldown(thirdBalance, "");
+        uint256 pending1 = _pendingRedemptions();
         assertGt(pending1, 0, "!pending after first");
 
         // Second withdrawal
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(thirdBalance);
-        uint256 pending2 = lstLooper.pendingRedemptions();
+        strategy.initiateCooldown(thirdBalance, "");
+        uint256 pending2 = _pendingRedemptions();
         assertGt(pending2, pending1, "!pending accumulated");
 
         // Third withdrawal
         vm.prank(emergencyAdmin);
-        lstLooper.initiateLSTWithdrawal(thirdBalance);
-        uint256 pending3 = lstLooper.pendingRedemptions();
+        strategy.initiateCooldown(thirdBalance, "");
+        uint256 pending3 = _pendingRedemptions();
         assertGt(pending3, pending2, "!pending accumulated again");
     }
 }

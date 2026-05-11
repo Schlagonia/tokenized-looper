@@ -6,14 +6,16 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {LSTAaveLooper} from "../../../aave/LSTAaveLooper.sol";
-import {WETHWstETHExchange} from "../../../periphery/WETHWstETHExchange.sol";
+import {AaveLooper} from "../../../aave/AaveLooper.sol";
+import {WETHWstETHExchange} from "../../../periphery/exchanges/WETHWstETHExchange.sol";
+import {LidoWstETHCooldownAdapter} from "../../../periphery/cooldowns/LidoWstETHCooldownAdapter.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
 /// @notice Setup for LST (wstETH/WETH) Aave V3 Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
 contract SetupAaveLST is Setup {
     WETHWstETHExchange public exchange;
+    LidoWstETHCooldownAdapter public cooldownAdapter;
 
     // Aave V3 Core Mainnet
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -63,7 +65,12 @@ contract SetupAaveLST is Setup {
     function setUpStrategy() public virtual override returns (address) {
         exchange = new WETHWstETHExchange();
 
-        LSTAaveLooper looper = new LSTAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        AaveLooper looper = new AaveLooper(
             address(asset),
             "LST Aave Looper",
             WSTETH,
@@ -71,7 +78,14 @@ contract SetupAaveLST is Setup {
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new LidoWstETHCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         exchange.transferGovernance(management);

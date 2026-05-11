@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseExchange} from "./BaseExchange.sol";
-import {ISteth, ICurveFi, IWETH, IwstETH} from "../interfaces/IStethInterfaces.sol";
+import {ISteth, ICurveFi, IWETH, IwstETH} from "../../interfaces/IStethInterfaces.sol";
 
 /**
  * @title WETHWstETHExchange

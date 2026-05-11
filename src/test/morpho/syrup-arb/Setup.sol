@@ -4,16 +4,18 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {Id} from "../../../interfaces/morpho/IMorpho.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {FluidExchange} from "../../../periphery/FluidExchange.sol";
+import {SyrupCooldownAdapter} from "../../../periphery/cooldowns/SyrupCooldownAdapter.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {FluidExchange} from "../../../periphery/exchanges/FluidExchange.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests on Arbitrum
 contract SetupSyrupUsdcArbMorpho is Setup {
     MetaExchange public exchange;
     FluidExchange public fluidExchange;
+    SyrupCooldownAdapter public cooldownAdapter;
 
     // Arbitrum Morpho deployment
     address public constant ARB_MORPHO =
@@ -76,14 +78,26 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         exchange = new MetaExchange(ARB_WETH);
         fluidExchange = new FluidExchange(ARB_WETH);
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        MorphoLooper looper = new MorphoLooper(
             address(asset),
             "syrupUSDC/USDC Arbitrum Morpho Looper",
             ARB_SYRUP_USDC,
             ARB_MORPHO,
             SYRUP_USDC_MARKET_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));

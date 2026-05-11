@@ -6,19 +6,21 @@ import "forge-std/console2.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
+import {AaveLooper} from "../../../aave/AaveLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
+import {SyrupCooldownAdapter} from "../../../periphery/cooldowns/SyrupCooldownAdapter.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/exchanges/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/exchanges/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
     MetaExchange public exchange;
     UniswapUniversalRouterExchange public uniExchange;
     SyrupDepositExchange public syrupExchange;
+    SyrupCooldownAdapter public cooldownAdapter;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
     bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
@@ -83,7 +85,12 @@ contract SetupAaveSyrupUSDT is Setup {
         uniExchange = new UniswapUniversalRouterExchange(WETH);
         syrupExchange = new SyrupDepositExchange();
 
-        SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        AaveLooper looper = new AaveLooper(
             address(asset),
             "syrupUSDT Aave Looper",
             SYRUP_USDT,
@@ -91,7 +98,14 @@ contract SetupAaveSyrupUSDT is Setup {
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new SyrupCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));

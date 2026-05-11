@@ -7,13 +7,13 @@ import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.so
 
 import {IExchange} from "../../interfaces/IExchange.sol";
 import {ISyrupRouter} from "../../interfaces/syrup/ISyrupRouter.sol";
-import {MetaExchange} from "../../periphery/MetaExchange.sol";
-import {BaseExchange} from "../../periphery/BaseExchange.sol";
-import {ERC4626Exchange} from "../../periphery/ERC4626Exchange.sol";
-import {LitePsmExchange} from "../../periphery/LitePsmExchange.sol";
-import {OriginMintExchange} from "../../periphery/OriginMintExchange.sol";
-import {SUSDSExchange} from "../../periphery/SUSDSExchange.sol";
-import {SyrupDepositExchange} from "../../periphery/SyrupDepositExchange.sol";
+import {MetaExchange} from "../../periphery/exchanges/MetaExchange.sol";
+import {BaseExchange} from "../../periphery/exchanges/BaseExchange.sol";
+import {ERC4626Exchange} from "../../periphery/exchanges/ERC4626Exchange.sol";
+import {LitePsmExchange} from "../../periphery/exchanges/LitePsmExchange.sol";
+import {OriginMintExchange} from "../../periphery/exchanges/OriginMintExchange.sol";
+import {SUSDSExchange} from "../../periphery/exchanges/SUSDSExchange.sol";
+import {SyrupDepositExchange} from "../../periphery/exchanges/SyrupDepositExchange.sol";
 
 interface IMintableToken {
     function mint(address to, uint256 amount) external;

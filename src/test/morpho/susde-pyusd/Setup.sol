@@ -4,13 +4,14 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {sUSDeMorphoLooper} from "../../../morpho/sUSDeMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
-import {CurveExchange} from "../../../periphery/CurveExchange.sol";
-import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../../../periphery/FluidExchange.sol";
+import {SUSDeCooldownAdapter} from "../../../periphery/cooldowns/SUSDeCooldownAdapter.sol";
+import {MetaExchange} from "../../../periphery/exchanges/MetaExchange.sol";
+import {CurveExchange} from "../../../periphery/exchanges/CurveExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/exchanges/ERC4626Exchange.sol";
+import {FluidExchange} from "../../../periphery/exchanges/FluidExchange.sol";
 
 /// @notice Setup for the sUSDe/PYUSD Morpho looper tests.
 contract SetupSUSDePYUSD is Setup {
@@ -18,6 +19,7 @@ contract SetupSUSDePYUSD is Setup {
     CurveExchange public curveExchange;
     ERC4626Exchange public erc4626Exchange;
     FluidExchange public fluidExchange;
+    SUSDeCooldownAdapter public cooldownAdapter;
 
     Id public constant SUSDE_PYUSD_MARKET_ID =
         Id.wrap(
@@ -85,14 +87,26 @@ contract SetupSUSDePYUSD is Setup {
         erc4626Exchange = new ERC4626Exchange();
         fluidExchange = new FluidExchange(WETH);
 
-        sUSDeMorphoLooper looper = new sUSDeMorphoLooper(
+        address expectedCooldownAdapter = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this)) + 1
+        );
+
+        MorphoLooper looper = new MorphoLooper(
             address(asset),
             "sUSDe/PYUSD Morpho Looper",
             SUSDE,
             MORPHO,
             SUSDE_PYUSD_MARKET_ID,
             address(exchange),
-            management
+            management,
+            expectedCooldownAdapter
+        );
+        cooldownAdapter = new SUSDeCooldownAdapter(address(looper));
+        assertEq(
+            address(cooldownAdapter),
+            expectedCooldownAdapter,
+            "!cooldown"
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));

@@ -7,6 +7,15 @@ import {SetupAaveLST} from "./Setup.sol";
 
 /// @notice Aave LST Shutdown tests - inherits all tests from ShutdownTest, uses Aave LST setup
 contract AaveLSTShutdownTest is SetupAaveLST, ShutdownTest {
+    function _assertIdleCollateralUnchanged(
+        uint256 actual,
+        uint256 expected,
+        string memory message
+    ) internal override {
+        // Aave aToken balances can drift by a few wei of yield while idle-mode tests skip time.
+        assertApproxEqRel(actual, expected, 1e10, message);
+    }
+
     function setUp() public override(SetupAaveLST, ShutdownTest) {
         SetupAaveLST.setUp();
     }
