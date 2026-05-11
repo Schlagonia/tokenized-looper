@@ -602,7 +602,7 @@ abstract contract LeverScenariosTest is Setup {
     /// @notice Case 2b should cap deleveraging flashloan size by maxAmountToSwap
     function test_lever_overLeveraged_maxAmountToSwap_capsDeleverage(
         uint256 equityAmount
-    ) public {
+    ) public virtual {
         vm.assume(equityAmount > minFuzzAmount && equityAmount < maxFuzzAmount);
 
         (

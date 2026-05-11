@@ -3,7 +3,7 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
 import {Setup} from "../../base/Setup.sol";
-import {SetupAaveLST} from "./Setup.sol";
+import {SetupSparkLendLST} from "./Setup.sol";
 import {LSTAaveLooper} from "../../../aave/LSTAaveLooper.sol";
 import {IQueue, IwstETH} from "../../../interfaces/IStethInterfaces.sol";
 
@@ -44,7 +44,7 @@ contract MockWithdrawalQueue {
 }
 
 /// @notice Tests for LSTAaveLooper manual LST withdrawal functions
-contract LSTWithdrawalTest is SetupAaveLST {
+contract LSTWithdrawalTest is SetupSparkLendLST {
     LSTAaveLooper public lstLooper;
     IQueueExtended public withdrawalQueue;
     IwstETH public wstETH;

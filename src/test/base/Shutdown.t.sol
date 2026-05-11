@@ -292,7 +292,7 @@ abstract contract ShutdownTest is Setup {
 
     function test_idleMode_tendRepaysDebtAndLeavesExcessIdle(
         uint256 _amount
-    ) public {
+    ) public virtual {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         mintAndDepositIntoStrategy(strategy, user, _amount);

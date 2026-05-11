@@ -47,8 +47,14 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @notice aToken address for collateral
     address public immutable A_TOKEN;
 
+    /// @notice aToken address for asset
+    address internal immutable ASSET_A_TOKEN;
+
     /// @notice Variable debt token address for the asset (borrow token)
     address public immutable VARIABLE_DEBT_TOKEN;
+
+    /// @notice True when the pool exposes Aave virtual reserve balances
+    bool internal immutable USE_VIRTUAL_BALANCE;
 
     /// @notice Cached decimals for collateral token
     uint256 internal immutable COLLATERAL_DECIMALS;
@@ -90,9 +96,18 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         );
 
         // Get aToken and variable debt token for the asset (borrow token)
-        (, , address _variableDebtToken) = DATA_PROVIDER
+        (address _assetAToken, , address _variableDebtToken) = DATA_PROVIDER
             .getReserveTokensAddresses(_asset);
+        ASSET_A_TOKEN = _assetAToken;
         VARIABLE_DEBT_TOKEN = _variableDebtToken;
+
+        (bool _useVirtualBalance, ) = POOL.staticcall(
+            abi.encodeWithSelector(
+                IPool.getVirtualUnderlyingBalance.selector,
+                _asset
+            )
+        );
+        USE_VIRTUAL_BALANCE = _useVirtualBalance;
 
         // Cache decimals to avoid repeated external calls
         COLLATERAL_DECIMALS = ERC20(_collateralToken).decimals();
@@ -270,9 +285,9 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        uint256 virtualLiquidity = IPool(POOL).getVirtualUnderlyingBalance(
-            address(asset)
-        );
+        uint256 virtualLiquidity = USE_VIRTUAL_BALANCE
+            ? IPool(POOL).getVirtualUnderlyingBalance(address(asset))
+            : asset.balanceOf(ASSET_A_TOKEN);
 
         (uint256 borrowCap, ) = DATA_PROVIDER.getReserveCaps(address(asset));
         if (borrowCap == 0) {

@@ -10,14 +10,14 @@ import {LSTAaveLooper} from "../../../aave/LSTAaveLooper.sol";
 import {WETHWstETHExchange} from "../../../periphery/WETHWstETHExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 
-/// @notice Setup for LST (wstETH/WETH) Aave V3 Looper tests
+/// @notice Setup for LST (wstETH/WETH) SparkLend Looper tests
 /// @dev Inherits from Setup and overrides strategy deployment and token config
-contract SetupAaveLST is Setup {
+contract SetupSparkLendLST is Setup {
     WETHWstETHExchange public exchange;
 
-    // Aave V3 Core Mainnet
-    address public constant AAVE_ADDRESSES_PROVIDER =
-        0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
+    // SparkLend Core Mainnet
+    address public constant SPARKLEND_ADDRESSES_PROVIDER =
+        0x02C3eA4e34C0cBd694D2adFa2c690EECbC1793eE;
     address public constant MORPHO_FLASHLOAN_PROVIDER =
         0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
 
@@ -56,7 +56,7 @@ contract SetupAaveLST is Setup {
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
         vm.label(WSTETH, "WSTETH");
-        vm.label(AAVE_ADDRESSES_PROVIDER, "AAVE_ADDRESSES_PROVIDER");
+        vm.label(SPARKLEND_ADDRESSES_PROVIDER, "SPARKLEND_ADDRESSES_PROVIDER");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
     }
 
@@ -65,9 +65,9 @@ contract SetupAaveLST is Setup {
 
         LSTAaveLooper looper = new LSTAaveLooper(
             address(asset),
-            "LST Aave Looper",
+            "LST SparkLend Looper",
             WSTETH,
-            AAVE_ADDRESSES_PROVIDER,
+            SPARKLEND_ADDRESSES_PROVIDER,
             MORPHO_FLASHLOAN_PROVIDER,
             EMODE_CATEGORY_ID,
             address(exchange),
@@ -96,13 +96,15 @@ contract SetupAaveLST is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        _strategy.setProfitMaxUnlockTime(0);
+
         vm.stopPrank();
 
         return address(_strategy);
     }
 
     /// @notice Override accrueYield - for LST just skip time
-    function accrueYield(uint256 _amount) public virtual override {
+    function accrueYield(uint256) public virtual override {
         skip(1 days);
         //airdrop(asset, address(strategy), (_amount * 500) / 10_000);
     }
