@@ -53,6 +53,23 @@ contract SyrupUsdcArbMorphoOperationTest is
         looper.zeroPendingRedemptions();
     }
 
+    function test_convertUnderlyingToAsset_sameAssetPath() public {
+        SyrupMorphoLooper looper = SyrupMorphoLooper(
+            payable(address(strategy))
+        );
+        uint256 amount = 1_000e6;
+
+        deal(ARB_USDC, address(strategy), amount);
+        assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
+
+        vm.prank(emergencyAdmin);
+        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+
+        assertEq(amountOut, amount, "!amountOut");
+        assertEq(looper.balanceOfUnderlying(), amount, "!still asset");
+        assertEq(asset.balanceOf(address(strategy)), amount, "!asset");
+    }
+
     function test_exchange_routes_areConfiguredForArbSyrupMarket() public view {
         MetaExchange.RouteStep[] memory forward = exchange.getRoute(
             ARB_USDC,

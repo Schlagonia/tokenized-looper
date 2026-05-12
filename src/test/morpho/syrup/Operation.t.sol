@@ -246,6 +246,29 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         strategy.report();
     }
 
+    function test_convertUnderlyingToAsset_swapsRedeemedUsdcToPyusd() public {
+        SyrupMorphoLooper looper = SyrupMorphoLooper(
+            payable(address(strategy))
+        );
+        uint256 amount = 1_000e6;
+
+        deal(USDC, address(strategy), amount);
+        assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
+
+        uint256 assetBefore = asset.balanceOf(address(strategy));
+
+        vm.prank(emergencyAdmin);
+        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+
+        assertGt(amountOut, 0, "!amountOut");
+        assertEq(looper.balanceOfUnderlying(), 0, "!underlying cleared");
+        assertEq(
+            asset.balanceOf(address(strategy)),
+            assetBefore + amountOut,
+            "!asset"
+        );
+    }
+
     function test_exchange_setSyrupDepositConfig_onlyManagement() public {
         vm.prank(user);
         vm.expectRevert("!operator");

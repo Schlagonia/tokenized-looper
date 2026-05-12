@@ -2,9 +2,12 @@
 pragma solidity ^0.8.18;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
 import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
 
 /**
@@ -15,6 +18,10 @@ import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
  *         Primary conversion path delegates to an external exchange contract.
  */
 contract SyrupMorphoLooper is MorphoLooper {
+    using SafeERC20 for ERC20;
+
+    address internal immutable UNDERLYING;
+
     /// @notice Shares queued for direct (async) redemption.
     uint256 public pendingRedemptionShares;
 
@@ -22,6 +29,7 @@ contract SyrupMorphoLooper is MorphoLooper {
         address _asset,
         string memory _name,
         address _collateralToken,
+        address _underlying,
         address _morpho,
         Id _marketId,
         address _exchange,
@@ -36,7 +44,9 @@ contract SyrupMorphoLooper is MorphoLooper {
             _exchange,
             _governance
         )
-    {}
+    {
+        UNDERLYING = _underlying;
+    }
 
     /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -57,6 +67,10 @@ contract SyrupMorphoLooper is MorphoLooper {
         // Don't allow reports since we cannot guarantee the pending redemption shares are filled or not
         require(pendingRedemptionShares == 0, "pending redemptions");
         return super._harvestAndReport();
+    }
+
+    function balanceOfUnderlying() public view returns (uint256) {
+        return ERC20(UNDERLYING).balanceOf(address(this));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -102,5 +116,30 @@ contract SyrupMorphoLooper is MorphoLooper {
     ///       need to be called once done to allow reports to continue.
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
         pendingRedemptionShares = 0;
+    }
+
+    function convertUnderlyingToAsset(
+        uint256 amount
+    ) external onlyEmergencyAuthorized returns (uint256) {
+        amount = Math.min(amount, balanceOfUnderlying());
+        if (amount == 0) return 0;
+
+        uint256 amountOut = amount;
+        if (UNDERLYING != address(asset)) {
+            uint256 expectedAmountOut = _collateralToAsset(
+                ISyrupPool(collateralToken).convertToShares(amount)
+            );
+
+            ERC20(UNDERLYING).forceApprove(exchange, amount);
+            amountOut = IExchange(exchange).exchange(
+                UNDERLYING,
+                address(asset),
+                amount,
+                0
+            );
+            _recordSlippage(expectedAmountOut, amountOut);
+        }
+
+        return amountOut;
     }
 }

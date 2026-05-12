@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.18;
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
-import {MorphoLooper, ERC20} from "./MorphoLooper.sol";
+import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
-import {IsUSDe} from "../interfaces/IsUSDe.sol";
-import {IExchange} from "../interfaces/IExchange.sol";
+import {EthenaCooldownLib} from "../libraries/EthenaCooldownLib.sol";
 
 /**
  * @title sUSDeMorphoLooper
@@ -19,10 +17,9 @@ import {IExchange} from "../interfaces/IExchange.sol";
  *         existing exchange wiring.
  */
 contract sUSDeMorphoLooper is MorphoLooper {
-    using SafeERC20 for ERC20;
-
     /// @notice The underlying token (USDe) that sUSDe wraps.
-    address public immutable UNDERLYING;
+    address public constant UNDERLYING =
+        0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
 
     /// @notice Asset value queued for sUSDe cooldown — populated by
     ///         `initiateCooldown` and zeroed by `claimCooldown`.
@@ -47,9 +44,7 @@ contract sUSDeMorphoLooper is MorphoLooper {
             _exchange,
             _governance
         )
-    {
-        UNDERLYING = IERC4626(_collateralToken).asset();
-    }
+    {}
 
     receive() external payable {}
 
@@ -69,7 +64,7 @@ contract sUSDeMorphoLooper is MorphoLooper {
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
-        return ERC20(UNDERLYING).balanceOf(address(this));
+        return EthenaCooldownLib.balanceOfUnderlying();
     }
 
     /// @notice Block reports while a cooldown is in flight — the protocol's
@@ -96,13 +91,13 @@ contract sUSDeMorphoLooper is MorphoLooper {
         require(pendingRedemptions == 0, "pending redemptions");
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
-        assets = IsUSDe(collateralToken).cooldownShares(_shares);
+        assets = EthenaCooldownLib.initiate(_shares);
         pendingRedemptions += assets;
     }
 
     /// @notice Pull queued USDe out of the cooldown silo into this strategy.
     function claimCooldown() external onlyEmergencyAuthorized {
-        IsUSDe(collateralToken).unstake(address(this));
+        EthenaCooldownLib.claim();
         pendingRedemptions = 0;
     }
 
@@ -117,23 +112,10 @@ contract sUSDeMorphoLooper is MorphoLooper {
     function convertUnderlyingToAsset(
         uint256 amount
     ) external onlyEmergencyAuthorized returns (uint256) {
-        amount = Math.min(amount, balanceOfUnderlying());
+        (uint256 shares, uint256 amountOut) = EthenaCooldownLib
+            .convertUnderlyingToAsset(amount, exchange, address(asset));
 
-        ERC20(UNDERLYING).forceApprove(exchange, amount);
-
-        uint256 amountOut = IExchange(exchange).exchange(
-            UNDERLYING,
-            address(asset),
-            amount,
-            0
-        );
-
-        _recordSlippage(
-            _collateralToAsset(
-                IERC4626(collateralToken).convertToShares(amount)
-            ),
-            amountOut
-        );
+        _recordSlippage(_collateralToAsset(shares), amountOut);
         return amountOut;
     }
 }
