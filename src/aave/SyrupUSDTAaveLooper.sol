@@ -36,7 +36,9 @@ contract SyrupUSDTAaveLooper is AaveLooper {
             _exchange,
             _governance
         )
-    {}
+    {
+        require(ISyrupPool(_collateralToken).asset() == _asset, "!underlying");
+    }
 
     /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -56,6 +58,10 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     {
         require(pendingRedemptionShares == 0, "pending redemptions");
         return super._harvestAndReport();
+    }
+
+    function balanceOfUnderlying() public view returns (uint256) {
+        return balanceOfAsset();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -98,6 +104,20 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     /// @notice Manually zero pending redemptions in exceptional scenarios.
     function zeroPendingRedemptions() external onlyEmergencyAuthorized {
         pendingRedemptionShares = 0;
+    }
+
+    function convertUnderlyingToAsset(
+        uint256 amount
+    ) external onlyEmergencyAuthorized returns (uint256) {
+        amount = Math.min(amount, balanceOfUnderlying());
+        if (amount == 0) return 0;
+
+        uint256 expectedAmountOut = _collateralToAsset(
+            ISyrupPool(collateralToken).convertToShares(amount)
+        );
+
+        _recordSlippage(expectedAmountOut, amount);
+        return amount;
     }
 
     function _claimAndSellRewards() internal pure override {}

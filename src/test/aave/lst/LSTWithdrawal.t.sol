@@ -271,6 +271,30 @@ contract LSTWithdrawalTest is SetupSparkLendLST {
         lstLooper.claimLSTWithdrawal(fakeClaimId);
     }
 
+    function test_zeroPendingRedemptions_accessControl() public {
+        vm.expectRevert("!emergency authorized");
+        vm.prank(user);
+        lstLooper.zeroPendingRedemptions();
+
+        vm.expectRevert("!emergency authorized");
+        vm.prank(keeper);
+        lstLooper.zeroPendingRedemptions();
+    }
+
+    function test_zeroPendingRedemptions_clearsAccountingOnly() public {
+        uint256 wstETHBalance = _setupWstETHForWithdrawal(10e18);
+
+        vm.prank(emergencyAdmin);
+        lstLooper.initiateLSTWithdrawal(wstETHBalance / 2);
+
+        assertGt(lstLooper.pendingRedemptions(), 0, "!pending");
+
+        vm.prank(emergencyAdmin);
+        lstLooper.zeroPendingRedemptions();
+
+        assertEq(lstLooper.pendingRedemptions(), 0, "!pending cleared");
+    }
+
     function test_claimLSTWithdrawal_withMock(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
@@ -460,7 +484,7 @@ contract LSTWithdrawalTest is SetupSparkLendLST {
     }
 
     function test_receive_acceptsEth() public {
-        // Strategy should accept ETH (needed for withdrawal claims)
+        // Lido claims send ETH here before the linked library wraps it to WETH.
         vm.deal(address(this), 1 ether);
         (bool success, ) = address(lstLooper).call{value: 1 ether}("");
         assertTrue(success, "!receive eth");

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.18;
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
-import {AaveLooper, ERC20} from "./AaveLooper.sol";
-import {IsUSDe} from "../interfaces/IsUSDe.sol";
-import {IExchange} from "../interfaces/IExchange.sol";
+import {AaveLooper} from "./AaveLooper.sol";
+import {EthenaCooldownLib} from "../libraries/EthenaCooldownLib.sol";
 
 /**
  * @title sUSDeAaveLooper
@@ -15,10 +13,6 @@ import {IExchange} from "../interfaces/IExchange.sol";
  * @dev Example: Use sUSDe as collateral, borrow USDT/USDC, swap to sUSDe, repeat.
  */
 contract sUSDeAaveLooper is AaveLooper {
-    using SafeERC20 for *;
-
-    address public immutable UNDERLYING;
-
     /// @notice Shares queued for cooldowns.
     uint256 public pendingRedemptions;
 
@@ -42,11 +36,7 @@ contract sUSDeAaveLooper is AaveLooper {
             _exchange,
             _governance
         )
-    {
-        UNDERLYING = IERC4626(address(collateralToken)).asset();
-    }
-
-    receive() external payable {}
+    {}
 
     function estimatedTotalAssets() public view override returns (uint256) {
         return
@@ -59,7 +49,7 @@ contract sUSDeAaveLooper is AaveLooper {
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
-        return ERC20(UNDERLYING).balanceOf(address(this));
+        return EthenaCooldownLib.balanceOfUnderlying();
     }
 
     function _harvestAndReport()
@@ -81,13 +71,13 @@ contract sUSDeAaveLooper is AaveLooper {
         require(pendingRedemptions == 0, "pending redemptions");
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
-        assets = IsUSDe(address(collateralToken)).cooldownShares(_shares);
-        pendingRedemptions += assets;
+        assets = EthenaCooldownLib.initiate(_shares);
+        pendingRedemptions = assets;
     }
 
     /// @notice Claim cooldowned assets
     function claimCooldown() external onlyEmergencyAuthorized {
-        IsUSDe(address(collateralToken)).unstake(address(this));
+        EthenaCooldownLib.claim();
         pendingRedemptions = 0;
     }
 
@@ -100,23 +90,10 @@ contract sUSDeAaveLooper is AaveLooper {
     function convertUnderlyingToAsset(
         uint256 amount
     ) public onlyEmergencyAuthorized returns (uint256) {
-        amount = Math.min(amount, balanceOfUnderlying());
+        (uint256 shares, uint256 amountOut) = EthenaCooldownLib
+            .convertUnderlyingToAsset(amount, exchange, address(asset));
 
-        ERC20(UNDERLYING).forceApprove(exchange, amount);
-
-        uint256 amountOut = IExchange(exchange).exchange(
-            UNDERLYING,
-            address(asset),
-            amount,
-            0
-        );
-
-        _recordSlippage(
-            _collateralToAsset(
-                IERC4626(address(collateralToken)).convertToShares(amount)
-            ),
-            amountOut
-        );
+        _recordSlippage(_collateralToAsset(shares), amountOut);
         return amountOut;
     }
 }

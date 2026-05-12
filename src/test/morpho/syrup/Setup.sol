@@ -82,6 +82,7 @@ contract SetupSyrupMorpho is Setup {
             address(asset),
             "syrupUSDC/PYUSD Morpho Looper",
             SYRUP_USDC,
+            USDC,
             MORPHO,
             SYRUP_USDC_PYUSD_MARKET_ID,
             address(exchange),
@@ -158,6 +159,14 @@ contract SetupSyrupMorpho is Setup {
             tokenTo: PYUSD
         });
         exchange.setRoute(SYRUP_USDC, PYUSD, reverse);
+
+        MetaExchange.RouteStep[]
+            memory redeemedUnderlying = new MetaExchange.RouteStep[](1);
+        redeemedUnderlying[0] = MetaExchange.RouteStep({
+            exchange: address(curveExchange),
+            tokenTo: PYUSD
+        });
+        exchange.setRoute(USDC, PYUSD, redeemedUnderlying);
     }
 
     function _setCurveRoute(

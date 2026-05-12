@@ -41,6 +41,23 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         looper.zeroPendingRedemptions();
     }
 
+    function test_convertUnderlyingToAsset_sameAssetPath() public {
+        SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
+            payable(address(strategy))
+        );
+        uint256 amount = 1_000e6;
+
+        deal(USDT, address(strategy), amount);
+        assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
+
+        vm.prank(emergencyAdmin);
+        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+
+        assertEq(amountOut, amount, "!amountOut");
+        assertEq(looper.balanceOfUnderlying(), amount, "!still asset");
+        assertEq(asset.balanceOf(address(strategy)), amount, "!asset");
+    }
+
     function test_setExchange_onlyGovernance() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
