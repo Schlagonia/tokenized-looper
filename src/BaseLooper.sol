@@ -167,17 +167,16 @@ abstract contract BaseLooper is BaseHealthCheck {
         );
     }
 
-    /// @notice Set the leverage parameters for the strategy.
-    /// @dev Allows keepers to set target params without changing the max leverage ratio.
+    /// @notice Set the target leverage ratio for the strategy.
+    /// @dev Allows keepers to tune target leverage without changing the buffer or max leverage ratio.
+    ///      Setting target to 0 disables leverage targeting and clears the buffer.
     /// @param _targetLeverageRatio The target leverage ratio.
-    /// @param _leverageBuffer The buffer tolerance in WAD.
     function setLeverageParams(
-        uint256 _targetLeverageRatio,
-        uint256 _leverageBuffer
+        uint256 _targetLeverageRatio
     ) external onlyKeepers {
         _setLeverageParams(
             _targetLeverageRatio,
-            _leverageBuffer,
+            _targetLeverageRatio == 0 ? 0 : leverageBuffer,
             maxLeverageRatio
         );
     }

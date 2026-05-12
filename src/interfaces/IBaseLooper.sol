@@ -117,12 +117,9 @@ interface IBaseLooper is IBaseHealthCheck {
         uint256 _maxLeverageRatio
     ) external;
 
-    /// @notice Set target leverage ratio and buffer without changing max leverage.
-    /// @dev Keeper path for day-to-day tuning; reuses the current `maxLeverageRatio`.
-    function setLeverageParams(
-        uint256 _targetLeverageRatio,
-        uint256 _leverageBuffer
-    ) external;
+    /// @notice Set target leverage ratio without changing max leverage.
+    /// @dev Keeper path for day-to-day tuning. Reuses the current buffer unless target is 0.
+    function setLeverageParams(uint256 _targetLeverageRatio) external;
 
     function position()
         external
