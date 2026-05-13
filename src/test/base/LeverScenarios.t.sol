@@ -125,33 +125,30 @@ abstract contract LeverScenariosTest is Setup {
     function _setupOverLeveragedPositionWithIdle(
         uint256 equity
     ) internal returns (uint256 collateral, uint256 debt) {
-        mintAndDepositIntoStrategy(strategy, user, equity);
-
-        vm.prank(keeper);
-        strategy.tend();
+        _setupOverLeveragedPosition(equity);
 
         (uint256 currentCollateral, uint256 currentDebt) = strategy.position();
         uint256 currentEquity = currentCollateral - currentDebt;
+        (, uint256 targetDebt) = _getTargetPosition(currentEquity);
+        require(currentDebt > targetDebt, "setup not over-leveraged");
+
+        // Leave loose idle that covers part, but not all, of the delever
+        // amount. This hits Case 2's residual flashloan branch without using
+        // manualBorrow to push the position above max leverage.
+        uint256 debtToRepay = currentDebt - targetDebt;
         uint256 targetLeverage = strategy.targetLeverageRatio();
-        uint256 buffer = strategy.leverageBuffer();
-        uint256 overLeverage = targetLeverage + buffer + 0.3e18;
-
-        // Borrow more but DO NOT convert/supply: leaves loose asset behind so
-        // a follow-up tend hits Case 2 with `_amount > 0`.
-        uint256 desiredCollateral = (currentEquity * overLeverage) / WAD;
-        uint256 desiredDebt = desiredCollateral - currentEquity;
-
-        vm.startPrank(management);
-        if (desiredDebt > currentDebt) {
-            strategy.manualBorrow(desiredDebt - currentDebt);
-        }
-        vm.stopPrank();
-
-        assertGt(
-            strategy.balanceOfAsset(),
-            0,
-            "expected loose idle asset after manualBorrow"
+        uint256 idleAmount = (debtToRepay * WAD) / (targetLeverage * 2);
+        uint256 residualDebtToRepay = debtToRepay -
+            (idleAmount * (targetLeverage - WAD)) /
+            WAD;
+        vm.assume(idleAmount > 0);
+        vm.assume(residualDebtToRepay > idleAmount);
+        vm.assume(
+            residualDebtToRepay - idleAmount > strategy.minAmountToBorrow()
         );
+        airdrop(asset, address(strategy), idleAmount);
+
+        assertGt(strategy.balanceOfAsset(), 0, "expected loose idle asset");
 
         (collateral, debt) = strategy.position();
     }

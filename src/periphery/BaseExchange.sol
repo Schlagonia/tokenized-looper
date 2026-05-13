@@ -19,10 +19,6 @@ abstract contract BaseExchange is IExchange, Governance {
 
     event OperatorSet(address indexed operator, bool allowed);
 
-    modifier onlyManagement() {
-        require(msg.sender == governance, "!management");
-        _;
-    }
 
     modifier onlyConfigOperator() {
         require(operators[msg.sender] || msg.sender == governance, "!operator");

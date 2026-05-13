@@ -27,7 +27,9 @@ contract InventorySwapper is BaseExchange {
 
     /// @notice Haircut applied to oracle quotes, in basis points.
     uint256 public slippage;
+    mapping(address => bool) public allowed;
 
+    event AllowedSet(address indexed account, bool allowed);
     event SlippageSet(uint256 slippage);
     event BalancePulled(
         address indexed token,
@@ -50,6 +52,9 @@ contract InventorySwapper is BaseExchange {
         COLLATERAL_TOKEN = _collateralToken;
         ORACLE = IOracle(_oracle);
 
+        allowed[msg.sender] = true;
+        emit AllowedSet(msg.sender, true);
+
         _setSlippage(_slippage);
     }
 
@@ -59,6 +64,15 @@ contract InventorySwapper is BaseExchange {
 
     function setSlippage(uint256 _slippage) external onlyGovernance {
         _setSlippage(_slippage);
+    }
+
+    function setAllowed(
+        address account,
+        bool isAllowed
+    ) external onlyGovernance {
+        require(account != address(0), "!account");
+        allowed[account] = isAllowed;
+        emit AllowedSet(account, isAllowed);
     }
 
     function pullBalance(
@@ -81,6 +95,8 @@ contract InventorySwapper is BaseExchange {
         uint256 amountIn,
         uint256
     ) internal view override returns (uint256 amountOut) {
+        require(allowed[msg.sender], "!allowed");
+
         uint256 rawAmountOut;
         uint256 price = ORACLE.price();
         require(price > 0, "!price");

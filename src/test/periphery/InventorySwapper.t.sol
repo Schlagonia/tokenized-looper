@@ -49,6 +49,7 @@ contract InventorySwapperTest is Test {
             address(oracle),
             100
         );
+        swapper.setAllowed(user, true);
     }
 
     function test_loanToCollateralUsesInventoryAndSlippage() public {
@@ -139,6 +140,46 @@ contract InventorySwapperTest is Test {
 
         swapper.setSlippage(250);
         assertEq(swapper.slippage(), 250, "!slippage");
+    }
+
+    function test_governanceCanSetAllowedExchangeUsers() public {
+        address blocked = address(0xCAFE);
+        uint256 amountIn = 100e18;
+
+        loanToken.mint(blocked, amountIn);
+        collateralToken.mint(address(swapper), 1_000e18);
+
+        vm.startPrank(blocked);
+        loanToken.approve(address(swapper), amountIn);
+        vm.expectRevert("!allowed");
+        swapper.exchange(
+            address(loanToken),
+            address(collateralToken),
+            amountIn,
+            0
+        );
+        vm.stopPrank();
+
+        vm.prank(blocked);
+        vm.expectRevert("!governance");
+        swapper.setAllowed(blocked, true);
+
+        vm.expectRevert("!account");
+        swapper.setAllowed(address(0), true);
+
+        swapper.setAllowed(blocked, true);
+        assertTrue(swapper.allowed(blocked), "!allowed");
+
+        vm.startPrank(blocked);
+        uint256 amountOut = swapper.exchange(
+            address(loanToken),
+            address(collateralToken),
+            amountIn,
+            0
+        );
+        vm.stopPrank();
+
+        assertEq(amountOut, 49.5e18, "!amountOut");
     }
 
     function test_governanceCanPullLooseBalances() public {

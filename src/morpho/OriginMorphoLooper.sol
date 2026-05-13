@@ -43,10 +43,9 @@ contract OriginMorphoLooper is MorphoLooper {
             super.estimatedTotalAssets() +
             _collateralToAsset(
                 IERC4626(address(collateralToken)).convertToShares(
-                    balanceOfUnderlying()
+                    balanceOfUnderlying() + pendingWithdrawalAssets
                 )
-            ) +
-            pendingWithdrawalAssets;
+            );
     }
 
     function balanceOfUnderlying() public view returns (uint256) {

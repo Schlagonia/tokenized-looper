@@ -36,12 +36,11 @@ library LidoWithdrawalLib {
     }
 
     function claim(uint256 requestId) external returns (uint256 assets) {
-        uint256 preBalance = address(this).balance;
+        uint256 preBalance = IWETH(WETH).balanceOf(address(this));
         IQueue(WITHDRAWAL_QUEUE).claimWithdrawal(requestId);
-        assets = address(this).balance - preBalance;
-
-        if (assets > 0) {
-            IWETH(WETH).deposit{value: assets}();
+        if (address(this).balance > 0) {
+            IWETH(WETH).deposit{value: address(this).balance}();
         }
+        assets = IWETH(WETH).balanceOf(address(this)) - preBalance;
     }
 }

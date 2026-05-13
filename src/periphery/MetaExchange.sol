@@ -22,7 +22,6 @@ contract MetaExchange is BaseExchange {
         address tokenTo;
     }
 
-    address public immutable weth;
 
     mapping(address => bool) public allowedExchanges;
     EnumerableSet.AddressSet internal _allowedExchangeSet;
@@ -30,11 +29,6 @@ contract MetaExchange is BaseExchange {
 
     event AllowedExchangeSet(address indexed exchange, bool allowed);
     event RouteSet(address indexed from, address indexed to, uint256 length);
-
-    constructor(address _weth) {
-        require(_weth != address(0), "!weth");
-        weth = _weth;
-    }
 
     function name() external pure override returns (string memory) {
         return "MetaExchange";

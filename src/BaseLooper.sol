@@ -903,6 +903,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
         _withdrawCollateral(Math.min(amount, balanceOfCollateral()));
+        require(getCurrentLeverageRatio() < maxLeverageRatio);
     }
 
     /// @notice Manual: borrow from protocol
@@ -910,6 +911,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount
     ) external accrue onlyEmergencyAuthorized {
         _borrow(amount);
+        require(getCurrentLeverageRatio() < maxLeverageRatio);
     }
 
     /// @notice Manual: repay debt
