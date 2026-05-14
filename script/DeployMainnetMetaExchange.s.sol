@@ -37,6 +37,10 @@ contract DeployMainnetMetaExchange is Script {
     address internal constant DEFAULT_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
 
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant CURVE_ROUTER = 0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
+    address internal constant PENDLE_ROUTER = 0x888888888889758F76e7103c6CbF23ABbF58F946;
+    address internal constant UNISWAP_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address internal constant UNISWAP_POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address internal constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address internal constant PYUSD = 0x6c3ea9036406852006290770BEdFcAbA0e23A0e8;
@@ -98,10 +102,16 @@ contract DeployMainnetMetaExchange is Script {
 
     function _deploy() internal returns (Deployment memory d) {
         d.metaExchange = address(new MetaExchange(WETH));
-        d.uniswapUniversal = address(new UniswapUniversalRouterExchange(WETH));
-        d.curve = address(new CurveExchange());
+        d.uniswapUniversal = address(
+            new UniswapUniversalRouterExchange(
+                WETH,
+                UNISWAP_ROUTER,
+                UNISWAP_POSITION_MANAGER
+            )
+        );
+        d.curve = address(new CurveExchange(CURVE_ROUTER));
         d.fluid = address(new FluidExchange(WETH));
-        d.pendle = address(new PendleExchange());
+        d.pendle = address(new PendleExchange(PENDLE_ROUTER));
         d.erc4626 = address(new ERC4626Exchange());
         d.litePsm = address(new LitePsmExchange(USDC, USDS, LITE_PSM_WRAPPER, 1e12));
         d.syrupDeposit = address(new SyrupDepositExchange());
@@ -116,7 +126,7 @@ contract DeployMainnetMetaExchange is Script {
         PendleExchange pendle = PendleExchange(d.pendle);
         SyrupDepositExchange syrup = SyrupDepositExchange(d.syrupDeposit);
 
-        uni.setUniBase(USDC);
+        uni.setBase(USDC);
         uni.setUniFees(USDT, USDC, 100);
         uni.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
         uni.setV4Pool(USDT, SYRUP_USDT, syrupUsdtV4PoolId);
@@ -130,7 +140,7 @@ contract DeployMainnetMetaExchange is Script {
         _setCurveRoute(curve, USDC, USDG, CURVE_USDG_USDC_POOL, 1, 0);
         _setCurveRoute(curve, USDG, USDC, CURVE_USDG_USDC_POOL, 0, 1);
 
-        fluid.setFluidBase(USDT);
+        fluid.setBase(USDT);
         fluid.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         fluid.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
         fluid.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
@@ -217,7 +227,7 @@ contract DeployMainnetMetaExchange is Script {
 
         require(uni.base() == USDC, "!uni base");
         require(uni.uniFees(USDT, USDC) == 100, "!usdt usdc fee");
-        require(fluid.fluidBase() == USDT, "!fluid base");
+        require(fluid.base() == USDT, "!fluid base");
         _assertFluidDex(fluid, USDC, USDT, FLUID_USDC_USDT);
         _assertFluidDex(fluid, USDE, USDT, FLUID_USDE_USDT);
         _assertFluidDex(fluid, SUSDE, USDT, FLUID_SUSDE_USDT);

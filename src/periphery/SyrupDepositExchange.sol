@@ -36,7 +36,7 @@ contract SyrupDepositExchange is BaseExchange {
         address vault,
         address router,
         bytes32 depositData
-    ) external onlyConfigOperator {
+    ) external onlyGovernance {
         require(vault != address(0) && router != address(0), "!syrup");
         syrupDepositConfigs[vault] = SyrupDepositConfig({
             router: router,

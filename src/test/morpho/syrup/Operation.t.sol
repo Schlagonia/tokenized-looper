@@ -269,9 +269,9 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         );
     }
 
-    function test_exchange_setSyrupDepositConfig_onlyManagement() public {
+    function test_exchange_setSyrupDepositConfig_onlyGovernance() public {
         vm.prank(user);
-        vm.expectRevert("!operator");
+        vm.expectRevert("!governance");
         syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,

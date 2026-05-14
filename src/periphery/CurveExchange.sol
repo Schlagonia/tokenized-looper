@@ -14,17 +14,13 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract CurveExchange is CurveSwapper, BaseExchange {
     using SafeERC20 for ERC20;
 
-    function name() external pure override returns (string memory) {
-        return "CurveExchange";
-    }
-
-    function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
-        _setMinAmountToSell(minAmount);
-    }
-
-    function setCurveRouter(address _curveRouter) external onlyGovernance {
+    constructor(address _curveRouter) {
         require(_curveRouter != address(0), "!router");
         curveRouter = _curveRouter;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "CurveExchange";
     }
 
     function setCurveRoute(
@@ -33,8 +29,24 @@ contract CurveExchange is CurveSwapper, BaseExchange {
         address[11] memory route,
         uint256[5][5] memory swapParams,
         address[5] memory pools
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         _setCurveRoute(from, to, route, swapParams, pools);
+    }
+
+    function getCurveRoute(
+        address from,
+        address to
+    )
+        external
+        view
+        returns (
+            address[11] memory route,
+            uint256[5][5] memory swapParams,
+            address[5] memory pools
+        )
+    {
+        CurveRouteParams storage params = _curveRoutes[from][to];
+        return (params.route, params.swapParams, params.pools);
     }
 
     function _exchange(

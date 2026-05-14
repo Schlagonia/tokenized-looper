@@ -48,7 +48,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
     //////////////////////////////////////////////////////////////*/
 
     function test_exchange_coreConfig() public view {
-        assertEq(fluidExchange.fluidBase(), USDT, "!fluid base");
+        assertEq(fluidExchange.base(), USDT, "!fluid base");
 
         MetaExchange.RouteStep[] memory forward = exchange.getRoute(
             PYUSD,

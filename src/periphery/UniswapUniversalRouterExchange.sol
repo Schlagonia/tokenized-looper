@@ -21,31 +21,31 @@ contract UniswapUniversalRouterExchange is
         address indexed uniBase
     );
 
-    constructor(address _weth) UniswapUniversalSwapper(_weth) {}
+    constructor(
+        address _weth,
+        address _router,
+        address _positionManager
+    ) UniswapUniversalSwapper(_weth) {
+        require(_router != address(0), "!router");
+        require(_positionManager != address(0), "!positionManager");
+        router = _router;
+        positionManager = _positionManager;
+    }
 
     function name() external pure override returns (string memory) {
         return "UniswapUniversalRouterExchange";
     }
 
-    function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
-        _setMinAmountToSell(minAmount);
-    }
-
-    function setBase(address _base) external onlyConfigOperator {
+    function setBase(address _base) external onlyOperator {
         require(_base != address(0), "!base");
         base = _base;
-    }
-
-    function setUniBase(address uniBase) external onlyConfigOperator {
-        require(uniBase != address(0), "!base");
-        base = uniBase;
     }
 
     function setUniBaseForPair(
         address token0,
         address token1,
         address uniBase
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         require(
             token0 != address(0) && token1 != address(0) && token0 != token1,
             "!pair"
@@ -57,23 +57,11 @@ contract UniswapUniversalRouterExchange is
         emit UniBaseSet(token0, token1, uniBase);
     }
 
-    function setUniswapRouter(address _router) external onlyGovernance {
-        require(_router != address(0), "!router");
-        router = _router;
-    }
-
-    function setPositionManager(
-        address _positionManager
-    ) external onlyGovernance {
-        require(_positionManager != address(0), "!positionManager");
-        positionManager = _positionManager;
-    }
-
     function setUniFees(
         address token0,
         address token1,
         uint24 fee
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         _setUniFees(token0, token1, fee);
     }
 
@@ -81,7 +69,7 @@ contract UniswapUniversalRouterExchange is
         address token0,
         address token1,
         bytes32 poolId
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         _setV4Pool(token0, token1, poolId);
     }
 

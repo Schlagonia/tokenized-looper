@@ -24,25 +24,16 @@ contract FluidExchange is FluidSwapper, BaseExchange {
         return "FluidExchange";
     }
 
-    function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
-        _setMinAmountToSell(minAmount);
-    }
-
-    function setBase(address _base) external onlyConfigOperator {
+    function setBase(address _base) external onlyOperator {
         require(_base != address(0), "!base");
         base = _base;
-    }
-
-    function setFluidBase(address _fluidBase) external onlyConfigOperator {
-        require(_fluidBase != address(0), "!base");
-        base = _fluidBase;
     }
 
     function setFluidBaseForPair(
         address token0,
         address token1,
         address _fluidBase
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         require(
             token0 != address(0) && token1 != address(0) && token0 != token1,
             "!pair"
@@ -54,15 +45,11 @@ contract FluidExchange is FluidSwapper, BaseExchange {
         emit FluidBaseSet(token0, token1, _fluidBase);
     }
 
-    function fluidBase() external view returns (address) {
-        return base;
-    }
-
     function setFluidDex(
         address token0,
         address token1,
         address dex
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         _setFluidDex(token0, token1, dex);
     }
 
@@ -71,7 +58,7 @@ contract FluidExchange is FluidSwapper, BaseExchange {
         address _to,
         address _dex,
         bool _swap0to1
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         _setFluidDex(_from, _to, _dex, _swap0to1);
     }
 

@@ -119,6 +119,10 @@ contract Deploy is Script {
     // Mainnet core addresses
     address constant WETH_MAINNET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant AAVE_MAINNET_ADDRESSES_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
+    address constant DEFAULT_CURVE_ROUTER = 0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
+    address constant DEFAULT_PENDLE_ROUTER = 0x888888888889758F76e7103c6CbF23ABbF58F946;
+    address constant DEFAULT_UNISWAP_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address constant DEFAULT_UNISWAP_POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
     // Mainnet BTC assets
     address constant WBTC_MAINNET = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
@@ -632,10 +636,31 @@ contract Deploy is Script {
 
     function _deployMetaExchangeVenues(MetaExchange exchange) internal {
         address weth = exchange.weth();
-        UniswapUniversalRouterExchange uni = new UniswapUniversalRouterExchange(weth);
-        CurveExchange curve = new CurveExchange();
+        address uniRouter = _envOrMainnetDefault(
+            "UNISWAP_ROUTER",
+            DEFAULT_UNISWAP_ROUTER
+        );
+        address positionManager = _envOrMainnetDefault(
+            "UNISWAP_POSITION_MANAGER",
+            DEFAULT_UNISWAP_POSITION_MANAGER
+        );
+        address curveRouter = _envOrMainnetDefault(
+            "CURVE_ROUTER",
+            DEFAULT_CURVE_ROUTER
+        );
+        address pendleRouter = _envOrMainnetDefault(
+            "PENDLE_ROUTER",
+            DEFAULT_PENDLE_ROUTER
+        );
+
+        UniswapUniversalRouterExchange uni = new UniswapUniversalRouterExchange(
+            weth,
+            uniRouter,
+            positionManager
+        );
+        CurveExchange curve = new CurveExchange(curveRouter);
         FluidExchange fluid = new FluidExchange(weth);
-        PendleExchange pendle = new PendleExchange();
+        PendleExchange pendle = new PendleExchange(pendleRouter);
         ERC4626Exchange erc4626 = new ERC4626Exchange();
         SyrupDepositExchange syrup = new SyrupDepositExchange();
         SUSDSExchange susds = new SUSDSExchange();
@@ -674,6 +699,17 @@ contract Deploy is Script {
             exchange.setAllowedExchange(address(litePsm), true);
             litePsm.transferGovernance(LOOPER_GOVERNANCE);
         }
+    }
+
+    function _envOrMainnetDefault(
+        string memory key,
+        address mainnetDefault
+    ) internal view returns (address) {
+        if (block.chainid == 1) {
+            return vm.envOr(key, mainnetDefault);
+        }
+
+        return vm.envAddress(key);
     }
 
     function deployAprOracle() internal returns (address) {

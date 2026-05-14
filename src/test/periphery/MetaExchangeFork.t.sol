@@ -59,6 +59,12 @@ contract MetaExchangeForkTest is Test {
     OriginMintExchange internal originExchange;
 
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant CURVE_ROUTER =
+        0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
+    address internal constant UNISWAP_ROUTER =
+        0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address internal constant UNISWAP_POSITION_MANAGER =
+        0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address internal constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address internal constant USDS = 0xdC035D45d973E3EC169d2276DDab16f1e407384F;
@@ -131,7 +137,7 @@ contract MetaExchangeForkTest is Test {
     function test_fork_swap_usdt_to_susde() public {
         (MetaExchange exchange, MockStrategyForExchange strategy) = _deploy();
 
-        fluidExchange.setFluidBase(USDT);
+        fluidExchange.setBase(USDT);
         fluidExchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
@@ -205,8 +211,12 @@ contract MetaExchangeForkTest is Test {
         returns (MetaExchange exchange, MockStrategyForExchange strategy)
     {
         exchange = new MetaExchange(WETH);
-        uniExchange = new UniswapUniversalRouterExchange(WETH);
-        curveExchange = new CurveExchange();
+        uniExchange = new UniswapUniversalRouterExchange(
+            WETH,
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER
+        );
+        curveExchange = new CurveExchange(CURVE_ROUTER);
         fluidExchange = new FluidExchange(WETH);
         erc4626Exchange = new ERC4626Exchange();
         litePsmExchange = new LitePsmExchange(
@@ -233,7 +243,7 @@ contract MetaExchangeForkTest is Test {
     }
 
     function _configureSyrupPyusdRoutes(MetaExchange exchange) internal {
-        uniExchange.setUniBase(USDC);
+        uniExchange.setBase(USDC);
         uniExchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
         _setCurveRoute(exchange, PYUSD, USDC, PYUSD_USDC_CURVE_POOL, 0, 1);
         _setCurveRoute(exchange, USDC, PYUSD, PYUSD_USDC_CURVE_POOL, 1, 0);

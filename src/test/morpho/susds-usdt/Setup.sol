@@ -70,7 +70,11 @@ contract SetupSUSDSUSDT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        uniExchange = new UniswapUniversalRouterExchange(
+            WETH,
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER
+        );
         litePsmExchange = new LitePsmExchange(
             USDC,
             USDS,
@@ -100,7 +104,7 @@ contract SetupSUSDSUSDT is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-        uniExchange.setUniBase(USDC);
+        uniExchange.setBase(USDC);
         uniExchange.setUniFees(USDT, USDC, 100);
         exchange.setAllowedExchange(address(uniExchange), true);
         exchange.setAllowedExchange(address(litePsmExchange), true);

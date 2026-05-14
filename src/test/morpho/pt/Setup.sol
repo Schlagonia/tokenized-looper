@@ -72,8 +72,8 @@ contract SetupPT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange();
-        pendleExchange = new PendleExchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER);
+        pendleExchange = new PendleExchange(PENDLE_ROUTER);
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(

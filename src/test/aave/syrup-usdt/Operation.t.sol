@@ -96,20 +96,18 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         assertEq(amountOut, 0, "!amountOut");
     }
 
-    function test_exchange_setUniBase_onlyGovernanceOrOperator() public {
+    function test_exchange_setBase_onlyGovernanceOrOperator() public {
         vm.prank(user);
         vm.expectRevert("!operator");
-        uniExchange.setUniBase(WETH);
+        uniExchange.setBase(WETH);
 
         vm.prank(management);
-        uniExchange.setUniBase(WETH);
+        uniExchange.setBase(WETH);
     }
 
-    function test_exchange_setSyrupDepositConfig_onlyGovernanceOrOperator()
-        public
-    {
+    function test_exchange_setSyrupDepositConfig_onlyGovernance() public {
         vm.prank(user);
-        vm.expectRevert("!operator");
+        vm.expectRevert("!governance");
         syrupExchange.setSyrupDepositConfig(
             SYRUP_USDT,
             SYRUP_USDT_ROUTER,

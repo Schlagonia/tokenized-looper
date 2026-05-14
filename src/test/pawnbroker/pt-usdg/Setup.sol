@@ -86,8 +86,8 @@ contract SetupPawnBrokerPTUSDG is Setup {
         oracle.setPrice(PT_ORACLE_PRICE);
 
         exchange = new MetaExchange(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-        curveExchange = new CurveExchange();
-        pendleExchange = new PendleExchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER);
+        pendleExchange = new PendleExchange(PENDLE_ROUTER);
 
         address predictedLooper = vm.computeCreateAddress(
             address(this),

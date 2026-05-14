@@ -15,33 +15,22 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract PendleExchange is PendleSwapper, BaseExchange {
     using SafeERC20 for ERC20;
 
+    constructor(address _pendleRouter) {
+        require(_pendleRouter != address(0), "!router");
+        pendleRouter = _pendleRouter;
+    }
+
     function name() external pure override returns (string memory) {
         return "PendleExchange";
     }
 
-    function setMinAmountToSell(uint256 minAmount) external onlyConfigOperator {
-        _setMinAmountToSell(minAmount);
-    }
-
-    function setPendleMarket(
-        address pt,
-        address market
-    ) external onlyConfigOperator {
+    function setPendleMarket(address pt, address market) external onlyOperator {
         require(pt != address(0) && market != address(0), "!market");
         _setMarket(pt, market);
     }
 
-    function setGuessMaxMultiplier(
-        uint256 multiplier
-    ) external onlyConfigOperator {
+    function setGuessMaxMultiplier(uint256 multiplier) external onlyOperator {
         _setGuessMaxMultiplier(multiplier);
-    }
-
-    function setPendleRouter(
-        address _pendleRouter
-    ) external onlyConfigOperator {
-        require(_pendleRouter != address(0), "!router");
-        pendleRouter = _pendleRouter;
     }
 
     function _exchange(

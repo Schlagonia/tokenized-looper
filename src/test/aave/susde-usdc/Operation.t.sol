@@ -42,7 +42,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     }
 
     function test_exchange_coreConfig() public view {
-        assertEq(fluidExchange.fluidBase(), USDT, "!base");
+        assertEq(fluidExchange.base(), USDT, "!base");
 
         MetaExchange.RouteStep[] memory forward = exchange.getRoute(
             USDC,

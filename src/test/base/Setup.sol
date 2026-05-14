@@ -43,6 +43,14 @@ contract Setup is Test, IEvents {
         0x3f04b65Ddbd87f9CE0A2e7Eb24d80e7fb87625b5;
     address public constant IUSD = 0x48f9e38f3070AD8945DFEae3FA70987722E3D89c;
     address public constant SIUSD = 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB;
+    address public constant CURVE_ROUTER =
+        0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
+    address public constant PENDLE_ROUTER =
+        0x888888888889758F76e7103c6CbF23ABbF58F946;
+    address public constant UNISWAP_ROUTER =
+        0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address public constant UNISWAP_POSITION_MANAGER =
+        0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
     // Addresses for different roles we will use repeatedly.
     address public user = address(10);
@@ -171,7 +179,7 @@ contract Setup is Test, IEvents {
     }
 
     function accrueYield(uint256 _amount) public virtual {
-        skip(1 days);
+        skip(12 hours);
         _amount = (_amount * 300) / 10_000;
         deal(address(asset), address(this), _amount);
         asset.approve(address(GATEWAY), _amount);

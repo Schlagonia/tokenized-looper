@@ -71,7 +71,7 @@ contract SetupWOUSDMorpho is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER);
         erc4626Exchange = new ERC4626Exchange();
         originExchange = new OriginMintExchange();
 

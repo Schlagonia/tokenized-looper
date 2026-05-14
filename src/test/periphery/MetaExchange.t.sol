@@ -254,7 +254,7 @@ contract MockVenueExchange is BaseExchange {
         address token0,
         address token1,
         address uniBase
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         uniBases[token0][token1] = uniBase;
         uniBases[token1][token0] = uniBase;
     }
@@ -263,7 +263,7 @@ contract MockVenueExchange is BaseExchange {
         address token0,
         address token1,
         address fluidBase
-    ) external onlyConfigOperator {
+    ) external onlyOperator {
         fluidBases[token0][token1] = fluidBase;
         fluidBases[token1][token0] = fluidBase;
     }
@@ -485,7 +485,7 @@ contract MetaExchangeTest is Test {
         assertEq(originExchange.name(), "OriginMintExchange", "!origin name");
     }
 
-    function test_setRoute_requiresManagementOrOperator() public {
+    function test_setRoute_requiresGovernanceOrOperator() public {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
         route[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
@@ -573,7 +573,7 @@ contract MetaExchangeTest is Test {
         return false;
     }
 
-    function test_setUniBaseForPair_requiresManagementOrOperator() public {
+    function test_setUniBaseForPair_requiresGovernanceOrOperator() public {
         vm.prank(stranger);
         vm.expectRevert("!operator");
         uniExchange.setUniBaseForPair(
@@ -615,7 +615,7 @@ contract MetaExchangeTest is Test {
         );
     }
 
-    function test_setFluidBaseForPair_requiresManagementOrOperator() public {
+    function test_setFluidBaseForPair_requiresGovernanceOrOperator() public {
         vm.prank(stranger);
         vm.expectRevert("!operator");
         fluidExchange.setFluidBaseForPair(

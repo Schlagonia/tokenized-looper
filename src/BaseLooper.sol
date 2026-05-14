@@ -224,8 +224,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @param _slippage Slippage in basis points.
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < MAX_BPS, "slippage");
-        if (!TokenizedStrategy.isShutdown())
+        if (!TokenizedStrategy.isShutdown()) {
             require(_slippage < MAX_SLIPPAGE, "slippage too high");
+        }
         slippage = uint64(_slippage);
     }
 
@@ -497,8 +498,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (_amount >= debtToRepay) {
                 // _amount covers the debt repayment, just repay and supply the rest
                 _repay(debtToRepay);
-                if (targetLeverageRatio > 0)
+                if (targetLeverageRatio > 0) {
                     _convertAndSupplyCollateral(_amount - debtToRepay);
+                }
                 return;
             }
 
@@ -795,8 +797,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _collateralToAsset(
         uint256 collateralAmount
     ) internal view virtual returns (uint256) {
-        if (collateralAmount == 0 || collateralAmount == type(uint256).max)
+        if (collateralAmount == 0 || collateralAmount == type(uint256).max) {
             return collateralAmount;
+        }
         return (collateralAmount * _getCollateralPrice()) / ORACLE_PRICE_SCALE;
     }
 
@@ -805,8 +808,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _assetToCollateral(
         uint256 assetAmount
     ) internal view virtual returns (uint256) {
-        if (assetAmount == 0 || assetAmount == type(uint256).max)
+        if (assetAmount == 0 || assetAmount == type(uint256).max) {
             return assetAmount;
+        }
         uint256 price = _getCollateralPrice();
         return (assetAmount * ORACLE_PRICE_SCALE) / price;
     }

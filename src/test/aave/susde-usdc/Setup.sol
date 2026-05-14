@@ -95,7 +95,7 @@ contract SetupAavesUSDeUSDC is Setup {
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        fluidExchange.setFluidBase(USDT);
+        fluidExchange.setBase(USDT);
         fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         fluidExchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
         fluidExchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);

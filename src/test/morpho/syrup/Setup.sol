@@ -74,8 +74,12 @@ contract SetupSyrupMorpho is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        uniExchange = new UniswapUniversalRouterExchange(WETH);
-        curveExchange = new CurveExchange();
+        uniExchange = new UniswapUniversalRouterExchange(
+            WETH,
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER
+        );
+        curveExchange = new CurveExchange(CURVE_ROUTER);
         syrupExchange = new SyrupDepositExchange();
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
@@ -102,7 +106,7 @@ contract SetupSyrupMorpho is Setup {
         _authorizeSyrupParticipants(address(_strategy));
 
         vm.startPrank(management);
-        uniExchange.setUniBase(USDC);
+        uniExchange.setBase(USDC);
         uniExchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
         _setCurveRoute(PYUSD, USDC, 0, 1);
         _setCurveRoute(USDC, PYUSD, 1, 0);

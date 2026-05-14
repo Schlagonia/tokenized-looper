@@ -80,7 +80,11 @@ contract SetupAaveSyrupUSDT is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        uniExchange = new UniswapUniversalRouterExchange(
+            WETH,
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER
+        );
         syrupExchange = new SyrupDepositExchange();
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
@@ -108,7 +112,7 @@ contract SetupAaveSyrupUSDT is Setup {
         }
 
         vm.startPrank(management);
-        uniExchange.setUniBase(address(asset));
+        uniExchange.setBase(address(asset));
         uniExchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
         syrupExchange.setSyrupDepositConfig(
             SYRUP_USDT,

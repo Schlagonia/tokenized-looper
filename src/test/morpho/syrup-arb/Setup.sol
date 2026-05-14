@@ -97,7 +97,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         _strategy.acceptManagement();
 
         vm.startPrank(management);
-        fluidExchange.setFluidBase(address(asset));
+        fluidExchange.setBase(address(asset));
         fluidExchange.setFluidDex(
             address(asset),
             ARB_SYRUP_USDC,

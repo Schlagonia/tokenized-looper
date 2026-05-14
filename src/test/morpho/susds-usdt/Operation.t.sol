@@ -35,7 +35,7 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
         assertEq(susdsExchange.susdsReferral(), 42, "!set referral");
     }
 
-    function test_setSUSDSReferral_onlyManagement() public {
+    function test_setSUSDSReferral_onlyGovernance() public {
         vm.prank(user);
         vm.expectRevert("!governance");
         susdsExchange.setSUSDSReferral(7);

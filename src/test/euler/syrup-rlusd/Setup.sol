@@ -84,8 +84,12 @@ contract SetupEulerSyrupRLUSD is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange();
-        uniExchange = new UniswapUniversalRouterExchange(WETH);
+        curveExchange = new CurveExchange(CURVE_ROUTER);
+        uniExchange = new UniswapUniversalRouterExchange(
+            WETH,
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER
+        );
         syrupExchange = new SyrupDepositExchange();
 
         EulerLooper looper = new EulerLooper(
@@ -114,7 +118,7 @@ contract SetupEulerSyrupRLUSD is Setup {
         _setCurveRoute(RLUSD, USDC, 1, 0);
         _setCurveRoute(USDC, RLUSD, 0, 1);
 
-        uniExchange.setUniBase(USDC);
+        uniExchange.setBase(USDC);
         uniExchange.setV4Pool(USDC, SYRUP_USDC, SYRUP_USDC_USDC_V4_POOL_ID);
         syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,

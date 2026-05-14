@@ -81,7 +81,7 @@ contract SetupSUSDePYUSD is Setup {
 
     function setUpStrategy() public virtual override returns (address) {
         exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER);
         erc4626Exchange = new ERC4626Exchange();
         fluidExchange = new FluidExchange(WETH);
 
@@ -110,7 +110,7 @@ contract SetupSUSDePYUSD is Setup {
         _setCurveRoute(USDC, PYUSD, 1, 0);
 
         // Fluid hub uses USDT; expose USDC, USDe, sUSDe legs through it.
-        fluidExchange.setFluidBase(USDT);
+        fluidExchange.setBase(USDT);
         fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
         fluidExchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
         fluidExchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
