@@ -107,6 +107,9 @@ contract SetupPT is Setup {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        // Pendle reverts tiny PT swaps when fee math rounds to zero.
+        _strategy.setMinAmountToBorrow(50_000);
+
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);
 

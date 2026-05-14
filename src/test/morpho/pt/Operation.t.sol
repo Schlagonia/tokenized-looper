@@ -20,6 +20,18 @@ contract PTOperationTest is SetupPT, OperationTest {
         //airdrop(asset, address(strategy), minFuzzAmount / 10);
     }
 
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure override returns (uint256) {
+        // PT unwinds through Pendle and Curve, so residual route dust can exceed
+        // the generic base tolerance.
+        uint256 relativeDust = (collateralBeforeUnwind * 5) / 10_000; // 5 bps
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
+    }
+
     /// @notice PT now uses base Morpho looper defaults.
     function test_setupStrategyOK() public override {
         assertTrue(address(0) != address(strategy));

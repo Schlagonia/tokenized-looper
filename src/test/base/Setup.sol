@@ -179,7 +179,8 @@ contract Setup is Test, IEvents {
     }
 
     function accrueYield(uint256 _amount) public virtual {
-        skip(12 hours);
+        // Avoid warping the live Infinifi oracle feeds; stale feed windows can
+        // make the gateway revert with PriceError during fork tests.
         _amount = (_amount * 300) / 10_000;
         deal(address(asset), address(this), _amount);
         asset.approve(address(GATEWAY), _amount);
