@@ -11,6 +11,9 @@
       "rev": "bd325d56b4c62c9c5c1aff048c37c6bb18ac0290"
     }
   },
+  "lib/pawn-broker": {
+    "rev": "1e5610b8d47a750d358f1a1b544793ecc0fbcfaf"
+  },
   "lib/tokenized-strategy": {
     "rev": "82806289f967590c4efbf6bc3d237e4e7f0a0966"
   },
