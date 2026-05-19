@@ -73,14 +73,15 @@ contract SetupSyrupMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
+        exchange = new MetaExchange(management);
         uniExchange = new UniswapUniversalRouterExchange(
             WETH,
             UNISWAP_ROUTER,
-            UNISWAP_POSITION_MANAGER
+            UNISWAP_POSITION_MANAGER,
+            management
         );
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        syrupExchange = new SyrupDepositExchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
+        syrupExchange = new SyrupDepositExchange(management);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -94,10 +95,6 @@ contract SetupSyrupMorpho is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        uniExchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        syrupExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.prank(management);

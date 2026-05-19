@@ -47,7 +47,8 @@ contract InventorySwapperTest is Test {
             address(loanToken),
             address(collateralToken),
             address(oracle),
-            100
+            100,
+            address(this)
         );
         swapper.setAllowed(user, true);
     }

@@ -15,12 +15,13 @@ contract ExchangeAdminTest is Test {
     address internal positionManager = makeAddr("positionManager");
 
     function test_routerAddresses_areSetByConstructors() public {
-        CurveExchange curve = new CurveExchange(curveRouter);
-        PendleExchange pendle = new PendleExchange(pendleRouter);
+        CurveExchange curve = new CurveExchange(curveRouter, address(this));
+        PendleExchange pendle = new PendleExchange(pendleRouter, address(this));
         UniswapUniversalRouterExchange uni = new UniswapUniversalRouterExchange(
             weth,
             uniRouter,
-            positionManager
+            positionManager,
+            address(this)
         );
 
         assertEq(curve.curveRouter(), curveRouter, "!curve router");
@@ -31,15 +32,25 @@ contract ExchangeAdminTest is Test {
 
     function test_routerConstructors_revertOnZeroAddress() public {
         vm.expectRevert("!router");
-        new CurveExchange(address(0));
+        new CurveExchange(address(0), address(this));
 
         vm.expectRevert("!router");
-        new PendleExchange(address(0));
+        new PendleExchange(address(0), address(this));
 
         vm.expectRevert("!router");
-        new UniswapUniversalRouterExchange(weth, address(0), positionManager);
+        new UniswapUniversalRouterExchange(
+            weth,
+            address(0),
+            positionManager,
+            address(this)
+        );
 
         vm.expectRevert("!positionManager");
-        new UniswapUniversalRouterExchange(weth, uniRouter, address(0));
+        new UniswapUniversalRouterExchange(
+            weth,
+            uniRouter,
+            address(0),
+            address(this)
+        );
     }
 }

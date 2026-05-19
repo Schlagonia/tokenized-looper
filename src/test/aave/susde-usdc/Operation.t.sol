@@ -78,7 +78,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
     function test_setExchange_onlyGovernance() public {
         sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-        MetaExchange newExchange = new MetaExchange(WETH);
+        MetaExchange newExchange = new MetaExchange(management);
 
         vm.prank(user);
         vm.expectRevert("!governance");

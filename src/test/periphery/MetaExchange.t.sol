@@ -246,6 +246,8 @@ contract MockVenueExchange is BaseExchange {
     mapping(address => mapping(address => address)) public uniBases;
     mapping(address => mapping(address => address)) public fluidBases;
 
+    constructor(address _governance) BaseExchange(_governance) {}
+
     function name() external pure override returns (string memory) {
         return "MockVenueExchange";
     }
@@ -338,21 +340,22 @@ contract MetaExchangeTest is Test {
         originToken.setVaultAddress(address(originVault));
         wrappedOriginVault = new MockVault(originToken);
 
-        exchange = new MetaExchange(address(weth));
-        uniExchange = new MockVenueExchange();
-        curveExchange = new MockVenueExchange();
-        fluidExchange = new MockVenueExchange();
-        pendleExchange = new MockVenueExchange();
-        erc4626Exchange = new ERC4626Exchange();
+        exchange = new MetaExchange(address(this));
+        uniExchange = new MockVenueExchange(address(this));
+        curveExchange = new MockVenueExchange(address(this));
+        fluidExchange = new MockVenueExchange(address(this));
+        pendleExchange = new MockVenueExchange(address(this));
+        erc4626Exchange = new ERC4626Exchange(address(this));
         litePsmExchange = new LitePsmExchange(
             address(usdc),
             address(usds),
             address(litePsm),
-            1e12
+            1e12,
+            address(this)
         );
-        syrupExchange = new SyrupDepositExchange();
-        susdsExchange = new SUSDSExchange();
-        originExchange = new OriginMintExchange();
+        syrupExchange = new SyrupDepositExchange(address(this));
+        susdsExchange = new SUSDSExchange(address(this));
+        originExchange = new OriginMintExchange(address(this));
         _allowTestExchanges();
         strategy = new MockStrategyForExchange(address(this), governance);
         secondStrategy = new MockStrategyForExchange(address(this), governance);
@@ -525,7 +528,9 @@ contract MetaExchangeTest is Test {
     }
 
     function test_setRoute_requiresAllowedExchange() public {
-        MockVenueExchange unallowedExchange = new MockVenueExchange();
+        MockVenueExchange unallowedExchange = new MockVenueExchange(
+            address(this)
+        );
 
         vm.prank(stranger);
         vm.expectRevert("!governance");

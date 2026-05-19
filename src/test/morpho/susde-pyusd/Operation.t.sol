@@ -106,7 +106,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         sUSDeMorphoLooper looper = sUSDeMorphoLooper(
             payable(address(strategy))
         );
-        MetaExchange newExchange = new MetaExchange(WETH);
+        MetaExchange newExchange = new MetaExchange(management);
 
         vm.prank(user);
         vm.expectRevert("!governance");

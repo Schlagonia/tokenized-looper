@@ -19,7 +19,13 @@ contract LitePsmExchange is BaseExchange {
     address public immutable wrapper;
     uint256 public immutable scale;
 
-    constructor(address _gem, address _usds, address _wrapper, uint256 _scale) {
+    constructor(
+        address _gem,
+        address _usds,
+        address _wrapper,
+        uint256 _scale,
+        address _governance
+    ) BaseExchange(_governance) {
         require(
             _gem != address(0) &&
                 _usds != address(0) &&

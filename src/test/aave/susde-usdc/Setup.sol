@@ -71,9 +71,9 @@ contract SetupAavesUSDeUSDC is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
-        fluidExchange = new FluidExchange(WETH);
-        erc4626Exchange = new ERC4626Exchange();
+        exchange = new MetaExchange(management);
+        fluidExchange = new FluidExchange(WETH, management);
+        erc4626Exchange = new ERC4626Exchange(management);
 
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             address(asset),
@@ -87,9 +87,6 @@ contract SetupAavesUSDeUSDC is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        fluidExchange.transferGovernance(management);
-        erc4626Exchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);

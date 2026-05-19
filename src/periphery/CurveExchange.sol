@@ -14,7 +14,10 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract CurveExchange is CurveSwapper, BaseExchange {
     using SafeERC20 for ERC20;
 
-    constructor(address _curveRouter) {
+    constructor(
+        address _curveRouter,
+        address _governance
+    ) BaseExchange(_governance) {
         require(_curveRouter != address(0), "!router");
         curveRouter = _curveRouter;
     }

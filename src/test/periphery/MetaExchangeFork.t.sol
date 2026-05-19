@@ -210,24 +210,26 @@ contract MetaExchangeForkTest is Test {
         internal
         returns (MetaExchange exchange, MockStrategyForExchange strategy)
     {
-        exchange = new MetaExchange(WETH);
+        exchange = new MetaExchange(address(this));
         uniExchange = new UniswapUniversalRouterExchange(
             WETH,
             UNISWAP_ROUTER,
-            UNISWAP_POSITION_MANAGER
+            UNISWAP_POSITION_MANAGER,
+            address(this)
         );
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        fluidExchange = new FluidExchange(WETH);
-        erc4626Exchange = new ERC4626Exchange();
+        curveExchange = new CurveExchange(CURVE_ROUTER, address(this));
+        fluidExchange = new FluidExchange(WETH, address(this));
+        erc4626Exchange = new ERC4626Exchange(address(this));
         litePsmExchange = new LitePsmExchange(
             USDC,
             USDS,
             LITE_PSM_WRAPPER,
-            1e12
+            1e12,
+            address(this)
         );
-        susdsExchange = new SUSDSExchange();
-        syrupExchange = new SyrupDepositExchange();
-        originExchange = new OriginMintExchange();
+        susdsExchange = new SUSDSExchange(address(this));
+        syrupExchange = new SyrupDepositExchange(address(this));
+        originExchange = new OriginMintExchange(address(this));
         strategy = new MockStrategyForExchange();
 
         exchange.setAllowedExchange(address(uniExchange), true);

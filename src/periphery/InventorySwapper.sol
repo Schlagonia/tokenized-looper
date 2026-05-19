@@ -41,8 +41,9 @@ contract InventorySwapper is BaseExchange {
         address _loanToken,
         address _collateralToken,
         address _oracle,
-        uint256 _slippage
-    ) {
+        uint256 _slippage,
+        address _governance
+    ) BaseExchange(_governance) {
         require(_loanToken != address(0), "!loanToken");
         require(_collateralToken != address(0), "!collateralToken");
         require(_loanToken != _collateralToken, "!tokens");

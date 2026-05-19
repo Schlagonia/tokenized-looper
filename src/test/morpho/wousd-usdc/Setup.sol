@@ -70,10 +70,10 @@ contract SetupWOUSDMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        erc4626Exchange = new ERC4626Exchange();
-        originExchange = new OriginMintExchange();
+        exchange = new MetaExchange(management);
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
+        erc4626Exchange = new ERC4626Exchange(management);
+        originExchange = new OriginMintExchange(management);
 
         OriginMorphoLooper looper = new OriginMorphoLooper(
             address(asset),
@@ -86,10 +86,6 @@ contract SetupWOUSDMorpho is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        erc4626Exchange.transferGovernance(management);
-        originExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);

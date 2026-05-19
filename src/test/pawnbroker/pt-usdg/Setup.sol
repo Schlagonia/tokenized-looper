@@ -85,9 +85,9 @@ contract SetupPawnBrokerPTUSDG is Setup {
         oracle = new MockMorphoOracle();
         oracle.setPrice(PT_ORACLE_PRICE);
 
-        exchange = new MetaExchange(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        pendleExchange = new PendleExchange(PENDLE_ROUTER);
+        exchange = new MetaExchange(management);
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
+        pendleExchange = new PendleExchange(PENDLE_ROUTER, management);
 
         address predictedLooper = vm.computeCreateAddress(
             address(this),
@@ -119,10 +119,6 @@ contract SetupPawnBrokerPTUSDG is Setup {
             address(exchange),
             management
         );
-
-        exchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        pendleExchange.transferGovernance(management);
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
         _strategy.setPendingManagement(management);

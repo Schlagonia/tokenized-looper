@@ -24,8 +24,9 @@ contract UniswapUniversalRouterExchange is
     constructor(
         address _weth,
         address _router,
-        address _positionManager
-    ) UniswapUniversalSwapper(_weth) {
+        address _positionManager,
+        address _governance
+    ) UniswapUniversalSwapper(_weth) BaseExchange(_governance) {
         require(_router != address(0), "!router");
         require(_positionManager != address(0), "!positionManager");
         router = _router;

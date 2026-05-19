@@ -71,9 +71,9 @@ contract SetupPT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        pendleExchange = new PendleExchange(PENDLE_ROUTER);
+        exchange = new MetaExchange(management);
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
+        pendleExchange = new PendleExchange(PENDLE_ROUTER, management);
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(
@@ -88,9 +88,6 @@ contract SetupPT is Setup {
                 )
             )
         );
-        exchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        pendleExchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 

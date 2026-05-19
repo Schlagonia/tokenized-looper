@@ -24,7 +24,7 @@ abstract contract BaseExchange is IExchange, Governance {
         _;
     }
 
-    constructor() Governance(msg.sender) {}
+    constructor(address _governance) Governance(_governance) {}
 
     function setOperator(
         address operator,

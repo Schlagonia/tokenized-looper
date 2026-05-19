@@ -73,8 +73,8 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(ARB_WETH);
-        fluidExchange = new FluidExchange(ARB_WETH);
+        exchange = new MetaExchange(management);
+        fluidExchange = new FluidExchange(ARB_WETH, management);
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             address(asset),
@@ -88,8 +88,6 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        fluidExchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 

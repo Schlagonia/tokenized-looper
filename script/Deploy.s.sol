@@ -6,21 +6,13 @@ import "forge-std/Script.sol";
 import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
+import {sUSDeMorphoLooper} from "../src/morpho/sUSDeMorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {AaveLooper} from "../src/aave/AaveLooper.sol";
 import {LSTAaveLooper} from "../src/aave/LSTAaveLooper.sol";
 import {SyrupUSDTAaveLooper} from "../src/aave/SyrupUSDTAaveLooper.sol";
 import {sUSDeAaveLooper} from "../src/aave/sUSDeAaveLooper.sol";
 import {MetaExchange} from "../src/periphery/MetaExchange.sol";
-import {CurveExchange} from "../src/periphery/CurveExchange.sol";
-import {ERC4626Exchange} from "../src/periphery/ERC4626Exchange.sol";
-import {FluidExchange} from "../src/periphery/FluidExchange.sol";
-import {LitePsmExchange} from "../src/periphery/LitePsmExchange.sol";
-import {OriginMintExchange} from "../src/periphery/OriginMintExchange.sol";
-import {PendleExchange} from "../src/periphery/PendleExchange.sol";
-import {SUSDSExchange} from "../src/periphery/SUSDSExchange.sol";
-import {SyrupDepositExchange} from "../src/periphery/SyrupDepositExchange.sol";
-import {UniswapUniversalRouterExchange} from "../src/periphery/UniswapUniversalRouterExchange.sol";
 import {WETHWstETHExchange} from "../src/periphery/WETHWstETHExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
@@ -38,26 +30,23 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string public DEPLOY_CONFIG = "PT_IUSD_MAINNET";
-    /// @dev Options: META_EXCHANGE, INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_WSTETH_WETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_IUSD_MAINNET, PT_SUSDAI_ARB, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    string public DEPLOY_CONFIG = "SUSDE_PYUSD_MAINNET";
+    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SUSDE_PYUSD_MAINNET, SUSDE_USDTB_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_WSTETH_WETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_IUSD_MAINNET, PT_SUSDAI_ARB, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
+    address internal constant DEFAULT_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
+
     /// @dev Global looper governance used by all looper deployments in this script run.
-    address public LOOPER_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
+    address public LOOPER_GOVERNANCE = 0x1b5f15DCb82d25f91c65b53CEe151E8b9fBdD271;
+
+    /// @dev Final governance for exchange deployments created by this script.
+    address public EXCHANGE_GOVERNANCE = 0x1b5f15DCb82d25f91c65b53CEe151E8b9fBdD271;
+    address public META_EXCHANGE = 0xaAe7a68437E28584bEd077FEC0c069D16ae60dFE;
 
     /// @dev CreateX deployer for CREATE2 deployments
     address constant CREATE_X = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
 
     address internal lastMetaExchange;
-    address internal lastUniswapExchange;
-    address internal lastCurveExchange;
-    address internal lastFluidExchange;
-    address internal lastPendleExchange;
-    address internal lastERC4626Exchange;
-    address internal lastLitePsmExchange;
-    address internal lastSyrupDepositExchange;
-    address internal lastSUSDSExchange;
-    address internal lastOriginMintExchange;
 
     /*//////////////////////////////////////////////////////////////
                             CONFIG STRUCTS
@@ -119,10 +108,6 @@ contract Deploy is Script {
     // Mainnet core addresses
     address constant WETH_MAINNET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant AAVE_MAINNET_ADDRESSES_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
-    address constant DEFAULT_CURVE_ROUTER = 0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
-    address constant DEFAULT_PENDLE_ROUTER = 0x888888888889758F76e7103c6CbF23ABbF58F946;
-    address constant DEFAULT_UNISWAP_ROUTER = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
-    address constant DEFAULT_UNISWAP_POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
     // Mainnet BTC assets
     address constant WBTC_MAINNET = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
@@ -132,12 +117,12 @@ contract Deploy is Script {
     address constant WSTETH_MAINNET = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
     address constant USDC_MAINNET = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant USDT_MAINNET = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+    address constant USDTB_MAINNET = 0xC139190F447e929f090Edeb554D95AbB8b18aC1C;
     address constant USDS_MAINNET = 0xdC035D45d973E3EC169d2276DDab16f1e407384F;
     address constant PYUSD_MAINNET = 0x6c3ea9036406852006290770BEdFcAbA0e23A0e8;
     address constant SUSDE_MAINNET = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
     address constant SYRUP_USDC_MAINNET = 0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
     address constant SYRUP_USDT_MAINNET = 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D;
-    address constant LITE_PSM_WRAPPER_MAINNET = 0xA188EEC8F81263234dA3622A406892F3D630f98c;
 
     // ===== INFINIFI MAINNET (USDC/sIUSD) =====
     function getInfinifiMainnet() internal pure returns (BaseConfig memory) {
@@ -172,6 +157,32 @@ contract Deploy is Script {
                 collateralToken: 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD, // sUSDS
                 morpho: MORPHO_MAINNET,
                 marketId: 0x3274643db77a064abd3bc851de77556a4ad2e2f502f4f0c80845fa8f909ecf0b
+            })
+        });
+    }
+
+    // ===== sUSDe/PYUSD MAINNET =====
+    function getSUSDePYUSDMainnet() internal pure returns (LSTConfig memory) {
+        return LSTConfig({
+            base: BaseConfig({
+                asset: PYUSD_MAINNET,
+                name: "sUSDe/PYUSD Morpho Looper",
+                collateralToken: SUSDE_MAINNET,
+                morpho: MORPHO_MAINNET,
+                marketId: 0x90ef0c5a0dc7c4de4ad4585002d44e9d411d212d2f6258e94948beecf8b4c0d5
+            })
+        });
+    }
+
+    // ===== sUSDe/USDtb MAINNET =====
+    function getSUSDeUSDTBMainnet() internal pure returns (LSTConfig memory) {
+        return LSTConfig({
+            base: BaseConfig({
+                asset: USDTB_MAINNET,
+                name: "sUSDe/USDtb Morpho Looper",
+                collateralToken: SUSDE_MAINNET,
+                morpho: MORPHO_MAINNET,
+                marketId: 0x88a18b2f4d94e7ad27a381b15531c06abf05a7c99dd5d3c3679875fed6f7e742
             })
         });
     }
@@ -345,6 +356,9 @@ contract Deploy is Script {
 
     function run() external {
         DEPLOY_CONFIG = vm.envOr("DEPLOY_CONFIG", DEPLOY_CONFIG);
+        LOOPER_GOVERNANCE = vm.envOr("LOOPER_GOVERNANCE", LOOPER_GOVERNANCE);
+        EXCHANGE_GOVERNANCE = vm.envOr("EXCHANGE_GOVERNANCE", EXCHANGE_GOVERNANCE);
+        META_EXCHANGE = vm.envOr("META_EXCHANGE", META_EXCHANGE);
         deploy();
     }
 
@@ -354,14 +368,14 @@ contract Deploy is Script {
 
         address deployed;
 
-        if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("META_EXCHANGE")) {
-            deployed = deployMetaExchangeForCurrentChain();
-        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("INFINIFI_MAINNET")) {
+        if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("INFINIFI_MAINNET")) {
             deployed = deployInfinifi(getInfinifiMainnet());
-        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("LST_MAINNET")) {
-            deployed = deployLST(getLSTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDS_USDT_MAINNET")) {
             deployed = deploySUSDSUSDT(getSUSDSUSDTMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDE_PYUSD_MAINNET")) {
+            deployed = deploySUSDe(getSUSDePYUSDMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDE_USDTB_MAINNET")) {
+            deployed = deploySUSDe(getSUSDeUSDTBMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_MAINNET")) {
             deployed = deploySyrup(getSyrupUSDCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_SYRUP_USDT_MAINNET")) {
@@ -398,19 +412,9 @@ contract Deploy is Script {
 
         console.log("Deployed:", deployed);
         console.log("Config:", DEPLOY_CONFIG);
+        console.log("LooperGovernance:", LOOPER_GOVERNANCE);
         if (lastMetaExchange != address(0)) {
             console.log("MetaExchange:", lastMetaExchange);
-        }
-        if (lastUniswapExchange != address(0)) {
-            console.log("UniswapUniversalRouterExchange:", lastUniswapExchange);
-            console.log("CurveExchange:", lastCurveExchange);
-            console.log("FluidExchange:", lastFluidExchange);
-            console.log("PendleExchange:", lastPendleExchange);
-            console.log("ERC4626Exchange:", lastERC4626Exchange);
-            console.log("LitePsmExchange:", lastLitePsmExchange);
-            console.log("SyrupDepositExchange:", lastSyrupDepositExchange);
-            console.log("SUSDSExchange:", lastSUSDSExchange);
-            console.log("OriginMintExchange:", lastOriginMintExchange);
         }
     }
 
@@ -422,8 +426,9 @@ contract Deploy is Script {
         );
     }
 
-    function deployLST(LSTConfig memory cfg) internal returns (address) {
-        WETHWstETHExchange exchange = new WETHWstETHExchange();
+    function deploySUSDSUSDT(LSTConfig memory cfg) internal returns (address) {
+        MetaExchange exchange = _resolveMetaExchange();
+
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -433,31 +438,14 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.transferGovernance(LOOPER_GOVERNANCE);
 
         return address(looper);
     }
 
-    function deployMetaExchangeForCurrentChain() internal returns (address) {
-        address weth;
+    function deploySUSDe(LSTConfig memory cfg) internal returns (address) {
+        MetaExchange exchange = _resolveMetaExchange();
 
-        if (block.chainid == 1) {
-            weth = WETH_MAINNET;
-        } else if (block.chainid == 42161) {
-            weth = WETH_ARBITRUM;
-        } else {
-            revert("Unsupported chain");
-        }
-
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(weth);
-        _finalizeMetaExchange(exchange, fresh);
-        return address(exchange);
-    }
-
-    function deploySUSDSUSDT(LSTConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(WETH_MAINNET);
-
-        MorphoLooper looper = new MorphoLooper(
+        sUSDeMorphoLooper looper = new sUSDeMorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
@@ -467,12 +455,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deploySyrup(SyrupConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.weth);
+        MetaExchange exchange = _resolveMetaExchange();
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             cfg.base.asset,
@@ -485,12 +472,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deploySyrupArbitrum(SyrupArbConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.weth);
+        MetaExchange exchange = _resolveMetaExchange();
 
         SyrupMorphoLooper looper = new SyrupMorphoLooper(
             cfg.base.asset,
@@ -503,13 +489,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deployPT(PTConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) =
-            _resolveMetaExchange(block.chainid == 42161 ? WETH_ARBITRUM : WETH_MAINNET);
+        MetaExchange exchange = _resolveMetaExchange();
 
         MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
@@ -521,7 +505,6 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
@@ -530,7 +513,7 @@ contract Deploy is Script {
     }
 
     function deployMorphoLBTCWBTC(BaseConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(WETH_MAINNET);
+        MetaExchange exchange = _resolveMetaExchange();
         MorphoLooper looper = new MorphoLooper(
             cfg.asset,
             cfg.name,
@@ -541,12 +524,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deployAave(AaveConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.weth);
+        MetaExchange exchange = _resolveMetaExchange();
         AaveLooper looper = new AaveLooper(
             cfg.asset,
             cfg.name,
@@ -558,12 +540,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deployAaveLST(AaveConfig memory cfg) internal returns (address) {
-        WETHWstETHExchange exchange = new WETHWstETHExchange();
+        WETHWstETHExchange exchange = new WETHWstETHExchange(EXCHANGE_GOVERNANCE);
         LSTAaveLooper looper = new LSTAaveLooper(
             cfg.asset,
             cfg.name,
@@ -574,13 +555,11 @@ contract Deploy is Script {
             address(exchange),
             LOOPER_GOVERNANCE
         );
-        exchange.transferGovernance(LOOPER_GOVERNANCE);
-
         return address(looper);
     }
 
     function deployAaveSUSDe(AaveSUSDeConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.base.weth);
+        MetaExchange exchange = _resolveMetaExchange();
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -592,12 +571,11 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
     function deployAaveSyrup(AaveSyrupConfig memory cfg) internal returns (address) {
-        (MetaExchange exchange, bool fresh) = _resolveMetaExchange(cfg.base.weth);
+        MetaExchange exchange = _resolveMetaExchange();
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             cfg.base.asset,
             cfg.base.name,
@@ -609,107 +587,14 @@ contract Deploy is Script {
             LOOPER_GOVERNANCE
         );
 
-        _finalizeMetaExchange(exchange, fresh);
         return address(looper);
     }
 
-    function _resolveMetaExchange(address weth) internal returns (MetaExchange exchange, bool fresh) {
-        address configured = vm.envOr("META_EXCHANGE", address(0));
-        if (configured != address(0)) {
-            exchange = MetaExchange(payable(configured));
-            require(exchange.weth() == weth, "!meta weth");
-            lastMetaExchange = address(exchange);
-            return (exchange, false);
-        }
-
-        exchange = new MetaExchange(weth);
+    function _resolveMetaExchange() internal returns (MetaExchange exchange) {
+        require(META_EXCHANGE != address(0), "META_EXCHANGE");
+        exchange = MetaExchange(payable(META_EXCHANGE));
         lastMetaExchange = address(exchange);
-        return (exchange, true);
-    }
-
-    function _finalizeMetaExchange(MetaExchange exchange, bool fresh) internal {
-        if (!fresh) return;
-
-        _deployMetaExchangeVenues(exchange);
-        exchange.transferGovernance(LOOPER_GOVERNANCE);
-    }
-
-    function _deployMetaExchangeVenues(MetaExchange exchange) internal {
-        address weth = exchange.weth();
-        address uniRouter = _envOrMainnetDefault(
-            "UNISWAP_ROUTER",
-            DEFAULT_UNISWAP_ROUTER
-        );
-        address positionManager = _envOrMainnetDefault(
-            "UNISWAP_POSITION_MANAGER",
-            DEFAULT_UNISWAP_POSITION_MANAGER
-        );
-        address curveRouter = _envOrMainnetDefault(
-            "CURVE_ROUTER",
-            DEFAULT_CURVE_ROUTER
-        );
-        address pendleRouter = _envOrMainnetDefault(
-            "PENDLE_ROUTER",
-            DEFAULT_PENDLE_ROUTER
-        );
-
-        UniswapUniversalRouterExchange uni = new UniswapUniversalRouterExchange(
-            weth,
-            uniRouter,
-            positionManager
-        );
-        CurveExchange curve = new CurveExchange(curveRouter);
-        FluidExchange fluid = new FluidExchange(weth);
-        PendleExchange pendle = new PendleExchange(pendleRouter);
-        ERC4626Exchange erc4626 = new ERC4626Exchange();
-        SyrupDepositExchange syrup = new SyrupDepositExchange();
-        SUSDSExchange susds = new SUSDSExchange();
-        OriginMintExchange origin = new OriginMintExchange();
-
-        lastUniswapExchange = address(uni);
-        lastCurveExchange = address(curve);
-        lastFluidExchange = address(fluid);
-        lastPendleExchange = address(pendle);
-        lastERC4626Exchange = address(erc4626);
-        lastSyrupDepositExchange = address(syrup);
-        lastSUSDSExchange = address(susds);
-        lastOriginMintExchange = address(origin);
-
-        exchange.setAllowedExchange(address(uni), true);
-        exchange.setAllowedExchange(address(curve), true);
-        exchange.setAllowedExchange(address(fluid), true);
-        exchange.setAllowedExchange(address(pendle), true);
-        exchange.setAllowedExchange(address(erc4626), true);
-        exchange.setAllowedExchange(address(syrup), true);
-        exchange.setAllowedExchange(address(susds), true);
-        exchange.setAllowedExchange(address(origin), true);
-
-        uni.transferGovernance(LOOPER_GOVERNANCE);
-        curve.transferGovernance(LOOPER_GOVERNANCE);
-        fluid.transferGovernance(LOOPER_GOVERNANCE);
-        pendle.transferGovernance(LOOPER_GOVERNANCE);
-        erc4626.transferGovernance(LOOPER_GOVERNANCE);
-        syrup.transferGovernance(LOOPER_GOVERNANCE);
-        susds.transferGovernance(LOOPER_GOVERNANCE);
-        origin.transferGovernance(LOOPER_GOVERNANCE);
-
-        if (block.chainid == 1) {
-            LitePsmExchange litePsm = new LitePsmExchange(USDC_MAINNET, USDS_MAINNET, LITE_PSM_WRAPPER_MAINNET, 1e12);
-            lastLitePsmExchange = address(litePsm);
-            exchange.setAllowedExchange(address(litePsm), true);
-            litePsm.transferGovernance(LOOPER_GOVERNANCE);
-        }
-    }
-
-    function _envOrMainnetDefault(
-        string memory key,
-        address mainnetDefault
-    ) internal view returns (address) {
-        if (block.chainid == 1) {
-            return vm.envOr(key, mainnetDefault);
-        }
-
-        return vm.envAddress(key);
+        return exchange;
     }
 
     function deployAprOracle() internal returns (address) {

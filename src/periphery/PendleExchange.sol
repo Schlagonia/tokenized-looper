@@ -15,7 +15,10 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract PendleExchange is PendleSwapper, BaseExchange {
     using SafeERC20 for ERC20;
 
-    constructor(address _pendleRouter) {
+    constructor(
+        address _pendleRouter,
+        address _governance
+    ) BaseExchange(_governance) {
         require(_pendleRouter != address(0), "!router");
         pendleRouter = _pendleRouter;
     }

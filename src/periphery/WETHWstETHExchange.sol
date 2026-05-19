@@ -37,7 +37,7 @@ contract WETHWstETHExchange is BaseExchange {
     int128 internal constant WETH_ID = 0;
     int128 internal constant STETH_ID = 1;
 
-    constructor() {
+    constructor(address _governance) BaseExchange(_governance) {
         ERC20(address(STETH)).forceApprove(
             address(STABLE_SWAP_STETH),
             type(uint256).max

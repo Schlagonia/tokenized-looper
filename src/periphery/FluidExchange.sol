@@ -18,7 +18,10 @@ contract FluidExchange is FluidSwapper, BaseExchange {
         address indexed fluidBase
     );
 
-    constructor(address _weth) FluidSwapper(_weth) {}
+    constructor(
+        address _weth,
+        address _governance
+    ) FluidSwapper(_weth) BaseExchange(_governance) {}
 
     function name() external pure override returns (string memory) {
         return "FluidExchange";

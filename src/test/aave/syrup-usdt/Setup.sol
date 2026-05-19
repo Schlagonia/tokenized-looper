@@ -79,13 +79,14 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
+        exchange = new MetaExchange(management);
         uniExchange = new UniswapUniversalRouterExchange(
             WETH,
             UNISWAP_ROUTER,
-            UNISWAP_POSITION_MANAGER
+            UNISWAP_POSITION_MANAGER,
+            management
         );
-        syrupExchange = new SyrupDepositExchange();
+        syrupExchange = new SyrupDepositExchange(management);
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),
@@ -99,9 +100,6 @@ contract SetupAaveSyrupUSDT is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        uniExchange.transferGovernance(management);
-        syrupExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.prank(management);

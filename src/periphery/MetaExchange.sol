@@ -17,8 +17,6 @@ contract MetaExchange is BaseExchange {
     using SafeERC20 for ERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    address public immutable weth;
-
     struct RouteStep {
         address exchange;
         address tokenTo;
@@ -31,10 +29,7 @@ contract MetaExchange is BaseExchange {
     event AllowedExchangeSet(address indexed exchange, bool allowed);
     event RouteSet(address indexed from, address indexed to, uint256 length);
 
-    constructor(address _weth) {
-        require(_weth != address(0), "!weth");
-        weth = _weth;
-    }
+    constructor(address _governance) BaseExchange(_governance) {}
 
     function name() external pure override returns (string memory) {
         return "MetaExchange";

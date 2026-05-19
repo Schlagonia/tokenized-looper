@@ -69,20 +69,22 @@ contract SetupSUSDSUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
+        exchange = new MetaExchange(management);
         uniExchange = new UniswapUniversalRouterExchange(
             WETH,
             UNISWAP_ROUTER,
-            UNISWAP_POSITION_MANAGER
+            UNISWAP_POSITION_MANAGER,
+            management
         );
         litePsmExchange = new LitePsmExchange(
             USDC,
             USDS,
             LITE_PSM_WRAPPER,
-            1e12
+            1e12,
+            management
         );
-        susdsExchange = new SUSDSExchange();
-        erc4626Exchange = new ERC4626Exchange();
+        susdsExchange = new SUSDSExchange(management);
+        erc4626Exchange = new ERC4626Exchange(management);
 
         MorphoLooper looper = new MorphoLooper(
             address(asset),
@@ -94,11 +96,6 @@ contract SetupSUSDSUSDT is Setup {
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        uniExchange.transferGovernance(management);
-        litePsmExchange.transferGovernance(management);
-        susdsExchange.transferGovernance(management);
-        erc4626Exchange.transferGovernance(management);
 
         _strategy.setPendingManagement(management);
 

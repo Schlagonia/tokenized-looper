@@ -83,14 +83,15 @@ contract SetupEulerSyrupRLUSD is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange(CURVE_ROUTER);
+        exchange = new MetaExchange(management);
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
         uniExchange = new UniswapUniversalRouterExchange(
             WETH,
             UNISWAP_ROUTER,
-            UNISWAP_POSITION_MANAGER
+            UNISWAP_POSITION_MANAGER,
+            management
         );
-        syrupExchange = new SyrupDepositExchange();
+        syrupExchange = new SyrupDepositExchange(management);
 
         EulerLooper looper = new EulerLooper(
             address(asset),
@@ -104,10 +105,6 @@ contract SetupEulerSyrupRLUSD is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        uniExchange.transferGovernance(management);
-        syrupExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         _authorizeSyrupDepositExchange();

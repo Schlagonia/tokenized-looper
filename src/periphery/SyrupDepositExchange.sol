@@ -28,6 +28,8 @@ contract SyrupDepositExchange is BaseExchange {
         bytes32 depositData
     );
 
+    constructor(address _governance) BaseExchange(_governance) {}
+
     function name() external pure override returns (string memory) {
         return "SyrupDepositExchange";
     }

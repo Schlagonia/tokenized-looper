@@ -14,6 +14,8 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract ERC4626Exchange is BaseExchange {
     using SafeERC20 for ERC20;
 
+    constructor(address _governance) BaseExchange(_governance) {}
+
     function name() external pure override returns (string memory) {
         return "ERC4626Exchange";
     }

@@ -80,10 +80,10 @@ contract SetupSUSDePYUSD is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new MetaExchange(WETH);
-        curveExchange = new CurveExchange(CURVE_ROUTER);
-        erc4626Exchange = new ERC4626Exchange();
-        fluidExchange = new FluidExchange(WETH);
+        exchange = new MetaExchange(management);
+        curveExchange = new CurveExchange(CURVE_ROUTER, management);
+        erc4626Exchange = new ERC4626Exchange(management);
+        fluidExchange = new FluidExchange(WETH, management);
 
         sUSDeMorphoLooper looper = new sUSDeMorphoLooper(
             address(asset),
@@ -96,10 +96,6 @@ contract SetupSUSDePYUSD is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
-        curveExchange.transferGovernance(management);
-        erc4626Exchange.transferGovernance(management);
-        fluidExchange.transferGovernance(management);
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);

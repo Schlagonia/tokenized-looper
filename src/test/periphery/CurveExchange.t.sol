@@ -14,7 +14,7 @@ contract CurveExchangeTest is Test {
     address internal curveRouter = makeAddr("curveRouter");
 
     function setUp() public {
-        exchange = new CurveExchange(curveRouter);
+        exchange = new CurveExchange(curveRouter, address(this));
     }
 
     function test_getCurveRoute_returnsConfiguredRoute() public {

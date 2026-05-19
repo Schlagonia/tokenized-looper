@@ -62,7 +62,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
-        MetaExchange newExchange = new MetaExchange(WETH);
+        MetaExchange newExchange = new MetaExchange(management);
 
         vm.prank(user);
         vm.expectRevert("!governance");

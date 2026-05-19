@@ -61,7 +61,7 @@ contract SetupSparkLendLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new WETHWstETHExchange();
+        exchange = new WETHWstETHExchange(management);
 
         LSTAaveLooper looper = new LSTAaveLooper(
             address(asset),
@@ -74,7 +74,6 @@ contract SetupSparkLendLST is Setup {
             management
         );
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.transferGovernance(management);
 
         // Guard against inherited ETH balance at this CREATE address on fork state.
         if (address(looper).balance > 0) {

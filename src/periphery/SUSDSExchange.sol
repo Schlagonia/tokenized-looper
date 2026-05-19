@@ -17,6 +17,8 @@ contract SUSDSExchange is BaseExchange {
 
     uint16 public susdsReferral = 1007;
 
+    constructor(address _governance) BaseExchange(_governance) {}
+
     function name() external pure override returns (string memory) {
         return "SUSDSExchange";
     }
