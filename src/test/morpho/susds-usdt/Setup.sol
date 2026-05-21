@@ -47,7 +47,7 @@ contract SetupSUSDSUSDT is Setup {
         asset = ERC20(USDT);
         decimals = asset.decimals();
 
-        maxFuzzAmount = 1_000_000e6;
+        maxFuzzAmount = 100_000e6;
         // Tiny live-fork positions can round into sub-cent rebalance hops that
         // fail the LitePSM + sUSDS route on unwind/report.
         minFuzzAmount = 500e6;
@@ -115,6 +115,7 @@ contract SetupSUSDSUSDT is Setup {
 
         _strategy.setAllowed(user, true);
         _strategy.setMaxGasPriceToTend(type(uint256).max);
+        _strategy.setMaxAmountToSwap(500_000e6);
 
         vm.stopPrank();
 
@@ -124,6 +125,16 @@ contract SetupSUSDSUSDT is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 500) / 10_000);
+    }
+
+    function _defaultMaxAmountToSwap()
+        internal
+        pure
+        virtual
+        override
+        returns (uint256)
+    {
+        return 500_000e6;
     }
 
     function _setRoutes() internal {

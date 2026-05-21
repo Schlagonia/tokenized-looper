@@ -28,16 +28,16 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         SetupAaveSyrupUSDT.accrueYield(_amount);
     }
 
-    function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
+    function test_zeroPendingRedemptions_onlyManagement() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingRedemptions();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
@@ -50,7 +50,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         deal(USDT, address(strategy), amount);
         assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertEq(amountOut, amount, "!amountOut");

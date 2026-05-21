@@ -41,16 +41,16 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
                 : MIN_UNWIND_COLLATERAL_DUST;
     }
 
-    function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
+    function test_zeroPendingRedemptions_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingRedemptions();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
@@ -77,13 +77,13 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         loose = strategy.balanceOfCollateralToken();
     }
 
-    function test_initiateDirectRedemption_onlyEmergencyAuthorized() public {
+    function test_initiateDirectRedemption_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.initiateDirectRedemption(1);
     }
 
@@ -95,7 +95,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         // No loose shares + clamp to balance => 0 => "!shares"
         assertEq(looper.balanceOfCollateralToken(), 0, "!precondition");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         vm.expectRevert("!shares");
         looper.initiateDirectRedemption(type(uint256).max);
     }
@@ -115,7 +115,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             address(strategy)
         );
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 exitShares = looper.initiateDirectRedemption(loose);
 
         assertGt(exitShares, 0, "!exitShares");
@@ -133,13 +133,13 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         );
     }
 
-    function test_cancelDirectRedemption_onlyEmergencyAuthorized() public {
+    function test_cancelDirectRedemption_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.cancelDirectRedemption(1);
     }
 
@@ -149,7 +149,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         );
         assertEq(looper.pendingRedemptionShares(), 0, "!precondition");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         vm.expectRevert("!shares");
         looper.cancelDirectRedemption(type(uint256).max);
     }
@@ -162,7 +162,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 exitShares = looper.initiateDirectRedemption(loose);
         assertEq(looper.pendingRedemptionShares(), exitShares, "!queued");
 
@@ -170,7 +170,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             address(strategy)
         );
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 removed = looper.cancelDirectRedemption(type(uint256).max);
 
         assertGt(removed, 0, "!removed");
@@ -189,7 +189,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateDirectRedemption(loose);
 
         assertGt(looper.pendingRedemptionShares(), 0, "!pending");
@@ -207,7 +207,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateDirectRedemption(loose);
 
         // After request, the strategy no longer holds the loose shares but
@@ -228,13 +228,13 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateDirectRedemption(loose);
         assertGt(looper.pendingRedemptionShares(), 0, "!pending");
 
         // zeroPendingRedemptions must not call into Maple; it is purely a
         // bookkeeping reset to be used after Maple has filled the request.
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
 
         assertEq(looper.pendingRedemptionShares(), 0, "!pending cleared");
@@ -257,7 +257,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
 
         uint256 assetBefore = asset.balanceOf(address(strategy));
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertGt(amountOut, 0, "!amountOut");

@@ -98,7 +98,6 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
             payable(address(strategy))
         );
         assertEq(looper.collateralToken(), SUSDE, "!collateralToken");
-        assertEq(looper.UNDERLYING(), USDE, "!UNDERLYING");
         assertEq(looper.pendingRedemptions(), 0, "!pendingRedemptions init");
     }
 
@@ -121,28 +120,28 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
                         COOLDOWN STATE MACHINE
     //////////////////////////////////////////////////////////////*/
 
-    function test_cooldown_functions_onlyEmergencyAuthorized() public {
+    function test_cooldown_functions_accessControl() public {
         sUSDeMorphoLooper looper = sUSDeMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingRedemptions();
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.initiateCooldown(0);
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!keeper");
         looper.claimCooldown();
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!keeper");
         looper.convertUnderlyingToAsset(0);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
@@ -170,7 +169,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
 
         uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertEq(
@@ -215,7 +214,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         looper.manualWithdrawCollateral(withdrawShares);
 
         uint256 looseShares = looper.balanceOfCollateralToken();
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateCooldown(looseShares / 2);
 
         // Stage another loose chunk so the second call would otherwise succeed.
@@ -223,7 +222,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         looper.manualWithdrawCollateral(withdrawShares);
 
         uint256 freshLoose = looper.balanceOfCollateralToken();
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         vm.expectRevert("pending redemptions");
         looper.initiateCooldown(freshLoose);
     }
@@ -244,7 +243,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         looper.manualWithdrawCollateral(withdrawShares);
 
         uint256 looseShares = looper.balanceOfCollateralToken();
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateCooldown(looseShares);
 
         assertGt(looper.pendingRedemptions(), 0, "!pending precondition");
@@ -270,11 +269,11 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         looper.manualWithdrawCollateral(withdrawShares);
 
         uint256 looseShares = looper.balanceOfCollateralToken();
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.initiateCooldown(looseShares);
         assertGt(looper.pendingRedemptions(), 0, "!pending");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
 
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
@@ -305,7 +304,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         looper.manualWithdrawCollateral(withdrawShares);
 
         uint256 looseShares = looper.balanceOfCollateralToken();
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertGt(cooldownAssets, 0, "!cooldownAssets");
@@ -314,7 +313,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         // Ethena cooldown is 7 days; pad to 8 to be safe across forks.
         skip(8 days);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         looper.claimCooldown();
 
         uint256 underlyingBalance = looper.balanceOfUnderlying();
@@ -323,7 +322,7 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         assertGt(underlyingBalance, 0, "!underlying");
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertGt(amountOut, 0, "!amountOut");

@@ -10,7 +10,7 @@ import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
  * @title SyrupUSDTAaveLooper
  * @notice Aave V3 looper for syrupUSDT collateral and USDT debt.
  *         - Default path delegates swaps to a dedicated exchange contract.
- *         - Emergency path supports direct syrup redemption requests.
+ *         - Management path supports direct syrup redemption requests.
  */
 contract SyrupUSDTAaveLooper is AaveLooper {
     /// @notice Shares queued for direct syrup redemption.
@@ -71,7 +71,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     /// @notice Queue syrup shares for direct redemption (non-swap path).
     function initiateDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _exitShares) {
+    ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
         require(_shares > 0, "!shares");
 
@@ -85,7 +85,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     /// @notice Cancel queued direct redemptions and restore shares to wallet.
     function cancelDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
+    ) external onlyManagement returns (uint256 _removedShares) {
         _shares = _shares == type(uint256).max
             ? pendingRedemptionShares
             : _shares;
@@ -102,13 +102,13 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     }
 
     /// @notice Manually zero pending redemptions in exceptional scenarios.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptionShares = 0;
     }
 
     function convertUnderlyingToAsset(
         uint256 amount
-    ) external onlyEmergencyAuthorized returns (uint256) {
+    ) external onlyKeepers returns (uint256) {
         amount = Math.min(amount, balanceOfUnderlying());
         if (amount == 0) return 0;
 

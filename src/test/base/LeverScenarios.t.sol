@@ -10,6 +10,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 /// @dev Tests all scenarios: leveraging up, deleveraging, at-target, above-max, and edge cases
 abstract contract LeverScenariosTest is Setup {
     uint256 internal constant WAD = 1e18;
+    uint256 internal constant LEVER_UNWIND_COLLATERAL_DUST_BPS = 2; // 0.02%
+    uint256 internal constant MIN_LEVER_UNWIND_COLLATERAL_DUST = 1;
 
     function setUp() public virtual override {
         super.setUp();
@@ -224,6 +226,17 @@ abstract contract LeverScenariosTest is Setup {
 
         uint256 mid = (min + max) / 2;
         return mid > min ? mid : min;
+    }
+
+    function _maxLeverUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure virtual returns (uint256) {
+        uint256 relativeDust = collateralBeforeUnwind /
+            (10_000 / LEVER_UNWIND_COLLATERAL_DUST_BPS);
+        return
+            relativeDust > MIN_LEVER_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_LEVER_UNWIND_COLLATERAL_DUST;
     }
 
     /// @notice Calculate target position for a given equity
@@ -1249,6 +1262,77 @@ abstract contract LeverScenariosTest is Setup {
         );
     }
 
+    /// @notice Regresses full-debt repay when target leverage is 1x.
+    /// @dev `debtToRepay == currentDebt` should not withdraw all collateral
+    ///      unless target leverage is zero.
+    function test_lever_toOneX_repayAllDebtKeepsCollateral() public virtual {
+        uint256 amount = _leverScenarioBaseAmount();
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(debtBefore, strategy.minAmountToBorrow(), "!debt before");
+        _assertLeverageWithinBuffer();
+
+        vm.prank(management);
+        strategy.setLeverageParams(WAD, 0.01e18, 5e18);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralAfter = strategy.balanceOfCollateral();
+        uint256 debtAfter = strategy.balanceOfDebt();
+
+        assertLe(debtAfter, strategy.minAmountToBorrow(), "!debt after");
+        assertGt(
+            collateralAfter,
+            _maxLeverUnwindCollateralDust(collateralBefore),
+            "1x target should keep collateral"
+        );
+        assertLt(collateralAfter, collateralBefore, "!collateral reduced");
+        assertApproxEqAbs(
+            strategy.getCurrentLeverageRatio(),
+            WAD,
+            _leverageDust(),
+            "!1x leverage"
+        );
+    }
+
+    /// @notice Zero target leverage still fully exits collateral on tend.
+    function test_lever_zeroTarget_tendWithdrawsAllCollateral() public virtual {
+        uint256 amount = _leverScenarioBaseAmount();
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(strategy.balanceOfDebt(), 0, "!debt before");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertLe(
+            strategy.balanceOfDebt(),
+            strategy.minAmountToBorrow(),
+            "!debt after"
+        );
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxLeverUnwindCollateralDust(collateralBefore),
+            "!collateral dust"
+        );
+        assertGt(strategy.balanceOfAsset(), 0, "!idle asset");
+    }
+
     /// @notice Test lever with increasing target leverage
     function test_lever_afterIncreasingTargetLeverage(
         uint256 _amount
@@ -1457,12 +1541,17 @@ abstract contract LeverScenariosTest is Setup {
     function test_lever_maxAmountToSwap_noLimit(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
-        // Verify default is max uint
+        uint256 configuredDefault = _defaultMaxAmountToSwap();
         assertEq(
             strategy.maxAmountToSwap(),
-            type(uint256).max,
-            "!default should be max"
+            configuredDefault,
+            "!default maxAmountToSwap"
         );
+
+        if (configuredDefault != type(uint256).max) {
+            vm.prank(management);
+            strategy.setMaxAmountToSwap(type(uint256).max);
+        }
 
         // Normal deposit and tend should work without limits
         mintAndDepositIntoStrategy(strategy, user, _amount);

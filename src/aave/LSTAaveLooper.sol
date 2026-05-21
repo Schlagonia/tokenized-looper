@@ -54,7 +54,7 @@ contract LSTAaveLooper is AaveLooper {
     /// @return nftId Withdrawal ID number from the withdrawal request
     function initiateLSTWithdrawal(
         uint256 _amount
-    ) external payable onlyEmergencyAuthorized returns (uint256 nftId) {
+    ) external onlyManagement returns (uint256 nftId) {
         uint256 pendingAssets;
         (nftId, pendingAssets) = LidoWithdrawalLib.initiate(_amount);
         unchecked {
@@ -67,7 +67,7 @@ contract LSTAaveLooper is AaveLooper {
     /// @return assets Amount of LST redeemed
     function claimLSTWithdrawal(
         uint256 _claimId
-    ) external payable onlyEmergencyAuthorized returns (uint256 assets) {
+    ) external payable onlyKeepers returns (uint256 assets) {
         assets = LidoWithdrawalLib.claim(_claimId);
         if (assets >= pendingRedemptions) {
             delete pendingRedemptions;
@@ -79,7 +79,7 @@ contract LSTAaveLooper is AaveLooper {
     }
 
     /// @notice Manually zero pending redemptions in exceptional scenarios.
-    function zeroPendingRedemptions() external payable onlyEmergencyAuthorized {
+    function zeroPendingRedemptions() external payable onlyManagement {
         delete pendingRedemptions;
     }
 }

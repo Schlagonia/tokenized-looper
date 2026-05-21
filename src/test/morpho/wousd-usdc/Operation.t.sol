@@ -28,22 +28,22 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         SetupWOUSDMorpho.accrueYield(_amount);
     }
 
-    function test_withdrawalFunctions_onlyEmergencyAuthorized() public {
+    function test_withdrawalFunctions_accessControl() public {
         OriginMorphoLooper looper = OriginMorphoLooper(address(strategy));
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingWithdrawals();
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.initiateWithdrawal(0);
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!keeper");
         looper.claimWithdrawal(0);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingWithdrawals();
     }
 
@@ -64,6 +64,34 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         assertEq(request.withdrawer, address(looper), "!withdrawer");
         assertEq(uint256(request.amount), assets, "!request amount");
         assertFalse(request.claimed, "!claimed");
+    }
+
+    function test_claimWithdrawal_clearsPendingOusdAccounting() public {
+        (
+            OriginMorphoLooper looper,
+            uint256 requestId,
+            uint256 assets
+        ) = _queueWithdrawal();
+
+        assertEq(looper.pendingWithdrawalAssets(), assets, "!pending");
+
+        uint256 claimedUsdc = assets / 1e12;
+        assertGt(claimedUsdc, 0, "!mock claimed");
+
+        vm.mockCall(
+            OUSD_VAULT,
+            abi.encodeWithSelector(
+                IOUSDVault.claimWithdrawal.selector,
+                requestId
+            ),
+            abi.encode(claimedUsdc)
+        );
+
+        vm.prank(keeper);
+        uint256 claimed = looper.claimWithdrawal(requestId);
+
+        assertEq(claimed, claimedUsdc, "!claimed");
+        assertEq(looper.pendingWithdrawalAssets(), 0, "!pending cleared");
     }
 
     function _queueWithdrawal()
@@ -87,7 +115,7 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         uint256 looseShares = looper.balanceOfCollateralToken();
         assertGt(looseShares, 0, "!looseShares");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         (requestId, assets) = looper.initiateWithdrawal(looseShares);
 
         assertEq(ERC20(OUSD).balanceOf(address(looper)), 0, "!ousd");

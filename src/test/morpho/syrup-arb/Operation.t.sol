@@ -40,16 +40,16 @@ contract SyrupUsdcArbMorphoOperationTest is
                 : MIN_UNWIND_COLLATERAL_DUST;
     }
 
-    function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
+    function test_zeroPendingRedemptions_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingRedemptions();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
@@ -62,7 +62,7 @@ contract SyrupUsdcArbMorphoOperationTest is
         deal(ARB_USDC, address(strategy), amount);
         assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertEq(amountOut, amount, "!amountOut");

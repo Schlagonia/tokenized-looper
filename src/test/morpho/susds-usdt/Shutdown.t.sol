@@ -24,4 +24,13 @@ contract SUSDSUSDTShutdownTest is SetupSUSDSUSDT, ShutdownTest {
     ) public override(SetupSUSDSUSDT, Setup) {
         SetupSUSDSUSDT.accrueYield(_amount);
     }
+
+    function _defaultMaxAmountToSwap()
+        internal
+        pure
+        override(SetupSUSDSUSDT, Setup)
+        returns (uint256)
+    {
+        return SetupSUSDSUSDT._defaultMaxAmountToSwap();
+    }
 }

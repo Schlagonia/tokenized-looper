@@ -195,9 +195,6 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
             address(this),
             REFERRAL_CODE
         );
-
-        // Enable as collateral (idempotent - safe to call multiple times)
-        //IPool(POOL).setUserUseReserveAsCollateral(collateralToken, true);
     }
 
     function _withdrawCollateral(uint256 amount) internal override {
@@ -371,7 +368,12 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
-        require(_token != address(asset) && _token != A_TOKEN, "!token");
+        require(
+            _token != address(asset) &&
+                _token != A_TOKEN &&
+                _token != collateralToken,
+            "!token"
+        );
         return _kickAuction(_token);
     }
 }

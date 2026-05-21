@@ -113,7 +113,7 @@ contract SetupPawnBrokerSIUSD is Setup {
     }
 
     function accrueYield(uint256 _amount) public virtual override {
-        skip(1 days);
+        skip(12 hours);
 
         _amount = (_amount * 300) / 10_000;
 

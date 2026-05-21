@@ -11,16 +11,12 @@ import {EthenaCooldownLib} from "../libraries/EthenaCooldownLib.sol";
 /**
  * @title sUSDeMorphoLooper
  * @notice Morpho Blue looper using sUSDe as collateral. Adds the sUSDe
- *         cooldown state machine on top of `MorphoLooper`: emergency-only
+ *         cooldown state machine on top of `MorphoLooper`: management-only
  *         async unstake (`initiateCooldown` / `claimCooldown`) plus a path
  *         to convert the unstaked USDe back to the loan asset through the
  *         existing exchange wiring.
  */
 contract sUSDeMorphoLooper is MorphoLooper {
-    /// @notice The underlying token (USDe) that sUSDe wraps.
-    address public constant UNDERLYING =
-        0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
-
     /// @notice Asset value queued for sUSDe cooldown — populated by
     ///         `initiateCooldown` and zeroed by `claimCooldown`.
     /// @dev Tracked in USDe units (returned by `cooldownShares`), not shares.
@@ -45,8 +41,6 @@ contract sUSDeMorphoLooper is MorphoLooper {
             _governance
         )
     {}
-
-    receive() external payable {}
 
     /// @notice Estimated total assets including any sUSDe queued for cooldown
     ///         and any loose USDe sitting in the strategy post-claim.
@@ -87,23 +81,23 @@ contract sUSDeMorphoLooper is MorphoLooper {
     /// @return assets USDe that will be claimable after the cooldown window.
     function initiateCooldown(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 assets) {
+    ) external onlyManagement returns (uint256 assets) {
         require(pendingRedemptions == 0, "pending redemptions");
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
         assets = EthenaCooldownLib.initiate(_shares);
-        pendingRedemptions += assets;
+        pendingRedemptions = assets;
     }
 
     /// @notice Pull queued USDe out of the cooldown silo into this strategy.
-    function claimCooldown() external onlyEmergencyAuthorized {
+    function claimCooldown() external onlyKeepers {
         EthenaCooldownLib.claim();
         pendingRedemptions = 0;
     }
 
     /// @notice Manually clear the pending tracker after a stuck/dust queue.
     /// @dev Pure bookkeeping — does not call into Ethena.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptions = 0;
     }
 
@@ -111,7 +105,7 @@ contract sUSDeMorphoLooper is MorphoLooper {
     /// @param amount USDe amount to convert (clamped to current balance).
     function convertUnderlyingToAsset(
         uint256 amount
-    ) external onlyEmergencyAuthorized returns (uint256) {
+    ) external onlyKeepers returns (uint256) {
         (uint256 shares, uint256 amountOut) = EthenaCooldownLib
             .convertUnderlyingToAsset(amount, exchange, address(asset));
 

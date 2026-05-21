@@ -84,7 +84,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         bytes calldata data
     ) external override {
         require(msg.sender == address(MORPHO), "!morpho");
-        require(isFlashloanActive, "flashloan active");
+        require(isFlashloanActive, "!flashloan active");
         // Delegate to parent's generic handler
         _onFlashloanReceived(assets, data);
 
@@ -303,6 +303,10 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
+        require(
+            _token != address(asset) && _token != collateralToken,
+            "!token"
+        );
         return _kickAuction(_token);
     }
 }

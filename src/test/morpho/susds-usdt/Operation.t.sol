@@ -26,6 +26,15 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
         SetupSUSDSUSDT.accrueYield(_amount);
     }
 
+    function _defaultMaxAmountToSwap()
+        internal
+        pure
+        override(SetupSUSDSUSDT, Setup)
+        returns (uint256)
+    {
+        return SetupSUSDSUSDT._defaultMaxAmountToSwap();
+    }
+
     function test_setSUSDSReferral() public {
         assertEq(susdsExchange.susdsReferral(), 1007, "!default referral");
 

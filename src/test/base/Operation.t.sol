@@ -428,10 +428,10 @@ abstract contract OperationTest is Setup {
     //////////////////////////////////////////////////////////////*/
 
     function test_setMaxAmountToSwap() public {
-        // Verify default value is type(uint256).max
+        // Verify configured default value.
         assertEq(
             strategy.maxAmountToSwap(),
-            type(uint256).max,
+            _defaultMaxAmountToSwap(),
             "!default maxAmountToSwap"
         );
 

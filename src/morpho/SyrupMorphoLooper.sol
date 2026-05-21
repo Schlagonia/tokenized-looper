@@ -81,7 +81,7 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @dev asset is directly sent back to the strategy once filled
     function initiateDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _exitShares) {
+    ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
         require(_shares > 0, "!shares");
 
@@ -95,7 +95,7 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @notice Cancel queued redemption shares.
     function cancelDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
+    ) external onlyManagement returns (uint256 _removedShares) {
         _shares = _shares == type(uint256).max
             ? pendingRedemptionShares
             : _shares;
@@ -114,13 +114,13 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @notice Manually clear pending redemptions.
     /// NOTE: Maple will automatically send usdc to the strategy. So this will
     ///       need to be called once done to allow reports to continue.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptionShares = 0;
     }
 
     function convertUnderlyingToAsset(
         uint256 amount
-    ) external onlyEmergencyAuthorized returns (uint256) {
+    ) external onlyKeepers returns (uint256) {
         amount = Math.min(amount, balanceOfUnderlying());
         if (amount == 0) return 0;
 

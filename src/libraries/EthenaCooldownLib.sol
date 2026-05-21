@@ -20,6 +20,7 @@ library EthenaCooldownLib {
     }
 
     function initiate(uint256 shares) external returns (uint256 assets) {
+        require(shares > 0, "!shares");
         assets = IsUSDe(SUSDE).cooldownShares(shares);
     }
 

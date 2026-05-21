@@ -49,6 +49,9 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Governance address allowed to update exchange configuration.
     address public immutable GOVERNANCE;
 
+    /// @notice Exchange address
+    address public exchange;
+
     /// @notice Slippage parameter in basis points for swaps and the 1-day budget.
     uint64 public slippage;
 
@@ -60,9 +63,6 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Cumulative realized swap loss in asset terms for the current period.
     uint256 public slippagePeriodLoss;
-
-    /// @notice Exchange address
-    address public exchange;
 
     /// @notice The timestamp of the last tend.
     uint256 public lastTend;
@@ -298,7 +298,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev Override to customize deployment behavior. Default is no-op (funds deployed via _harvestAndReport).
     ///      Called by TokenizedStrategy when deposits are made.
     /// @param _amount The amount of asset to deploy
-    function _deployFunds(uint256 _amount) internal virtual override accrue {}
+    function _deployFunds(uint256 _amount) internal virtual override {}
 
     /// @notice Free funds from the leveraged position for withdrawal
     /// @dev Override to customize withdrawal behavior. Default deleverages the position.
@@ -380,7 +380,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         if (flashloanAvailable >= currentDebt) return type(uint256).max;
 
         // If target leverage ratio is 1 or 0 and we cant repay the debt, we cant withdraw yet.
-        if (targetLeverageRatio <= WAD) return 0;
+        if (targetLeverageRatio <= WAD) return balanceOfAsset();
 
         // Limited by flashloan: calculate max withdrawable
         // When debtToRepay is capped at maxFlashloan:
@@ -507,6 +507,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             // First repay what is loose.
             _repay(_amount);
             debtToRepay -= _amount;
+            currentDebt -= _amount;
 
             // Cap flashloan by available liquidity and maxAmountToSwap
             uint256 maxDebtToRepay = Math.min(maxAmountToSwap, maxFlashloan());
@@ -516,7 +517,8 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (debtToRepay <= minAmountToBorrow) return;
 
             // Flashloan to repay debt, withdraw collateral to cover
-            uint256 collateralToWithdraw = debtToRepay == currentDebt
+            uint256 collateralToWithdraw = debtToRepay == currentDebt &&
+                targetLeverageRatio == 0
                 ? balanceOfCollateral()
                 : (_assetToCollateral(debtToRepay) * (MAX_BPS + slippage)) /
                     MAX_BPS;

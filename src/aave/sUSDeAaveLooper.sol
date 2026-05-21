@@ -61,12 +61,12 @@ contract sUSDeAaveLooper is AaveLooper {
         return super._harvestAndReport();
     }
 
-    /// @notice Initiate ssUSDe cooldown
+    /// @notice Initiate sUSDe cooldown
     /// @param _shares Amount of shares to queue for cooldown
     /// @return assets Amount of assets cooldowned
     function initiateCooldown(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 assets) {
+    ) external onlyManagement returns (uint256 assets) {
         // New Cooldowns will override existing ones so dont allow till cleared
         require(pendingRedemptions == 0, "pending redemptions");
         _shares = Math.min(_shares, balanceOfCollateralToken());
@@ -76,20 +76,20 @@ contract sUSDeAaveLooper is AaveLooper {
     }
 
     /// @notice Claim cooldowned assets
-    function claimCooldown() external onlyEmergencyAuthorized {
+    function claimCooldown() external onlyKeepers {
         EthenaCooldownLib.claim();
         pendingRedemptions = 0;
     }
 
     /// @notice Manually zero the pending cooldowns in case of significant dust or a cooldown event.
     /// @dev Only may be called by governance.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptions = 0;
     }
 
     function convertUnderlyingToAsset(
         uint256 amount
-    ) public onlyEmergencyAuthorized returns (uint256) {
+    ) public onlyKeepers returns (uint256) {
         (uint256 shares, uint256 amountOut) = EthenaCooldownLib
             .convertUnderlyingToAsset(amount, exchange, address(asset));
 

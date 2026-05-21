@@ -123,18 +123,26 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         assertEq(amountOut, 0, "!amountOut");
     }
 
-    function test_cooldown_functions_onlyEmergencyAuthorized() public {
+    function test_cooldown_functions_accessControl() public {
         sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
         looper.zeroPendingRedemptions();
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
+        vm.expectRevert("!management");
+        looper.initiateCooldown(0);
+
+        vm.prank(user);
+        vm.expectRevert("!keeper");
+        looper.claimCooldown();
+
+        vm.prank(user);
+        vm.expectRevert("!keeper");
         looper.convertUnderlyingToAsset(0);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
@@ -160,7 +168,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertEq(
@@ -209,7 +217,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         uint256 looseShares = looper.balanceOfCollateralToken();
         assertGt(looseShares, 0, "!looseShares");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertGt(cooldownAssets, 0, "!cooldownAssets");
@@ -217,7 +225,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         skip(8 days);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         looper.claimCooldown();
 
         uint256 underlyingBalance = looper.balanceOfUnderlying();
@@ -226,7 +234,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         assertGt(underlyingBalance, 0, "!underlying");
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertGt(amountOut, 0, "!amountOut");

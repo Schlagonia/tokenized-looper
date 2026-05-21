@@ -71,7 +71,7 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
         return amountOut;
     }
 
-    function claimRedemption() external onlyEmergencyAuthorized {
+    function claimRedemption() external onlyKeepers {
         IInfiniFiGatewayV1(GATEWAY).claimRedemption();
     }
 }

@@ -13,9 +13,6 @@ import {OriginWithdrawalLib} from "../libraries/OriginWithdrawalLib.sol";
  * @notice Morpho looper for wrapped Origin collateral (e.g. wOUSD) with async vault withdrawals.
  */
 contract OriginMorphoLooper is MorphoLooper {
-    address public constant UNDERLYING =
-        0x2A8e1E676Ec238d8A992307B495b45B3fEAa5e86;
-
     uint256 public pendingWithdrawalAssets;
 
     constructor(
@@ -65,7 +62,7 @@ contract OriginMorphoLooper is MorphoLooper {
         uint256 _shares
     )
         external
-        onlyEmergencyAuthorized
+        onlyManagement
         returns (uint256 requestId, uint256 underlyingAmount)
     {
         require(pendingWithdrawalAssets == 0, "pending withdrawals");
@@ -80,14 +77,12 @@ contract OriginMorphoLooper is MorphoLooper {
 
     function claimWithdrawal(
         uint256 requestId
-    ) external onlyEmergencyAuthorized returns (uint256 assets) {
+    ) external onlyKeepers returns (uint256 assets) {
         assets = OriginWithdrawalLib.claim(requestId);
-        pendingWithdrawalAssets = assets < pendingWithdrawalAssets
-            ? pendingWithdrawalAssets - assets
-            : 0;
+        pendingWithdrawalAssets = 0;
     }
 
-    function zeroPendingWithdrawals() external onlyEmergencyAuthorized {
+    function zeroPendingWithdrawals() external onlyManagement {
         pendingWithdrawalAssets = 0;
     }
 }

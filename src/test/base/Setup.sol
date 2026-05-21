@@ -133,6 +133,10 @@ contract Setup is Test, IEvents {
         return address(_strategy);
     }
 
+    function _defaultMaxAmountToSwap() internal view virtual returns (uint256) {
+        return type(uint256).max;
+    }
+
     function depositIntoStrategy(
         IStrategyInterface _strategy,
         address _user,

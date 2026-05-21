@@ -96,7 +96,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
 
     /// @notice Claim any enqueued redemptions from Infinifi
     /// @dev Called by keepers if a redemption was delayed and enqueued by the gateway.
-    function claimRedemption() external onlyEmergencyAuthorized {
+    function claimRedemption() external onlyKeepers {
         IInfiniFiGatewayV1(GATEWAY).claimRedemption();
     }
 
