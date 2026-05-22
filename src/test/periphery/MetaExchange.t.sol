@@ -492,10 +492,12 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
         route[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: address(bridgeA),
             tokenTo: address(asset)
         });
         route[1] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: address(asset),
             tokenTo: address(finalToken)
         });
 
@@ -542,6 +544,7 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(unallowedExchange),
+            tokenFrom: address(asset),
             tokenTo: address(finalToken)
         });
 
@@ -688,6 +691,7 @@ contract MetaExchangeTest is Test {
             memory depositRoute = new MetaExchange.RouteStep[](1);
         depositRoute[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: address(asset),
             tokenTo: address(vault)
         });
         exchange.setRoute(address(asset), address(vault), depositRoute);
@@ -696,6 +700,7 @@ contract MetaExchangeTest is Test {
             memory redeemRoute = new MetaExchange.RouteStep[](1);
         redeemRoute[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: address(vault),
             tokenTo: address(asset)
         });
         exchange.setRoute(address(vault), address(asset), redeemRoute);
@@ -726,18 +731,22 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](4);
         route[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: address(asset),
             tokenTo: address(bridgeA)
         });
         route[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: address(bridgeA),
             tokenTo: address(bridgeB)
         });
         route[2] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: address(bridgeB),
             tokenTo: address(bridgeC)
         });
         route[3] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: address(bridgeC),
             tokenTo: address(finalToken)
         });
         exchange.setRoute(address(asset), address(finalToken), route);
@@ -773,7 +782,7 @@ contract MetaExchangeTest is Test {
 
         assertEq(amountOut, 50e18, "!amountOut");
         assertEq(finalToken.balanceOf(address(strategy)), 50e18, "!final");
-        uint256 expectedAllowance = type(uint256).max;
+        uint256 expectedAllowance = 0;
         assertEq(
             asset.allowance(address(exchange), address(uniExchange)),
             expectedAllowance,
@@ -804,6 +813,7 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: address(asset),
             tokenTo: address(finalToken)
         });
         exchange.setRoute(address(asset), address(finalToken), route);
@@ -839,6 +849,7 @@ contract MetaExchangeTest is Test {
             memory sellRoute = new MetaExchange.RouteStep[](1);
         sellRoute[0] = MetaExchange.RouteStep({
             exchange: address(litePsmExchange),
+            tokenFrom: address(usdc),
             tokenTo: address(usds)
         });
         exchange.setRoute(address(usdc), address(usds), sellRoute);
@@ -848,6 +859,7 @@ contract MetaExchangeTest is Test {
         );
         buyRoute[0] = MetaExchange.RouteStep({
             exchange: address(litePsmExchange),
+            tokenFrom: address(usds),
             tokenTo: address(usdc)
         });
         exchange.setRoute(address(usds), address(usdc), buyRoute);
@@ -867,6 +879,7 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: address(weth),
             tokenTo: address(finalToken)
         });
         exchange.setRoute(address(weth), address(finalToken), route);
@@ -898,6 +911,7 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(syrupExchange),
+            tokenFrom: address(asset),
             tokenTo: address(syrupVault)
         });
         exchange.setRoute(address(asset), address(syrupVault), route);
@@ -924,6 +938,7 @@ contract MetaExchangeTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(susdsExchange),
+            tokenFrom: address(usds),
             tokenTo: address(susdsVault)
         });
         exchange.setRoute(address(usds), address(susdsVault), route);
@@ -954,10 +969,12 @@ contract MetaExchangeTest is Test {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(originExchange),
+            tokenFrom: address(asset),
             tokenTo: address(originToken)
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: address(originToken),
             tokenTo: address(wrappedOriginVault)
         });
         exchange.setRoute(address(asset), address(wrappedOriginVault), forward);
@@ -967,10 +984,12 @@ contract MetaExchangeTest is Test {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: address(wrappedOriginVault),
             tokenTo: address(originToken)
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: address(originToken),
             tokenTo: address(asset)
         });
         exchange.setRoute(address(wrappedOriginVault), address(asset), reverse);

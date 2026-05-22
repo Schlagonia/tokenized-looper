@@ -35,7 +35,7 @@ abstract contract BaseExchange is IExchange, Governance {
         emit OperatorSet(operator, allowed);
     }
 
-    function name() external view virtual override returns (string memory);
+    function name() external pure virtual override returns (string memory);
 
     function exchange(
         address from,

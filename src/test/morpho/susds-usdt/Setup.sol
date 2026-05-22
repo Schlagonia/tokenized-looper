@@ -143,14 +143,17 @@ contract SetupSUSDSUSDT is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: USDT,
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(litePsmExchange),
+            tokenFrom: USDC,
             tokenTo: USDS
         });
         forward[2] = MetaExchange.RouteStep({
             exchange: address(susdsExchange),
+            tokenFrom: USDS,
             tokenTo: SUSDS
         });
         exchange.setRoute(USDT, SUSDS, forward);
@@ -160,14 +163,17 @@ contract SetupSUSDSUSDT is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: SUSDS,
             tokenTo: USDS
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(litePsmExchange),
+            tokenFrom: USDS,
             tokenTo: USDC
         });
         reverse[2] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: USDC,
             tokenTo: USDT
         });
         exchange.setRoute(SUSDS, USDT, reverse);

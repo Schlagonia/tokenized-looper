@@ -468,7 +468,7 @@ contract DeployMainnetMetaExchange is Script {
         address token0
     ) internal pure returns (uint256) {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
 
         return _appendCall(calls, index, meta, abi.encodeCall(MetaExchange.setRoute, (from, to, route)));
     }
@@ -485,8 +485,8 @@ contract DeployMainnetMetaExchange is Script {
         address token1
     ) internal pure returns (uint256) {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
-        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenTo: token1});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
+        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenFrom: token0, tokenTo: token1});
 
         return _appendCall(calls, index, meta, abi.encodeCall(MetaExchange.setRoute, (from, to, route)));
     }
@@ -505,9 +505,9 @@ contract DeployMainnetMetaExchange is Script {
         address token2
     ) internal pure returns (uint256) {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](3);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
-        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenTo: token1});
-        route[2] = MetaExchange.RouteStep({exchange: exchange2, tokenTo: token2});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
+        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenFrom: token0, tokenTo: token1});
+        route[2] = MetaExchange.RouteStep({exchange: exchange2, tokenFrom: token1, tokenTo: token2});
 
         return _appendCall(calls, index, meta, abi.encodeCall(MetaExchange.setRoute, (from, to, route)));
     }
@@ -597,7 +597,7 @@ contract DeployMainnetMetaExchange is Script {
 
     function _setRoute1(MetaExchange meta, address from, address to, address exchange0, address token0) internal {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
         meta.setRoute(from, to, route);
     }
 
@@ -611,8 +611,8 @@ contract DeployMainnetMetaExchange is Script {
         address token1
     ) internal {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
-        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenTo: token1});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
+        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenFrom: token0, tokenTo: token1});
         meta.setRoute(from, to, route);
     }
 
@@ -628,9 +628,9 @@ contract DeployMainnetMetaExchange is Script {
         address token2
     ) internal {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](3);
-        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenTo: token0});
-        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenTo: token1});
-        route[2] = MetaExchange.RouteStep({exchange: exchange2, tokenTo: token2});
+        route[0] = MetaExchange.RouteStep({exchange: exchange0, tokenFrom: from, tokenTo: token0});
+        route[1] = MetaExchange.RouteStep({exchange: exchange1, tokenFrom: token0, tokenTo: token1});
+        route[2] = MetaExchange.RouteStep({exchange: exchange2, tokenFrom: token1, tokenTo: token2});
         meta.setRoute(from, to, route);
     }
 

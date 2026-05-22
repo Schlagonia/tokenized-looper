@@ -127,6 +127,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: address(asset),
             tokenTo: ARB_SYRUP_USDC
         });
         exchange.setRoute(address(asset), ARB_SYRUP_USDC, forward);
@@ -136,6 +137,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: ARB_SYRUP_USDC,
             tokenTo: address(asset)
         });
         exchange.setRoute(ARB_SYRUP_USDC, address(asset), reverse);

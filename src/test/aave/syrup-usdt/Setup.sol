@@ -153,6 +153,7 @@ contract SetupAaveSyrupUSDT is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: useMint ? address(syrupExchange) : address(uniExchange),
+            tokenFrom: USDT,
             tokenTo: SYRUP_USDT
         });
         exchange.setRoute(USDT, SYRUP_USDT, forward);
@@ -162,6 +163,7 @@ contract SetupAaveSyrupUSDT is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: SYRUP_USDT,
             tokenTo: USDT
         });
         exchange.setRoute(SYRUP_USDT, USDT, reverse);

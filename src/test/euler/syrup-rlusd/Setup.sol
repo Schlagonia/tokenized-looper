@@ -152,10 +152,12 @@ contract SetupEulerSyrupRLUSD is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: RLUSD,
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(syrupExchange),
+            tokenFrom: USDC,
             tokenTo: SYRUP_USDC
         });
         exchange.setRoute(RLUSD, SYRUP_USDC, forward);
@@ -165,10 +167,12 @@ contract SetupEulerSyrupRLUSD is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: SYRUP_USDC,
             tokenTo: USDC
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: RLUSD
         });
         exchange.setRoute(SYRUP_USDC, RLUSD, reverse);

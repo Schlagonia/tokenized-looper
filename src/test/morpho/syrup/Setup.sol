@@ -140,10 +140,12 @@ contract SetupSyrupMorpho is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: PYUSD,
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(syrupExchange),
+            tokenFrom: USDC,
             tokenTo: SYRUP_USDC
         });
         exchange.setRoute(PYUSD, SYRUP_USDC, forward);
@@ -153,10 +155,12 @@ contract SetupSyrupMorpho is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: SYRUP_USDC,
             tokenTo: USDC
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: PYUSD
         });
         exchange.setRoute(SYRUP_USDC, PYUSD, reverse);
@@ -165,6 +169,7 @@ contract SetupSyrupMorpho is Setup {
             memory redeemedUnderlying = new MetaExchange.RouteStep[](1);
         redeemedUnderlying[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: PYUSD
         });
         exchange.setRoute(USDC, PYUSD, redeemedUnderlying);

@@ -92,6 +92,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDC,
             tokenTo: USDE
         });
 

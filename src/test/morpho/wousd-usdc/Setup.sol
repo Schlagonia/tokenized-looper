@@ -131,10 +131,12 @@ contract SetupWOUSDMorpho is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(originExchange),
+            tokenFrom: address(asset),
             tokenTo: OUSD
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: OUSD,
             tokenTo: WOUSD
         });
         exchange.setRoute(address(asset), WOUSD, forward);
@@ -144,10 +146,12 @@ contract SetupWOUSDMorpho is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: WOUSD,
             tokenTo: OUSD
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: OUSD,
             tokenTo: address(asset)
         });
         exchange.setRoute(WOUSD, address(asset), reverse);

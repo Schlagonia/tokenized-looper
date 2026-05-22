@@ -19,6 +19,7 @@ contract MetaExchange is BaseExchange {
 
     struct RouteStep {
         address exchange;
+        address tokenFrom;
         address tokenTo;
     }
 
@@ -83,18 +84,23 @@ contract MetaExchange is BaseExchange {
             return;
         }
 
-        require(route[length - 1].tokenTo == to, "!route");
+        address tokenFrom = from;
 
         for (uint256 i; i < length; ) {
             RouteStep calldata step = route[i];
             require(step.exchange != address(0), "!exchange");
             require(allowedExchanges[step.exchange], "!allowed");
+            require(step.tokenFrom == tokenFrom, "!route");
             require(step.tokenTo != address(0), "!tokenTo");
+            require(tokenFrom != step.tokenTo, "!route");
             _routes[from][to].push(step);
+            tokenFrom = step.tokenTo;
             unchecked {
                 ++i;
             }
         }
+
+        require(tokenFrom == to, "!route");
 
         emit RouteSet(from, to, length);
     }
@@ -117,7 +123,8 @@ contract MetaExchange is BaseExchange {
         for (uint256 i; i < length; ) {
             RouteStep storage step = route[i];
             require(allowedExchanges[step.exchange], "!allowed");
-            _checkAllowance(step.exchange, currentToken, amountOut);
+            require(step.tokenFrom == currentToken, "!route");
+            ERC20(step.tokenFrom).forceApprove(step.exchange, amountOut);
             amountOut = IExchange(step.exchange).exchange(
                 currentToken,
                 step.tokenTo,
@@ -131,15 +138,5 @@ contract MetaExchange is BaseExchange {
         }
 
         require(currentToken == to, "!route");
-    }
-
-    function _checkAllowance(
-        address spender,
-        address token,
-        uint256 amount
-    ) internal {
-        if (ERC20(token).allowance(address(this), spender) < amount) {
-            ERC20(token).forceApprove(spender, type(uint256).max);
-        }
     }
 }

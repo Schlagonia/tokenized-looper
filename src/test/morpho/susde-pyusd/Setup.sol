@@ -142,14 +142,17 @@ contract SetupSUSDePYUSD is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: PYUSD,
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDC,
             tokenTo: USDE
         });
         forward[2] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: USDE,
             tokenTo: SUSDE
         });
         exchange.setRoute(PYUSD, SUSDE, forward);
@@ -161,10 +164,12 @@ contract SetupSUSDePYUSD is Setup {
         );
         unwind[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: SUSDE,
             tokenTo: USDC
         });
         unwind[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: PYUSD
         });
         exchange.setRoute(SUSDE, PYUSD, unwind);
@@ -174,10 +179,12 @@ contract SetupSUSDePYUSD is Setup {
             memory underlyingToAsset = new MetaExchange.RouteStep[](2);
         underlyingToAsset[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDE,
             tokenTo: USDC
         });
         underlyingToAsset[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: PYUSD
         });
         exchange.setRoute(USDE, PYUSD, underlyingToAsset);

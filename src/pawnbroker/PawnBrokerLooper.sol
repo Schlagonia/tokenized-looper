@@ -46,10 +46,6 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         ERC20(_collateralToken).forceApprove(_pawnBroker, type(uint256).max);
     }
 
-    function version() public pure virtual override returns (string memory) {
-        return "1.0.0";
-    }
-
     function _executeFlashloan(
         address token,
         uint256 amount,
@@ -71,6 +67,13 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
 
     function maxFlashloan() public view virtual override returns (uint256) {
         return asset.balanceOf(address(MORPHO));
+    }
+
+    function availableWithdrawLimit(
+        address _owner
+    ) public view virtual override returns (uint256) {
+        if (PAWN_BROKER.paused()) return balanceOfAsset();
+        return super.availableWithdrawLimit(_owner);
     }
 
     function _getCollateralPrice()

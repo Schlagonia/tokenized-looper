@@ -143,10 +143,12 @@ contract MetaExchangeForkTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
         route[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDT,
             tokenTo: USDE
         });
         route[1] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: USDE,
             tokenTo: SUSDE
         });
         exchange.setRoute(USDT, SUSDE, route);
@@ -169,10 +171,12 @@ contract MetaExchangeForkTest is Test {
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](2);
         route[0] = MetaExchange.RouteStep({
             exchange: address(litePsmExchange),
+            tokenFrom: USDC,
             tokenTo: USDS
         });
         route[1] = MetaExchange.RouteStep({
             exchange: address(susdsExchange),
+            tokenFrom: USDS,
             tokenTo: SUSDS
         });
         exchange.setRoute(USDC, SUSDS, route);
@@ -260,10 +264,12 @@ contract MetaExchangeForkTest is Test {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: PYUSD,
             tokenTo: USDC
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(syrupExchange),
+            tokenFrom: USDC,
             tokenTo: SYRUP_USDC
         });
         exchange.setRoute(PYUSD, SYRUP_USDC, forward);
@@ -273,10 +279,12 @@ contract MetaExchangeForkTest is Test {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(uniExchange),
+            tokenFrom: SYRUP_USDC,
             tokenTo: USDC
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDC,
             tokenTo: PYUSD
         });
         exchange.setRoute(SYRUP_USDC, PYUSD, reverse);
@@ -290,10 +298,12 @@ contract MetaExchangeForkTest is Test {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(originExchange),
+            tokenFrom: USDC,
             tokenTo: OUSD
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: OUSD,
             tokenTo: WOUSD
         });
         exchange.setRoute(USDC, WOUSD, forward);
@@ -303,10 +313,12 @@ contract MetaExchangeForkTest is Test {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: WOUSD,
             tokenTo: OUSD
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: OUSD,
             tokenTo: USDC
         });
         exchange.setRoute(WOUSD, USDC, reverse);

@@ -27,6 +27,7 @@ interface IPendleOracle {
 interface IMetaExchangeRouteReader {
     struct RouteStep {
         address exchange;
+        address tokenFrom;
         address tokenTo;
     }
 

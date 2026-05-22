@@ -156,10 +156,12 @@ contract SetupPT is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: address(asset),
             tokenTo: PENDLE_TOKEN
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: PENDLE_TOKEN,
             tokenTo: PT_TOKEN
         });
         exchange.setRoute(address(asset), PT_TOKEN, forward);
@@ -169,10 +171,12 @@ contract SetupPT is Setup {
         );
         reverse[0] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: PT_TOKEN,
             tokenTo: PENDLE_TOKEN
         });
         reverse[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: PENDLE_TOKEN,
             tokenTo: address(asset)
         });
         exchange.setRoute(PT_TOKEN, address(asset), reverse);

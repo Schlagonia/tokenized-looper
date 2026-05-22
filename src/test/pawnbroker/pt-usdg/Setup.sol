@@ -194,10 +194,12 @@ contract SetupPawnBrokerPTUSDG is Setup {
             memory assetToPt = new MetaExchange.RouteStep[](2);
         assetToPt[0] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: address(asset),
             tokenTo: USDG
         });
         assetToPt[1] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: USDG,
             tokenTo: PT_USDG_28_MAY_2026
         });
         exchange.setRoute(address(asset), PT_USDG_28_MAY_2026, assetToPt);
@@ -206,10 +208,12 @@ contract SetupPawnBrokerPTUSDG is Setup {
             memory ptToAsset = new MetaExchange.RouteStep[](2);
         ptToAsset[0] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
+            tokenFrom: PT_USDG_28_MAY_2026,
             tokenTo: USDG
         });
         ptToAsset[1] = MetaExchange.RouteStep({
             exchange: address(curveExchange),
+            tokenFrom: USDG,
             tokenTo: address(asset)
         });
         exchange.setRoute(PT_USDG_28_MAY_2026, address(asset), ptToAsset);

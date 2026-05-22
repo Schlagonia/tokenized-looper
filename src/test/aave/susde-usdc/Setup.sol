@@ -126,10 +126,12 @@ contract SetupAavesUSDeUSDC is Setup {
         );
         forward[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDC,
             tokenTo: USDE
         });
         forward[1] = MetaExchange.RouteStep({
             exchange: address(erc4626Exchange),
+            tokenFrom: USDE,
             tokenTo: SUSDE
         });
         exchange.setRoute(USDC, SUSDE, forward);
@@ -139,6 +141,7 @@ contract SetupAavesUSDeUSDC is Setup {
         );
         unwind[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: SUSDE,
             tokenTo: USDC
         });
         exchange.setRoute(SUSDE, USDC, unwind);
@@ -147,6 +150,7 @@ contract SetupAavesUSDeUSDC is Setup {
             memory underlyingToAsset = new MetaExchange.RouteStep[](1);
         underlyingToAsset[0] = MetaExchange.RouteStep({
             exchange: address(fluidExchange),
+            tokenFrom: USDE,
             tokenTo: USDC
         });
         exchange.setRoute(USDE, USDC, underlyingToAsset);
