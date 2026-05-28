@@ -87,7 +87,6 @@ contract SetupSyrupMorpho is Setup {
             address(asset),
             "syrupUSDC/PYUSD Morpho Looper",
             SYRUP_USDC,
-            USDC,
             MORPHO,
             SYRUP_USDC_PYUSD_MARKET_ID,
             address(exchange),

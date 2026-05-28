@@ -70,13 +70,11 @@ contract Deploy is Script {
 
     struct SyrupConfig {
         BaseConfig base;
-        address underlying;
         address weth;
     }
 
     struct SyrupArbConfig {
         BaseConfig base;
-        address underlying;
         address weth;
     }
 
@@ -197,7 +195,6 @@ contract Deploy is Script {
                 morpho: MORPHO_MAINNET,
                 marketId: 0xc9629945524f3fde56c7e8854a6c3d48e76b9d97236abbe73c750fcc7aeb8501
             }),
-            underlying: USDC_MAINNET,
             weth: WETH_MAINNET
         });
     }
@@ -345,7 +342,6 @@ contract Deploy is Script {
                 morpho: MORPHO_ARBITRUM,
                 marketId: 0xf86f3edd6f16cd8211f4d206866dc4ecd41be6211063ac11f8508e1b7112ef40
             }),
-            underlying: USDC_ARBITRUM,
             weth: WETH_ARBITRUM
         });
     }
@@ -465,7 +461,6 @@ contract Deploy is Script {
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
-            cfg.underlying,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),
@@ -482,7 +477,6 @@ contract Deploy is Script {
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,
-            cfg.underlying,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
             address(exchange),

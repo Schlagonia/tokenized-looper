@@ -3,9 +3,12 @@ pragma solidity ^0.8.18;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {AaveLooper} from "./AaveLooper.sol";
-import {EthenaCooldownLib} from "../libraries/EthenaCooldownLib.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
+import {IsUSDe} from "../interfaces/IsUSDe.sol";
 
 /**
  * @title sUSDeAaveLooper
@@ -13,6 +16,12 @@ import {EthenaCooldownLib} from "../libraries/EthenaCooldownLib.sol";
  * @dev Example: Use sUSDe as collateral, borrow USDT/USDC, swap to sUSDe, repeat.
  */
 contract sUSDeAaveLooper is AaveLooper {
+    using SafeERC20 for ERC20;
+
+    address internal constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
+    address internal constant SUSDE =
+        0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
+
     /// @notice Shares queued for cooldowns.
     uint256 public pendingRedemptions;
 
@@ -49,7 +58,7 @@ contract sUSDeAaveLooper is AaveLooper {
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
-        return EthenaCooldownLib.balanceOfUnderlying();
+        return ERC20(USDE).balanceOf(address(this));
     }
 
     function _harvestAndReport()
@@ -71,13 +80,14 @@ contract sUSDeAaveLooper is AaveLooper {
         require(pendingRedemptions == 0, "pending redemptions");
         _shares = Math.min(_shares, balanceOfCollateralToken());
 
-        assets = EthenaCooldownLib.initiate(_shares);
+        require(_shares > 0, "!shares");
+        assets = IsUSDe(SUSDE).cooldownShares(_shares);
         pendingRedemptions = assets;
     }
 
     /// @notice Claim cooldowned assets
     function claimCooldown() external onlyKeepers {
-        EthenaCooldownLib.claim();
+        _claimCooldown();
         pendingRedemptions = 0;
     }
 
@@ -90,10 +100,25 @@ contract sUSDeAaveLooper is AaveLooper {
     function convertUnderlyingToAsset(
         uint256 amount
     ) public onlyKeepers returns (uint256) {
-        (uint256 shares, uint256 amountOut) = EthenaCooldownLib
-            .convertUnderlyingToAsset(amount, exchange, address(asset));
+        uint256 balance = ERC20(USDE).balanceOf(address(this));
+        if (amount > balance) amount = balance;
+
+        uint256 shares = IERC4626(SUSDE).convertToShares(amount);
+        ERC20(USDE).forceApprove(exchange, amount);
+        uint256 amountOut = IExchange(exchange).exchange(
+            USDE,
+            address(asset),
+            amount,
+            0
+        );
 
         _recordSlippage(_collateralToAsset(shares), amountOut);
         return amountOut;
+    }
+
+    function _claimCooldown() internal returns (uint256 assets) {
+        uint256 preBalance = ERC20(USDE).balanceOf(address(this));
+        IsUSDe(SUSDE).unstake(address(this));
+        assets = ERC20(USDE).balanceOf(address(this)) - preBalance;
     }
 }

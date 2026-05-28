@@ -80,7 +80,6 @@ contract SetupSyrupUsdcArbMorpho is Setup {
             address(asset),
             "syrupUSDC/USDC Arbitrum Morpho Looper",
             ARB_SYRUP_USDC,
-            ARB_USDC,
             ARB_MORPHO,
             SYRUP_USDC_MARKET_ID,
             address(exchange),

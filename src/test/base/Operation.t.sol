@@ -751,8 +751,8 @@ abstract contract OperationTest is Setup {
         uint256 lastTendAfter = strategy.lastTend();
         assertEq(lastTendAfter, block.timestamp, "!lastTend should update");
 
-        // Skip some time and tend again
-        skip(3 hours);
+        // Skip to a new timestamp and tend again.
+        skip(1);
         airdrop(asset, address(strategy), _amount / 30);
         vm.prank(keeper);
         strategy.tend();

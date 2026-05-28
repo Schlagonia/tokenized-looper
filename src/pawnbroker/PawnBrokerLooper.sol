@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.23;
 
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseLooper} from "../BaseLooper.sol";
 import {IMorpho} from "../interfaces/morpho/IMorpho.sol";
 import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCallback.sol";
+import {PawnBrokerOps} from "../libraries/PawnBrokerOps.sol";
 import {IPawnBroker} from "pawn-broker/interfaces/IPawnBroker.sol";
 
 /// @notice Pawn broker-backed looper using an external flashloan source.
 contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
     using SafeERC20 for ERC20;
+    using PawnBrokerOps for IPawnBroker;
 
     IPawnBroker public immutable PAWN_BROKER;
     IMorpho public immutable MORPHO;
@@ -72,8 +73,9 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
     function availableWithdrawLimit(
         address _owner
     ) public view virtual override returns (uint256) {
-        if (PAWN_BROKER.paused() || PAWN_BROKER.callDeadline() > 0)
-            return balanceOfAsset();
+        if (PAWN_BROKER.paused()) return balanceOfAsset();
+        if (PAWN_BROKER.callDeadline() > 0) return balanceOfAsset();
+
         return super.availableWithdrawLimit(_owner);
     }
 
@@ -84,42 +86,35 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         override
         returns (uint256)
     {
-        return PAWN_BROKER.ORACLE().price();
+        return PAWN_BROKER.getCollateralPrice();
     }
 
     function _supplyCollateral(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        PAWN_BROKER.postCollateral(amount);
+        PAWN_BROKER.supplyCollateral(amount);
     }
 
     function _withdrawCollateral(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        PAWN_BROKER.withdrawCollateral(amount, address(this));
+        PAWN_BROKER.withdrawCollateral(amount);
     }
 
     function _borrow(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        PAWN_BROKER.borrow(amount, address(this));
+        PAWN_BROKER.borrow(amount);
     }
 
     function _repay(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        PAWN_BROKER.repay(amount);
+        PAWN_BROKER.repayDebt(amount);
     }
 
     function _isSupplyPaused() internal view virtual override returns (bool) {
-        return PAWN_BROKER.paused();
+        return PAWN_BROKER.isSupplyPaused();
     }
 
     function _isBorrowPaused() internal view virtual override returns (bool) {
-        return
-            PAWN_BROKER.paused() ||
-            PAWN_BROKER.isShutdown() ||
-            PAWN_BROKER.calledDebt() > 0;
+        return PAWN_BROKER.isBorrowPaused();
     }
 
     function _isLiquidatable() internal view virtual override returns (bool) {
-        return !PAWN_BROKER.paused() && !PAWN_BROKER.isHealthy();
+        return PAWN_BROKER.isLiquidatable();
     }
 
     function _maxCollateralDeposit()
@@ -139,13 +134,7 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         override
         returns (uint256)
     {
-        uint256 marketBalance = asset.balanceOf(address(PAWN_BROKER));
-        uint256 maxDebt = PAWN_BROKER.maxDebt();
-        uint256 totalDebt = PAWN_BROKER.totalDebt();
-
-        if (maxDebt <= totalDebt) return 0;
-
-        return Math.min(maxDebt - totalDebt, marketBalance);
+        return PAWN_BROKER.maxBorrowAmount(address(asset));
     }
 
     function getLiquidateCollateralFactor()
@@ -155,7 +144,7 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         override
         returns (uint256)
     {
-        return PAWN_BROKER.LLTV();
+        return PAWN_BROKER.liquidateCollateralFactor();
     }
 
     function balanceOfCollateral()
@@ -165,11 +154,11 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
         override
         returns (uint256)
     {
-        return PAWN_BROKER.totalCollateral();
+        return PAWN_BROKER.balanceOfCollateral();
     }
 
     function balanceOfDebt() public view virtual override returns (uint256) {
-        return PAWN_BROKER.totalDebt();
+        return PAWN_BROKER.balanceOfDebt();
     }
 
     function _claimAndSellRewards() internal pure virtual override {}

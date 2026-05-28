@@ -251,11 +251,11 @@ contract SparkLendLSTOperationTest is SetupSparkLendLST, OperationTest {
         address aToken = looper.A_TOKEN();
 
         vm.prank(keeper);
-        vm.expectRevert("!token");
+        vm.expectRevert("protected token");
         looper.kickAuction(address(asset));
 
         vm.prank(keeper);
-        vm.expectRevert("!token");
+        vm.expectRevert("protected token");
         looper.kickAuction(aToken);
     }
 }

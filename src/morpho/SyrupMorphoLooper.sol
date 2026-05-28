@@ -29,7 +29,6 @@ contract SyrupMorphoLooper is MorphoLooper {
         address _asset,
         string memory _name,
         address _collateralToken,
-        address _underlying,
         address _morpho,
         Id _marketId,
         address _exchange,
@@ -45,7 +44,11 @@ contract SyrupMorphoLooper is MorphoLooper {
             _governance
         )
     {
-        UNDERLYING = _underlying;
+        try ISyrupPool(_collateralToken).asset() returns (address _underlying) {
+            UNDERLYING = _underlying;
+        } catch {
+            UNDERLYING = _asset;
+        }
     }
 
     /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
