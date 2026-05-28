@@ -91,6 +91,9 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external;
 
+    /// @notice Manual: withdraw collateral, convert it to asset, and repay debt
+    function manualDelever(uint256 amount) external;
+
     /// @notice Manual: supply collateral (converts asset to collateral first)
     function manualSupplyCollateral(uint256 amount) external;
 

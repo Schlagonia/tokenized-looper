@@ -91,13 +91,13 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @dev leverage = collateralValue / (collateralValue - debtValue) = 1 / (1 - LTV)
     uint256 public targetLeverageRatio;
 
-    /// The max the base fee (in gwei) will be for a tend.
+    /// @notice The max the base fee (in gwei) will be for a tend.
     uint256 public maxGasPriceToTend;
 
-    /// Lower limit on flashloan size.
+    /// @notice Lower limit on flashloan size.
     uint256 public minAmountToBorrow;
 
-    /// The token posted as collateral in the loop.
+    /// @notice The token posted as collateral in the loop.
     address public immutable collateralToken;
 
     constructor(
@@ -209,7 +209,7 @@ abstract contract BaseLooper is BaseHealthCheck {
     }
 
     /// @notice Set the maximum base fee accepted for keeper tending.
-    /// @dev This only affects `_tendTrigger` keepers; it does not block management/emergency operations.
+    /// @dev This only affects `_tendTrigger` keepers; Denominated in wei (1e9).
     /// @param _maxGasPriceToTend Max acceptable `block.basefee`.
     function setMaxGasPriceToTend(
         uint256 _maxGasPriceToTend
@@ -411,8 +411,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _tendTrigger() internal view virtual override returns (bool) {
         if (_isLiquidatable()) return true;
         if (TokenizedStrategy.totalAssets() == 0) return false;
-        if (_isSupplyPaused() || _isBorrowPaused()) return false;
-
         uint256 currentLeverage = getCurrentLeverageRatio();
 
         if (currentLeverage > maxLeverageRatio) {
@@ -498,7 +496,9 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (_amount >= debtToRepay) {
                 // _amount covers the debt repayment, just repay and supply the rest
                 _repay(debtToRepay);
-                if (targetLeverageRatio > 0) {
+                if (targetLeverageRatio == 0) {
+                    _withdrawAndConvertCollateral();
+                } else {
                     _convertAndSupplyCollateral(_amount - debtToRepay);
                 }
                 return;
@@ -531,10 +531,23 @@ abstract contract BaseLooper is BaseHealthCheck {
             );
             _executeFlashloan(address(asset), debtToRepay, data);
         } else {
-            if (targetLeverageRatio == 0) return;
-            // CASE 3: At target debt → just deploy _amount if any
-            _convertAndSupplyCollateral(_amount);
+            // CASE 3: At target debt
+            if (targetLeverageRatio == 0) {
+                _withdrawAndConvertCollateral();
+            } else {
+                _convertAndSupplyCollateral(_amount);
+            }
         }
+    }
+
+    function _withdrawAndConvertCollateral() internal virtual {
+        _withdrawCollateral(balanceOfCollateral());
+        _convertCollateralToAsset(
+            Math.min(
+                _assetToCollateral(maxAmountToSwap),
+                balanceOfCollateralToken()
+            )
+        );
     }
 
     function _convertAndSupplyCollateral(uint256 _amount) internal virtual {
@@ -894,7 +907,41 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external accrue onlyEmergencyAuthorized {
-        _withdrawFunds(TokenizedStrategy.totalAssets());
+        // Set leverage target to 0..
+        _setLeverageParams(0, 0, 1e18);
+        _withdrawFunds(type(uint256).max);
+    }
+
+    function manualDelever(
+        uint256 amount
+    ) external accrue onlyEmergencyAuthorized {
+        uint256 requiredCollateralValue = Math.mulDiv(
+            balanceOfDebt(),
+            WAD,
+            getLiquidateCollateralFactor(),
+            Math.Rounding.Up
+        );
+        uint256 requiredCollateral = Math.mulDiv(
+            requiredCollateralValue,
+            ORACLE_PRICE_SCALE,
+            _getCollateralPrice(),
+            Math.Rounding.Up
+        );
+        requiredCollateral += Math.max(requiredCollateral / MAX_BPS, 1);
+
+        uint256 maxWithdraw = balanceOfCollateral();
+
+        maxWithdraw = maxWithdraw > requiredCollateral
+            ? maxWithdraw - requiredCollateral
+            : 0;
+
+        amount = Math.min(amount, maxWithdraw);
+
+        _withdrawCollateral(amount);
+        uint256 assetsOut = _convertCollateralToAsset(
+            Math.min(amount, balanceOfCollateralToken())
+        );
+        _repay(Math.min(assetsOut, balanceOfDebt()));
     }
 
     /// @notice Manual: supply collateral
@@ -950,6 +997,6 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _emergencyWithdraw(
         uint256 _amount
     ) internal virtual override accrue {
-        _withdrawFunds(Math.min(_amount, TokenizedStrategy.totalAssets()));
+        _withdrawFunds(_amount);
     }
 }

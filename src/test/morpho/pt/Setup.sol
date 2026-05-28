@@ -21,7 +21,17 @@ contract TestMorphoLooper is MorphoLooper {
         Id _marketId,
         address _exchange,
         address _governance
-    ) MorphoLooper(_asset, _name, _collateralToken, _morpho, _marketId, _exchange, _governance) {}
+    )
+        MorphoLooper(
+            _asset,
+            _name,
+            _collateralToken,
+            _morpho,
+            _marketId,
+            _exchange,
+            _governance
+        )
+    {}
 
     function setSlippageForTests(uint64 _slippage) external {
         slippage = _slippage;
@@ -37,13 +47,18 @@ contract SetupPT is Setup {
     uint64 internal constant PT_TEST_SLIPPAGE = 500;
 
     // PT-stcUSD/USDC market
-    Id public constant PT_MARKET_ID = Id.wrap(0x2fb3713487c7812e7309935b034f40228841666f6b048faf31fd2110ae674f20);
+    Id public constant PT_MARKET_ID =
+        Id.wrap(
+            0x2fb3713487c7812e7309935b034f40228841666f6b048faf31fd2110ae674f20
+        );
 
     // PT token (collateral)
-    address public constant PT_TOKEN = 0x2d3C279E5FcDF5b793c0a75ed90738D7369B0b83; // PT-stcUSD-23JUL2026
+    address public constant PT_TOKEN =
+        0x2d3C279E5FcDF5b793c0a75ed90738D7369B0b83; // PT-stcUSD-23JUL2026
 
     // Pendle market for PT swaps
-    address public constant PENDLE_MARKET = 0xaC24A6f0068d9701EAEa76AB0B418021017F8D59;
+    address public constant PENDLE_MARKET =
+        0xaC24A6f0068d9701EAEa76AB0B418021017F8D59;
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     function setUp() public virtual override {
@@ -110,7 +125,9 @@ contract SetupPT is Setup {
 
         // Pendle reverts tiny PT swaps when fee math rounds to zero.
         _strategy.setMinAmountToBorrow(50_000);
-        TestMorphoLooper(address(_strategy)).setSlippageForTests(PT_TEST_SLIPPAGE);
+        TestMorphoLooper(address(_strategy)).setSlippageForTests(
+            PT_TEST_SLIPPAGE
+        );
 
         // Set profit max unlock to 0 so oracle doesn't revert after time skip
         _strategy.setProfitMaxUnlockTime(0);
@@ -134,19 +151,31 @@ contract SetupPT is Setup {
     }
 
     function _setRoutes() internal {
-        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](1);
-        forward[0] =
-            MetaExchange.RouteStep({exchange: address(pendleExchange), tokenFrom: address(asset), tokenTo: PT_TOKEN});
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            1
+        );
+        forward[0] = MetaExchange.RouteStep({
+            exchange: address(pendleExchange),
+            tokenFrom: address(asset),
+            tokenTo: PT_TOKEN
+        });
         exchange.setRoute(address(asset), PT_TOKEN, forward);
 
-        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](1);
-        reverse[0] =
-            MetaExchange.RouteStep({exchange: address(pendleExchange), tokenFrom: PT_TOKEN, tokenTo: address(asset)});
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            1
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            exchange: address(pendleExchange),
+            tokenFrom: PT_TOKEN,
+            tokenTo: address(asset)
+        });
         exchange.setRoute(PT_TOKEN, address(asset), reverse);
     }
 
     function _seedPtMorphoLiquidity(uint256 amount) internal {
-        MarketParams memory params = IMorpho(MORPHO).idToMarketParams(PT_MARKET_ID);
+        MarketParams memory params = IMorpho(MORPHO).idToMarketParams(
+            PT_MARKET_ID
+        );
         deal(address(asset), address(this), amount);
         asset.approve(MORPHO, amount);
         IMorpho(MORPHO).supply(params, amount, 0, address(this), "");

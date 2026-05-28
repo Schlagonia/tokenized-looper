@@ -205,7 +205,12 @@ abstract contract LeverScenariosTest is Setup {
         assertLe(leverage, maxLeverage, "leverage exceeds max");
     }
 
-    function _upperBoundarySetupBuffer() internal pure virtual returns (uint256) {
+    function _upperBoundarySetupBuffer()
+        internal
+        pure
+        virtual
+        returns (uint256)
+    {
         return 0;
     }
 

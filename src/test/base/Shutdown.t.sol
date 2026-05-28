@@ -302,6 +302,7 @@ abstract contract ShutdownTest is Setup {
         uint256 collateralBefore = strategy.balanceOfCollateral();
         uint256 debtBefore = strategy.balanceOfDebt();
         assertGt(debtBefore, 0, "!debt before");
+        assertGt(collateralBefore, 0, "!collateral before");
 
         vm.prank(management);
         strategy.setLeverageParams(0, 0, 5e18);
@@ -316,16 +317,134 @@ abstract contract ShutdownTest is Setup {
         strategy.tend();
 
         assertEq(strategy.balanceOfDebt(), 0, "!debt");
-        assertEq(
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBefore),
+            "!collateral dust too high"
+        );
+        uint256 assetAfter = strategy.balanceOfAsset();
+        assertGt(assetAfter, 0, "!leftover idle");
+        assertGe(assetAfter, assetBefore - debtBefore, "!excess idle");
+    }
+
+    function test_idleMode_tendConvertsDebtlessCollateral(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        airdrop(asset, address(strategy), _amount);
+
+        vm.startPrank(management);
+        strategy.convertAssetToCollateral(_amount);
+        strategy.manualSupplyCollateral(type(uint256).max);
+        strategy.setLeverageParams(0, 0, 5e18);
+        vm.stopPrank();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertEq(strategy.balanceOfDebt(), 0, "!debt before");
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBefore),
+            "!collateral dust too high"
+        );
+        assertGt(strategy.balanceOfAsset(), 0, "!asset");
+    }
+
+    function test_manualFullUnwind_setsTargetToZero(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
+        assertGt(collateralBeforeUnwind, 0, "!collateral before");
+        assertGt(strategy.targetLeverageRatio(), 0, "!target before");
+
+        vm.prank(management);
+        strategy.manualFullUnwind();
+
+        assertEq(strategy.targetLeverageRatio(), 0, "!target");
+        assertEq(strategy.leverageBuffer(), 0, "!buffer");
+        assertEq(strategy.maxLeverageRatio(), 1e18, "!max leverage");
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
+    }
+
+    function test_manualDelever_validAmountLowersPosition(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(debtBefore, 0, "!debt before");
+
+        uint256 amountToDelever = collateralBefore / 100;
+        if (amountToDelever == 0) amountToDelever = 1;
+
+        vm.prank(management);
+        strategy.manualDelever(amountToDelever);
+
+        assertLt(
             strategy.balanceOfCollateral(),
             collateralBefore,
-            "!collateral changed"
+            "!collateral"
         );
-        assertGt(strategy.balanceOfAsset(), 0, "!leftover idle");
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt");
         assertLt(
-            strategy.balanceOfAsset(),
-            assetBefore,
-            "!repay did not spend"
+            strategy.getCurrentLTV(),
+            strategy.getLiquidateCollateralFactor(),
+            "!ltv"
+        );
+    }
+
+    function test_manualDelever_maxUintCapsToSafeAmount(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(debtBefore, 0, "!debt before");
+
+        vm.prank(management);
+        strategy.manualDelever(type(uint256).max);
+
+        assertLt(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt");
+        assertLt(
+            strategy.getCurrentLTV(),
+            strategy.getLiquidateCollateralFactor(),
+            "!ltv"
         );
     }
 

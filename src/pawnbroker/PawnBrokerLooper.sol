@@ -72,7 +72,8 @@ contract PawnBrokerLooper is BaseLooper, IMorphoFlashLoanCallback {
     function availableWithdrawLimit(
         address _owner
     ) public view virtual override returns (uint256) {
-        if (PAWN_BROKER.paused()) return balanceOfAsset();
+        if (PAWN_BROKER.paused() || PAWN_BROKER.callDeadline() > 0)
+            return balanceOfAsset();
         return super.availableWithdrawLimit(_owner);
     }
 

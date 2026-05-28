@@ -87,10 +87,7 @@ contract InventorySwapper is Governance {
         emit AllowedForwarderSet(forwarder, isAllowed);
     }
 
-    function sweep(
-        address token,
-        uint256 amount
-    ) external onlyGovernance {
+    function sweep(address token, uint256 amount) external onlyGovernance {
         require(token != address(0), "!token");
 
         uint256 amountToSweep = amount == type(uint256).max

@@ -20,11 +20,16 @@ contract PTOperationTest is SetupPT, OperationTest {
         //airdrop(asset, address(strategy), minFuzzAmount / 10);
     }
 
-    function _maxUnwindCollateralDust(uint256 collateralBeforeUnwind) internal pure override returns (uint256) {
+    function _maxUnwindCollateralDust(
+        uint256 collateralBeforeUnwind
+    ) internal pure override returns (uint256) {
         // PT unwinds through Pendle, so residual route dust can exceed
         // the generic base tolerance.
         uint256 relativeDust = (collateralBeforeUnwind * 5) / 10_000; // 5 bps
-        return relativeDust > MIN_UNWIND_COLLATERAL_DUST ? relativeDust : MIN_UNWIND_COLLATERAL_DUST;
+        return
+            relativeDust > MIN_UNWIND_COLLATERAL_DUST
+                ? relativeDust
+                : MIN_UNWIND_COLLATERAL_DUST;
     }
 
     /// @notice PT now uses base Morpho looper defaults.
@@ -34,7 +39,10 @@ contract PTOperationTest is SetupPT, OperationTest {
         assertEq(strategy.management(), management);
         assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
         assertEq(strategy.keeper(), keeper);
-        assertTrue(strategy.collateralToken() != address(0), "!collateralToken");
+        assertTrue(
+            strategy.collateralToken() != address(0),
+            "!collateralToken"
+        );
 
         assertEq(strategy.targetLeverageRatio(), 3e18, "!targetLeverageRatio");
         assertEq(strategy.leverageBuffer(), 0.25e18, "!leverageBuffer");

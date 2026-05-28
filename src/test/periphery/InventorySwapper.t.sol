@@ -272,9 +272,7 @@ contract InventorySwapperTest is Test {
         swapper.setAllowedForwarder(address(meta), true);
         swapper.setAllowed(address(strategy), true);
 
-        MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](
-            1
-        );
+        MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(swapper),
             tokenFrom: address(loanToken),
@@ -288,12 +286,7 @@ contract InventorySwapperTest is Test {
 
         blocked.approveToken(address(loanToken), address(meta), amountIn);
         vm.expectRevert("!allowed");
-        blocked.swap(
-            address(loanToken),
-            address(collateralToken),
-            amountIn,
-            0
-        );
+        blocked.swap(address(loanToken), address(collateralToken), amountIn, 0);
 
         strategy.approveToken(address(loanToken), address(meta), amountIn);
         uint256 amountOut = strategy.swap(

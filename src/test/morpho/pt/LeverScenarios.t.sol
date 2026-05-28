@@ -19,11 +19,18 @@ contract PTLeverScenariosTest is SetupPT, LeverScenariosTest {
         SetupPT.accrueYield(_amount);
     }
 
-    function _upperBoundarySetupBuffer() internal pure override returns (uint256) {
+    function _upperBoundarySetupBuffer()
+        internal
+        pure
+        override
+        returns (uint256)
+    {
         return 0.15e18;
     }
 
-    function test_lever_noPosition_exactAmount_100_worksOnStcUsdPtMarket() public {
+    function test_lever_noPosition_exactAmount_100_worksOnStcUsdPtMarket()
+        public
+    {
         uint256 amount = 100e6;
 
         mintAndDepositIntoStrategy(strategy, user, amount);
@@ -35,7 +42,9 @@ contract PTLeverScenariosTest is SetupPT, LeverScenariosTest {
         assertGt(strategy.balanceOfDebt(), 0, "!debt");
     }
 
-    function test_lever_noPosition_exactAmount_50k_worksOnStcUsdPtMarket() public {
+    function test_lever_noPosition_exactAmount_50k_worksOnStcUsdPtMarket()
+        public
+    {
         uint256 amount = 50_000e6;
 
         mintAndDepositIntoStrategy(strategy, user, amount);
