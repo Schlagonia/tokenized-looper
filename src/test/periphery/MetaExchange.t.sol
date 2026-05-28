@@ -362,6 +362,7 @@ contract MetaExchangeTest is Test {
 
         strategy.setExchange(address(exchange));
         secondStrategy.setExchange(address(exchange));
+        syrupExchange.setAllowed(address(strategy), true);
 
         strategy.approveToken(
             address(asset),
@@ -435,6 +436,8 @@ contract MetaExchangeTest is Test {
         exchange.setAllowedExchange(address(syrupExchange), true);
         exchange.setAllowedExchange(address(susdsExchange), true);
         exchange.setAllowedExchange(address(originExchange), true);
+        exchange.setContextAwareExchange(address(syrupExchange), true);
+        syrupExchange.setAllowedForwarder(address(exchange), true);
     }
 
     function test_setAllowedExchange_tracksEnumerableSet() public {
@@ -486,6 +489,22 @@ contract MetaExchangeTest is Test {
         assertEq(syrupExchange.name(), "SyrupDepositExchange", "!syrup name");
         assertEq(susdsExchange.name(), "SUSDSExchange", "!susds name");
         assertEq(originExchange.name(), "OriginMintExchange", "!origin name");
+    }
+
+    function test_syrupDeposit_sweep_onlyGovernance() public {
+        asset.mint(address(syrupExchange), 123e18);
+
+        vm.prank(stranger);
+        vm.expectRevert("!governance");
+        syrupExchange.sweep(address(asset), type(uint256).max);
+
+        vm.expectRevert("!token");
+        syrupExchange.sweep(address(0), type(uint256).max);
+
+        syrupExchange.sweep(address(asset), type(uint256).max);
+
+        assertEq(asset.balanceOf(address(this)), 123e18, "!swept");
+        assertEq(asset.balanceOf(address(syrupExchange)), 0, "!remaining");
     }
 
     function test_setRoute_requiresGovernanceOrOperator() public {
@@ -541,6 +560,16 @@ contract MetaExchangeTest is Test {
         vm.expectRevert("!exchange");
         exchange.setAllowedExchange(address(0), true);
 
+        vm.prank(stranger);
+        vm.expectRevert("!governance");
+        exchange.setContextAwareExchange(address(unallowedExchange), true);
+
+        vm.expectRevert("!exchange");
+        exchange.setContextAwareExchange(address(0), true);
+
+        vm.expectRevert("!allowed");
+        exchange.setContextAwareExchange(address(unallowedExchange), true);
+
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
         route[0] = MetaExchange.RouteStep({
             exchange: address(unallowedExchange),
@@ -552,6 +581,11 @@ contract MetaExchangeTest is Test {
         exchange.setRoute(address(asset), address(finalToken), route);
 
         exchange.setAllowedExchange(address(unallowedExchange), true);
+        exchange.setContextAwareExchange(address(unallowedExchange), true);
+        assertTrue(
+            exchange.contextAwareExchanges(address(unallowedExchange)),
+            "!context aware"
+        );
         exchange.setRoute(address(asset), address(finalToken), route);
 
         MetaExchange.RouteStep[] memory stored = exchange.getRoute(
@@ -562,6 +596,10 @@ contract MetaExchangeTest is Test {
         assertEq(stored[0].exchange, address(unallowedExchange), "!exchange");
 
         exchange.setAllowedExchange(address(unallowedExchange), false);
+        assertFalse(
+            exchange.contextAwareExchanges(address(unallowedExchange)),
+            "!context aware cleared"
+        );
         asset.mint(address(strategy), 1e18);
 
         vm.expectRevert("!allowed");
@@ -930,6 +968,51 @@ contract MetaExchangeTest is Test {
         assertEq(syrupRouter.depositCalls(), 1, "!depositCalls");
         assertEq(syrupRouter.lastAmount(), 75e18, "!amount");
         assertEq(syrupRouter.lastDepositData(), bytes32("Yearn"), "!data");
+    }
+
+    function test_exchange_syrupDeposit_rejectsUnallowedContextThroughMetaExchange()
+        public
+    {
+        syrupExchange.setSyrupDepositConfig(
+            address(syrupVault),
+            address(syrupRouter),
+            bytes32("Yearn")
+        );
+
+        MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(syrupExchange),
+            tokenFrom: address(asset),
+            tokenTo: address(syrupVault)
+        });
+        exchange.setRoute(address(asset), address(syrupVault), route);
+
+        asset.mint(address(secondStrategy), 75e18);
+
+        vm.expectRevert("!allowed");
+        secondStrategy.swap(address(asset), address(syrupVault), 75e18, 0);
+    }
+
+    function test_exchange_syrupDeposit_rejectsDirectContextExchange() public {
+        syrupExchange.setSyrupDepositConfig(
+            address(syrupVault),
+            address(syrupRouter),
+            bytes32("Yearn")
+        );
+
+        asset.mint(address(secondStrategy), 75e18);
+
+        vm.startPrank(address(secondStrategy));
+        asset.approve(address(syrupExchange), 75e18);
+        vm.expectRevert("!forwarder");
+        syrupExchange.exchangeWithContext(
+            address(asset),
+            address(syrupVault),
+            75e18,
+            0,
+            address(secondStrategy)
+        );
+        vm.stopPrank();
     }
 
     function test_exchange_susdsDeposit_usesReferral() public {

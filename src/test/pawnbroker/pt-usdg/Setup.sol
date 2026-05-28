@@ -28,10 +28,10 @@ contract SetupPawnBrokerPTUSDG is Setup {
 
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant USDG = 0xe343167631d89B6Ffc58B88d6b7fB0228795491D;
-    address public constant PT_USDG_28_MAY_2026 =
-        0x9db38D74a0D29380899aD354121DfB521aDb0548;
+    address public constant PT_USDG_24_SEP_2026 =
+        0xc1906aeCf868749a2DeE203F59b904c0cf212140;
     address public constant PENDLE_MARKET =
-        0xC5b32dba5f29F8395fb9591E1a15f23A75214F33;
+        0xF80b67a32DF07960C731794769309E3D30E9717F;
     address public constant CURVE_USDG_USDC_POOL =
         0xc061caa073f3d95F80f8e5428d32D2d76F5e1622;
 
@@ -46,7 +46,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
 
         tokenAddrs["USDC"] = USDC;
-        tokenAddrs["PT_USDG_28_MAY_2026"] = PT_USDG_28_MAY_2026;
+        tokenAddrs["PT_USDG_24_SEP_2026"] = PT_USDG_24_SEP_2026;
 
         asset = ERC20(USDC);
         decimals = asset.decimals();
@@ -70,7 +70,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
         vm.label(lender, "pawnBrokerLender");
         vm.label(user2, "pawnBrokerSecondUser");
-        vm.label(PT_USDG_28_MAY_2026, "ptUSDGMay2026");
+        vm.label(PT_USDG_24_SEP_2026, "ptUSDGSep2026");
         vm.label(PENDLE_MARKET, "pendleMarket");
     }
 
@@ -99,7 +99,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
                 address(asset),
                 "USDC PT Pawn Broker Market",
                 predictedLooper,
-                PT_USDG_28_MAY_2026,
+                PT_USDG_24_SEP_2026,
                 address(oracle),
                 PAWN_BROKER_LLTV,
                 PAWN_BROKER_RATE,
@@ -113,7 +113,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
         looper = new PawnBrokerLooper(
             address(asset),
             "USDC PT Pawn Broker Looper",
-            PT_USDG_28_MAY_2026,
+            PT_USDG_24_SEP_2026,
             MORPHO,
             address(pawnBroker),
             address(exchange),
@@ -125,7 +125,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-        pendleExchange.setPendleMarket(PT_USDG_28_MAY_2026, PENDLE_MARKET);
+        pendleExchange.setPendleMarket(PT_USDG_24_SEP_2026, PENDLE_MARKET);
         pendleExchange.setGuessMaxMultiplier(2);
         _setCurveRoute(address(asset), USDG, 1, 0);
         _setCurveRoute(USDG, address(asset), 0, 1);
@@ -200,15 +200,15 @@ contract SetupPawnBrokerPTUSDG is Setup {
         assetToPt[1] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
             tokenFrom: USDG,
-            tokenTo: PT_USDG_28_MAY_2026
+            tokenTo: PT_USDG_24_SEP_2026
         });
-        exchange.setRoute(address(asset), PT_USDG_28_MAY_2026, assetToPt);
+        exchange.setRoute(address(asset), PT_USDG_24_SEP_2026, assetToPt);
 
         MetaExchange.RouteStep[]
             memory ptToAsset = new MetaExchange.RouteStep[](2);
         ptToAsset[0] = MetaExchange.RouteStep({
             exchange: address(pendleExchange),
-            tokenFrom: PT_USDG_28_MAY_2026,
+            tokenFrom: PT_USDG_24_SEP_2026,
             tokenTo: USDG
         });
         ptToAsset[1] = MetaExchange.RouteStep({
@@ -216,6 +216,6 @@ contract SetupPawnBrokerPTUSDG is Setup {
             tokenFrom: USDG,
             tokenTo: address(asset)
         });
-        exchange.setRoute(PT_USDG_28_MAY_2026, address(asset), ptToAsset);
+        exchange.setRoute(PT_USDG_24_SEP_2026, address(asset), ptToAsset);
     }
 }

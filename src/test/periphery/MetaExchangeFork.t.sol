@@ -244,8 +244,11 @@ contract MetaExchangeForkTest is Test {
         exchange.setAllowedExchange(address(susdsExchange), true);
         exchange.setAllowedExchange(address(syrupExchange), true);
         exchange.setAllowedExchange(address(originExchange), true);
+        exchange.setContextAwareExchange(address(syrupExchange), true);
+        syrupExchange.setAllowedForwarder(address(exchange), true);
 
         strategy.setExchange(address(exchange));
+        syrupExchange.setAllowed(address(strategy), true);
     }
 
     function _configureSyrupPyusdRoutes(MetaExchange exchange) internal {

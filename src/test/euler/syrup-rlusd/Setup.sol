@@ -126,6 +126,9 @@ contract SetupEulerSyrupRLUSD is Setup {
         exchange.setAllowedExchange(address(curveExchange), true);
         exchange.setAllowedExchange(address(uniExchange), true);
         exchange.setAllowedExchange(address(syrupExchange), true);
+        exchange.setContextAwareExchange(address(syrupExchange), true);
+        syrupExchange.setAllowedForwarder(address(exchange), true);
+        syrupExchange.setAllowed(address(_strategy), true);
         _setRoutes();
 
         _strategy.setKeeper(keeper);

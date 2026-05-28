@@ -205,6 +205,10 @@ abstract contract LeverScenariosTest is Setup {
         assertLe(leverage, maxLeverage, "leverage exceeds max");
     }
 
+    function _upperBoundarySetupBuffer() internal pure virtual returns (uint256) {
+        return 0;
+    }
+
     /// @notice Calculate the debt needed to achieve a specific leverage given equity
     function _calculateDebtForLeverage(
         uint256 equity,
@@ -985,7 +989,7 @@ abstract contract LeverScenariosTest is Setup {
         _assertLeverageWithinTestBuffer(
             leverageBefore,
             upperBoundLeverage,
-            0,
+            _upperBoundarySetupBuffer(),
             "should be at upper bound",
             "should be at upper bound"
         );

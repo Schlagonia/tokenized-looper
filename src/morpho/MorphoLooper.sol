@@ -300,13 +300,21 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         _setUseAuction(_useAuction);
     }
 
+    function protectedTokens()
+        public
+        view
+        virtual
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](2);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+    }
+
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
-        require(
-            _token != address(asset) && _token != collateralToken,
-            "!token"
-        );
         return _kickAuction(_token);
     }
 }

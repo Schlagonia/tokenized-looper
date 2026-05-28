@@ -5,13 +5,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import {IContextAwareExchange} from "../interfaces/IContextAwareExchange.sol";
 import {IExchange} from "../interfaces/IExchange.sol";
 import {BaseExchange} from "./BaseExchange.sol";
 
 /**
  * @title MetaExchange
- * @notice Route-driven exchange hub. Each route step links to another
- *         IExchange-compatible contract that executes one swap primitive.
+ * @notice Route-driven exchange hub. Each route step links to a venue
+ *         contract that executes one swap primitive.
  */
 contract MetaExchange is BaseExchange {
     using SafeERC20 for ERC20;
@@ -24,10 +25,12 @@ contract MetaExchange is BaseExchange {
     }
 
     mapping(address => bool) public allowedExchanges;
+    mapping(address => bool) public contextAwareExchanges;
     EnumerableSet.AddressSet internal _allowedExchangeSet;
     mapping(address => mapping(address => RouteStep[])) internal _routes;
 
     event AllowedExchangeSet(address indexed exchange, bool allowed);
+    event ContextAwareExchangeSet(address indexed exchange, bool allowed);
     event RouteSet(address indexed from, address indexed to, uint256 length);
 
     constructor(address _governance) BaseExchange(_governance) {}
@@ -65,8 +68,22 @@ contract MetaExchange is BaseExchange {
             _allowedExchangeSet.add(exchange);
         } else {
             _allowedExchangeSet.remove(exchange);
+            if (contextAwareExchanges[exchange]) {
+                contextAwareExchanges[exchange] = false;
+                emit ContextAwareExchangeSet(exchange, false);
+            }
         }
         emit AllowedExchangeSet(exchange, allowed);
+    }
+
+    function setContextAwareExchange(
+        address exchange,
+        bool allowed
+    ) external onlyGovernance {
+        require(exchange != address(0), "!exchange");
+        require(allowedExchanges[exchange], "!allowed");
+        contextAwareExchanges[exchange] = allowed;
+        emit ContextAwareExchangeSet(exchange, allowed);
     }
 
     function setRoute(
@@ -125,12 +142,23 @@ contract MetaExchange is BaseExchange {
             require(allowedExchanges[step.exchange], "!allowed");
             require(step.tokenFrom == currentToken, "!route");
             ERC20(step.tokenFrom).forceApprove(step.exchange, amountOut);
-            amountOut = IExchange(step.exchange).exchange(
-                currentToken,
-                step.tokenTo,
-                amountOut,
-                0
-            );
+            if (contextAwareExchanges[step.exchange]) {
+                amountOut = IContextAwareExchange(step.exchange)
+                    .exchangeWithContext(
+                        currentToken,
+                        step.tokenTo,
+                        amountOut,
+                        0,
+                        msg.sender
+                    );
+            } else {
+                amountOut = IExchange(step.exchange).exchange(
+                    currentToken,
+                    step.tokenTo,
+                    amountOut,
+                    0
+                );
+            }
             currentToken = step.tokenTo;
             unchecked {
                 ++i;

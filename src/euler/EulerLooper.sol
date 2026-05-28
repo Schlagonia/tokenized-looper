@@ -293,15 +293,23 @@ contract EulerLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         _setUseAuction(_useAuction);
     }
 
+    function protectedTokens()
+        public
+        view
+        virtual
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](4);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = address(COLLATERAL_VAULT);
+        _protected[3] = address(BORROW_VAULT);
+    }
+
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
-        require(
-            _token != address(asset) &&
-                _token != collateralToken &&
-                _token != address(COLLATERAL_VAULT),
-            "!token"
-        );
         return _kickAuction(_token);
     }
 

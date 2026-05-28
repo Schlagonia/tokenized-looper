@@ -365,15 +365,24 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         IPool(POOL).setUserEMode(_eModeCategoryId);
     }
 
+    function protectedTokens()
+        public
+        view
+        virtual
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](5);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = A_TOKEN;
+        _protected[3] = ASSET_A_TOKEN;
+        _protected[4] = VARIABLE_DEBT_TOKEN;
+    }
+
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
-        require(
-            _token != address(asset) &&
-                _token != A_TOKEN &&
-                _token != collateralToken,
-            "!token"
-        );
         return _kickAuction(_token);
     }
 }

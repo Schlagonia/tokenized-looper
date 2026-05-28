@@ -82,8 +82,8 @@ contract DeployMainnetMetaExchange is Script {
     address internal constant FLUID_SUSDE_USDT = 0x1DD125C32e4B5086c63CC13B3cA02C4A2a61Fa9b;
     address internal constant FLUID_USDE_USDTB = 0xB0960263E39C70C9B6e9EA2A382B18095264A364;
 
-    address internal constant PT_USDG_28_MAY_2026 = 0x9db38D74a0D29380899aD354121DfB521aDb0548;
-    address internal constant PENDLE_USDG_MARKET = 0xC5b32dba5f29F8395fb9591E1a15f23A75214F33;
+    address internal constant PT_USDG_24_SEP_2026 = 0xc1906aeCf868749a2DeE203F59b904c0cf212140;
+    address internal constant PENDLE_USDG_MARKET = 0xF80b67a32DF07960C731794769309E3D30E9717F;
 
     address public governance = DEFAULT_GOVERNANCE;
     address public exchangeGovernance = governance;
@@ -180,7 +180,7 @@ contract DeployMainnetMetaExchange is Script {
         fluid.setFluidDex(USDE, USDTB, FLUID_USDE_USDTB);
         fluid.setFluidBaseForPair(USDE, USDTB, USDE);
 
-        pendle.setPendleMarket(PT_USDG_28_MAY_2026, PENDLE_USDG_MARKET);
+        pendle.setPendleMarket(PT_USDG_24_SEP_2026, PENDLE_USDG_MARKET);
         pendle.setGuessMaxMultiplier(2);
 
         syrup.setSyrupDepositConfig(SYRUP_USDC, SYRUP_USDC_ROUTER, SYRUP_DEPOSIT_DATA);
@@ -199,6 +199,9 @@ contract DeployMainnetMetaExchange is Script {
         meta.setAllowedExchange(d.syrupDeposit, true);
         meta.setAllowedExchange(d.susds, true);
         meta.setAllowedExchange(d.originMint, true);
+
+        meta.setContextAwareExchange(d.syrupDeposit, true);
+        SyrupDepositExchange(d.syrupDeposit).setAllowedForwarder(d.metaExchange, true);
     }
 
     function _configureRoutes(Deployment memory d) internal {
@@ -215,8 +218,8 @@ contract DeployMainnetMetaExchange is Script {
         _setRoute2(meta, USDC, SUSDS, d.litePsm, USDS, d.susds, SUSDS);
         _setRoute2(meta, SUSDS, USDC, d.erc4626, USDS, d.litePsm, USDC);
 
-        _setRoute2(meta, USDC, PT_USDG_28_MAY_2026, d.curve, USDG, d.pendle, PT_USDG_28_MAY_2026);
-        _setRoute2(meta, PT_USDG_28_MAY_2026, USDC, d.pendle, USDG, d.curve, USDC);
+        _setRoute2(meta, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026);
+        _setRoute2(meta, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
 
         _setRoute2(meta, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         _setRoute2(meta, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
@@ -244,7 +247,7 @@ contract DeployMainnetMetaExchange is Script {
     }
 
     function _configureThroughMulticall(Deployment memory d) internal {
-        uint256 callCount = 59;
+        uint256 callCount = 61;
         if (syrupUsdtUniFee != 0) {
             ++callCount;
         }
@@ -332,7 +335,7 @@ contract DeployMainnetMetaExchange is Script {
             calls,
             index,
             d.pendle,
-            abi.encodeCall(PendleExchange.setPendleMarket, (PT_USDG_28_MAY_2026, PENDLE_USDG_MARKET))
+            abi.encodeCall(PendleExchange.setPendleMarket, (PT_USDG_24_SEP_2026, PENDLE_USDG_MARKET))
         );
         index = _appendCall(calls, index, d.pendle, abi.encodeCall(PendleExchange.setGuessMaxMultiplier, (2)));
 
@@ -366,6 +369,8 @@ contract DeployMainnetMetaExchange is Script {
         index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.syrupDeposit, true)));
         index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.susds, true)));
         index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.originMint, true)));
+        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setContextAwareExchange, (d.syrupDeposit, true)));
+        index = _appendCall(calls, index, d.syrupDeposit, abi.encodeCall(SyrupDepositExchange.setAllowedForwarder, (d.metaExchange, true)));
 
         return index;
     }
@@ -389,10 +394,10 @@ contract DeployMainnetMetaExchange is Script {
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, SUSDS, d.litePsm, USDS, d.susds, SUSDS);
         index = _appendRoute2Call(calls, index, d.metaExchange, SUSDS, USDC, d.erc4626, USDS, d.litePsm, USDC);
         index = _appendRoute2Call(
-            calls, index, d.metaExchange, USDC, PT_USDG_28_MAY_2026, d.curve, USDG, d.pendle, PT_USDG_28_MAY_2026
+            calls, index, d.metaExchange, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026
         );
         index = _appendRoute2Call(
-            calls, index, d.metaExchange, PT_USDG_28_MAY_2026, USDC, d.pendle, USDG, d.curve, USDC
+            calls, index, d.metaExchange, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC
         );
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         index = _appendRoute2Call(calls, index, d.metaExchange, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
@@ -537,6 +542,8 @@ contract DeployMainnetMetaExchange is Script {
         require(meta.allowedExchanges(d.syrupDeposit), "!allow syrup");
         require(meta.allowedExchanges(d.susds), "!allow susds");
         require(meta.allowedExchanges(d.originMint), "!allow origin");
+        require(meta.contextAwareExchanges(d.syrupDeposit), "!context aware syrup");
+        require(syrup.allowedForwarders(d.metaExchange), "!syrup forwarder");
         _assertOperators(d);
 
         require(uni.base() == USDC, "!uni base");
@@ -547,7 +554,7 @@ contract DeployMainnetMetaExchange is Script {
         _assertFluidDex(fluid, SUSDE, USDT, FLUID_SUSDE_USDT);
         _assertFluidDex(fluid, USDE, USDTB, FLUID_USDE_USDTB);
         _assertFluidBaseForPair(fluid, USDE, USDTB, USDE);
-        require(pendle.markets(PT_USDG_28_MAY_2026) == PENDLE_USDG_MARKET, "!pendle market");
+        require(pendle.markets(PT_USDG_24_SEP_2026) == PENDLE_USDG_MARKET, "!pendle market");
         require(pendle.guessMaxMultiplier() == 2, "!guess");
 
         _assertSyrupConfig(syrup, SYRUP_USDC, SYRUP_USDC_ROUTER);
@@ -562,8 +569,8 @@ contract DeployMainnetMetaExchange is Script {
         _assertRoute3(meta, SUSDS, USDT, d.erc4626, USDS, d.litePsm, USDC, d.uniswapUniversal, USDT);
         _assertRoute2(meta, USDC, SUSDS, d.litePsm, USDS, d.susds, SUSDS);
         _assertRoute2(meta, SUSDS, USDC, d.erc4626, USDS, d.litePsm, USDC);
-        _assertRoute2(meta, USDC, PT_USDG_28_MAY_2026, d.curve, USDG, d.pendle, PT_USDG_28_MAY_2026);
-        _assertRoute2(meta, PT_USDG_28_MAY_2026, USDC, d.pendle, USDG, d.curve, USDC);
+        _assertRoute2(meta, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026);
+        _assertRoute2(meta, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
         _assertRoute2(meta, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         _assertRoute2(meta, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
         _assertRoute2(meta, USDC, SUSDE, d.fluid, USDE, d.erc4626, SUSDE);

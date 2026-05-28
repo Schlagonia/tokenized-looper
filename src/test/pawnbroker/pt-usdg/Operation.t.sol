@@ -42,10 +42,10 @@ contract PawnBrokerPTUSDGOperationTest is SetupPawnBrokerPTUSDG, OperationTest {
 
         assertEq(address(looper.PAWN_BROKER()), address(pawnBroker));
         assertEq(address(looper.MORPHO()), MORPHO);
-        assertEq(looper.collateralToken(), PT_USDG_28_MAY_2026);
+        assertEq(looper.collateralToken(), PT_USDG_24_SEP_2026);
         assertEq(looper.exchange(), address(exchange));
         assertEq(pawnBroker.BORROWER(), address(strategy));
-        assertEq(pawnBroker.COLLATERAL_ASSET(), PT_USDG_28_MAY_2026);
+        assertEq(pawnBroker.COLLATERAL_ASSET(), PT_USDG_24_SEP_2026);
         assertEq(pawnBroker.LLTV(), PAWN_BROKER_LLTV);
         assertEq(pawnBroker.rate(), PAWN_BROKER_RATE);
         (uint256 pendingRate, uint256 pendingRateEffectiveTime) = pawnBroker
