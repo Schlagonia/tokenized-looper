@@ -64,6 +64,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
         uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
+        _updateSlippageLossLimit();
         // Gateway mints iUSD and stakes directly to sIUSD for this contract.
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
@@ -80,6 +81,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
         uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
+        _updateSlippageLossLimit();
         uint256 iusdBalance = IInfiniFiGatewayV1(GATEWAY).unstake(
             address(this),
             amount

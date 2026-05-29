@@ -45,13 +45,11 @@ contract OriginMorphoLooper is MorphoLooper {
         )
     {}
 
-    function estimatedTotalAssets() public view override returns (uint256) {
+    function totalCollateralBalance() public view override returns (uint256) {
         return
-            super.estimatedTotalAssets() +
-            _collateralToAsset(
-                IERC4626(address(collateralToken)).convertToShares(
-                    balanceOfUnderlying() + pendingWithdrawalAssets
-                )
+            super.totalCollateralBalance() +
+            IERC4626(address(collateralToken)).convertToShares(
+                balanceOfUnderlying() + pendingWithdrawalAssets
             );
     }
 

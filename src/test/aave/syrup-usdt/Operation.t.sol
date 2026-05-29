@@ -41,7 +41,7 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         looper.zeroPendingRedemptions();
     }
 
-    function test_convertUnderlyingToAsset_sameAssetPath() public {
+    function test_convertUnderlyingToAsset_revertsSameAssetPath() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
@@ -51,9 +51,9 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
 
         vm.prank(keeper);
-        uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
+        vm.expectRevert("!underlying");
+        looper.convertUnderlyingToAsset(type(uint256).max);
 
-        assertEq(amountOut, amount, "!amountOut");
         assertEq(looper.balanceOfUnderlying(), amount, "!still asset");
         assertEq(asset.balanceOf(address(strategy)), amount, "!asset");
     }

@@ -27,8 +27,17 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function minTendInterval() external view returns (uint256);
 
-    /// @notice Slippage in basis points used for swap checks and the daily budget.
+    /// @notice Slippage in basis points used for per-swap checks and the 1-day loss cap.
     function slippage() external view returns (uint64);
+
+    /// @notice Start timestamp for the current slippage accounting period.
+    function slippagePeriodStart() external view returns (uint256);
+
+    /// @notice Cumulative realized swap loss in asset terms for the current period.
+    function slippagePeriodLoss() external view returns (uint256);
+
+    /// @notice Highest realized-loss limit reached during the current slippage period.
+    function slippagePeriodLossLimit() external view returns (uint256);
 
     function reportBuffer() external view returns (uint256);
 
@@ -49,7 +58,7 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setMaxGasPriceToTend(uint256 _maxGasPriceToTend) external;
 
-    /// @notice Set slippage in basis points for swap checks and the daily budget.
+    /// @notice Set slippage in basis points for per-swap checks and the 1-day loss cap.
     function setSlippage(uint256 _slippage) external;
 
     function setReportBuffer(uint256 _reportBuffer) external;
@@ -63,6 +72,9 @@ interface IBaseLooper is IBaseHealthCheck {
     function setExchange(address _exchange) external;
 
     function estimatedTotalAssets() external view returns (uint256);
+
+    /// @notice Total collateral exposure denominated in collateral token units.
+    function totalCollateralBalance() external view returns (uint256);
 
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() external view returns (uint256);

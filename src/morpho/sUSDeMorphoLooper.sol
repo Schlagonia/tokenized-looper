@@ -51,18 +51,11 @@ contract sUSDeMorphoLooper is MorphoLooper {
         )
     {}
 
-    /// @notice Estimated total assets including any sUSDe queued for cooldown
-    ///         and any loose USDe sitting in the strategy post-claim.
-    /// @dev Pending USDe + loose USDe are translated back into asset terms by
-    ///      first converting to equivalent sUSDe shares (so the same oracle-
-    ///      based collateral pricing applies).
-    function estimatedTotalAssets() public view override returns (uint256) {
+    function totalCollateralBalance() public view override returns (uint256) {
         return
-            super.estimatedTotalAssets() +
-            _collateralToAsset(
-                IERC4626(collateralToken).convertToShares(
-                    pendingRedemptions + balanceOfUnderlying()
-                )
+            super.totalCollateralBalance() +
+            IERC4626(collateralToken).convertToShares(
+                pendingRedemptions + balanceOfUnderlying()
             );
     }
 
@@ -120,6 +113,7 @@ contract sUSDeMorphoLooper is MorphoLooper {
         if (amount > balance) amount = balance;
 
         uint256 shares = IERC4626(SUSDE).convertToShares(amount);
+        _updateSlippageLossLimit();
         ERC20(USDE).forceApprove(exchange, amount);
         uint256 amountOut = IExchange(exchange).exchange(
             USDE,

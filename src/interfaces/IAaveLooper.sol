@@ -35,7 +35,5 @@ interface IAaveLooper is IBaseLooper {
 
     function setAuction(address _auction) external;
 
-    function setUseAuction(bool _useAuction) external;
-
     function kickAuction(address _token) external returns (uint256);
 }

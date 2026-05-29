@@ -68,6 +68,7 @@ contract MockBudgetLooper is BaseLooper {
 
     uint256 public suppliedCollateral;
     uint256 public debt;
+    uint256 public extraCollateralBalance;
 
     constructor(
         address _asset,
@@ -90,6 +91,34 @@ contract MockBudgetLooper is BaseLooper {
 
     function swapCollateralToAsset(uint256 amount) external returns (uint256) {
         return _convertCollateralToAsset(amount);
+    }
+
+    function setPosition(
+        uint256 collateralAmount,
+        uint256 debtAmount
+    ) external {
+        suppliedCollateral = collateralAmount;
+        debt = debtAmount;
+    }
+
+    function withdrawAndSwapCollateral(
+        uint256 amount
+    ) external returns (uint256) {
+        debt = amount > debt ? 0 : debt - amount;
+        _withdrawCollateral(amount);
+        return _convertCollateralToAsset(amount);
+    }
+
+    function updateLossLimit() external {
+        _updateSlippageLossLimit();
+    }
+
+    function setExtraCollateralBalance(uint256 amount) external {
+        extraCollateralBalance = amount;
+    }
+
+    function totalCollateralBalance() public view override returns (uint256) {
+        return super.totalCollateralBalance() + extraCollateralBalance;
     }
 
     function _executeFlashloan(
@@ -207,10 +236,21 @@ contract SlippageBudgetTest is Test {
         vm.warp(block.timestamp + 1 days + 1);
     }
 
-    function test_dailyBudget_zeroLossStartsPeriodAndAddsNotional() public {
+    function _depositTvlAndFundLoose(uint256 tvl, uint256 loose) internal {
+        looper.setAllowed(address(this), true);
+        asset.mint(address(this), tvl);
+        asset.approve(address(looper), tvl);
+        TokenizedStrategy(address(looper)).deposit(tvl, address(this));
+
+        if (loose > 0) {
+            asset.mint(address(looper), loose);
+        }
+    }
+
+    function test_dailyLoss_zeroLossStartsPeriod() public {
         uint256 amount = 100_000;
 
-        asset.mint(address(looper), amount);
+        _depositTvlAndFundLoose(amount, 0);
         looper.setSlippage(10);
         exchange.setRates(MAX_BPS, MAX_BPS);
 
@@ -218,14 +258,13 @@ contract SlippageBudgetTest is Test {
 
         assertEq(amountOut, amount, "wrong output");
         assertEq(looper.slippagePeriodStart(), block.timestamp, "wrong start");
-        assertEq(looper.slippagePeriodNotional(), amount, "wrong notional");
         assertEq(looper.slippagePeriodLoss(), 0, "loss should stay zero");
     }
 
-    function test_dailyBudget_accumulatesWeightedLossAcrossSwaps() public {
+    function test_dailyLoss_accumulatesRealizedLossAcrossSwaps() public {
         uint256 amount = 100_000;
 
-        asset.mint(address(looper), amount * 2);
+        _depositTvlAndFundLoose(amount, amount);
         looper.setSlippage(10);
         exchange.setRates(9_995, 9_995);
 
@@ -233,79 +272,103 @@ contract SlippageBudgetTest is Test {
         looper.swapAssetToCollateral(amount);
 
         assertEq(looper.slippagePeriodStart(), block.timestamp, "wrong start");
-        assertEq(looper.slippagePeriodNotional(), amount * 2, "wrong notional");
         assertEq(looper.slippagePeriodLoss(), 100, "wrong loss");
     }
 
-    function test_dailyBudget_weightsLargeGoodSwapAgainstTinyBadSwap() public {
-        uint256 tinyAmount = 10_000;
-        uint256 largeAmount = 100_000;
+    function test_dailyLoss_zeroLossChurnCanRunRepeatedly() public {
+        uint256 tvl = 100_000;
+        uint256 amount = 100_000;
+        uint256 swaps = 8;
 
-        asset.mint(address(looper), tinyAmount + largeAmount);
+        _depositTvlAndFundLoose(tvl, amount * (swaps - 1));
+        looper.setSlippage(10);
+        exchange.setRates(MAX_BPS, MAX_BPS);
+
+        for (uint256 i; i < swaps; i++) {
+            looper.swapAssetToCollateral(amount);
+        }
+
+        assertEq(looper.slippagePeriodLoss(), 0, "loss");
+    }
+
+    function test_dailyLoss_revertsForBadPerTransactionSlippage() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setSlippage(10);
+        exchange.setRates(9_989, 9_989);
+
+        vm.expectRevert(bytes("!slippage"));
+        looper.swapAssetToCollateral(amount);
+
+        assertEq(looper.slippagePeriodLoss(), 0, "loss should revert");
+    }
+
+    function test_dailyLoss_revertsWhenDailyLossCapIsExceeded() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setLeverageParams(1e18, 0.01e18, 2e18);
+        looper.setSlippage(10);
+        exchange.setRates(9_990, 9_990);
+
+        uint256 collateralOut = looper.swapAssetToCollateral(amount);
+
+        vm.expectRevert(bytes("!slippage"));
+        looper.swapCollateralToAsset(collateralOut);
+
+        assertEq(looper.slippagePeriodLoss(), 100, "loss");
+    }
+
+    function test_dailyLoss_positiveSlippageDoesNotOffsetLoss() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, amount);
+        looper.setLeverageParams(1e18, 0.01e18, 2e18);
         looper.setSlippage(10);
 
         exchange.setRates(9_990, 9_990);
-        looper.swapAssetToCollateral(tinyAmount);
+        looper.swapAssetToCollateral(amount);
 
-        exchange.setRates(9_995, 9_995);
-        looper.swapAssetToCollateral(largeAmount);
+        exchange.setRates(10_010, 10_010);
+        uint256 amountOut = looper.swapCollateralToAsset(99_900);
 
-        assertEq(
-            looper.slippagePeriodNotional(),
-            tinyAmount + largeAmount,
-            "wrong notional"
-        );
-        assertEq(looper.slippagePeriodLoss(), 60, "wrong loss");
+        assertEq(looper.slippagePeriodLoss(), 100, "positive offset loss");
+        assertEq(amountOut, 99_999, "wrong positive output");
+
+        exchange.setRates(9_990, 9_990);
+        vm.expectRevert(bytes("!slippage"));
+        looper.swapAssetToCollateral(amountOut);
+
+        assertEq(looper.slippagePeriodLoss(), 100, "loss should revert");
     }
 
-    function test_dailyBudget_normalizesMixedDirectionsIntoAssetTerms() public {
+    function test_dailyLoss_normalizesMixedDirectionsIntoAssetTerms() public {
         uint256 assetAmount = 100_000;
         uint256 collateralAmount = 50_000;
 
         looper.setCollateralPrice(2e36);
+        _depositTvlAndFundLoose(assetAmount, 0);
         looper.setSlippage(6);
 
-        asset.mint(address(looper), assetAmount);
         collateral.mint(address(looper), collateralAmount);
 
         exchange.setRates(5_000, 20_000);
         looper.swapAssetToCollateral(assetAmount);
 
-        exchange.setRates(5_000, 19_980);
+        exchange.setRates(5_000, 19_988);
         uint256 amountOut = looper.swapCollateralToAsset(collateralAmount);
 
-        assertEq(amountOut, 99_900, "wrong output");
-        assertEq(looper.slippagePeriodNotional(), 200_000, "wrong notional");
-        assertEq(looper.slippagePeriodLoss(), 100, "wrong loss");
+        assertEq(amountOut, 99_940, "wrong output");
+        assertEq(looper.slippagePeriodLoss(), 60, "wrong loss");
     }
 
-    function test_dailyBudget_revertsWhenWeightedBudgetIsExceeded() public {
+    function test_dailyLoss_resetsAfterOneDay() public {
         uint256 amount = 100_000;
 
-        asset.mint(address(looper), amount * 2);
+        _depositTvlAndFundLoose(amount, amount);
         looper.setSlippage(10);
-
-        exchange.setRates(9_995, 9_995);
-        looper.swapAssetToCollateral(amount);
-
-        exchange.setRates(9_980, 9_980);
-        vm.expectRevert(bytes("!slippage"));
-        looper.swapAssetToCollateral(amount);
-
-        assertEq(
-            looper.slippagePeriodNotional(),
-            amount,
-            "notional should revert"
-        );
-        assertEq(looper.slippagePeriodLoss(), 50, "loss should revert");
-    }
-
-    function test_dailyBudget_resetsAfterOneDay() public {
-        uint256 amount = 100_000;
-
-        asset.mint(address(looper), amount * 2);
-        looper.setSlippage(10);
-        exchange.setRates(9_995, 9_995);
+        exchange.setRates(9_990, 9_990);
 
         looper.swapAssetToCollateral(amount);
         uint256 firstStart = looper.slippagePeriodStart();
@@ -315,13 +378,13 @@ contract SlippageBudgetTest is Test {
         looper.swapAssetToCollateral(amount);
 
         assertGt(looper.slippagePeriodStart(), firstStart, "start not reset");
-        assertEq(looper.slippagePeriodNotional(), amount, "notional not reset");
-        assertEq(looper.slippagePeriodLoss(), 50, "loss not reset");
+        assertEq(looper.slippagePeriodLoss(), 100, "loss not reset");
     }
 
-    function test_dailyBudget_tracksCollateralToAssetLoss() public {
+    function test_dailyLoss_tracksCollateralToAssetLoss() public {
         uint256 amount = 100_000;
 
+        _depositTvlAndFundLoose(amount, 0);
         collateral.mint(address(looper), amount);
         looper.setSlippage(10);
         exchange.setRates(MAX_BPS, 9_995);
@@ -329,30 +392,106 @@ contract SlippageBudgetTest is Test {
         uint256 amountOut = looper.swapCollateralToAsset(amount);
 
         assertEq(amountOut, 99_950, "wrong output");
-        assertEq(looper.slippagePeriodNotional(), amount, "wrong notional");
         assertEq(looper.slippagePeriodLoss(), 50, "wrong loss");
     }
 
-    function test_dailyBudget_revertsForCollateralToAssetWhenLimitIsExceeded()
+    function test_dailyLoss_zeroTargetWithoutCollateralExposureStartsAtOneTimesCap()
         public
     {
         uint256 amount = 100_000;
 
-        collateral.mint(address(looper), amount * 2);
+        _depositTvlAndFundLoose(amount, amount);
         looper.setSlippage(10);
-        exchange.setRates(9_995, 9_995);
+        exchange.setRates(9_990, 9_990);
 
-        looper.swapCollateralToAsset(amount);
+        looper.setLeverageParams(0, 0, 1e18);
+        looper.swapAssetToCollateral(amount);
 
-        exchange.setRates(9_980, 9_980);
+        assertEq(looper.slippagePeriodLossLimit(), 100, "loss limit");
+
         vm.expectRevert(bytes("!slippage"));
-        looper.swapCollateralToAsset(amount);
+        looper.swapAssetToCollateral(amount);
 
-        assertEq(
-            looper.slippagePeriodNotional(),
-            amount,
-            "notional should revert"
-        );
-        assertEq(looper.slippagePeriodLoss(), 50, "loss should revert");
+        assertEq(looper.slippagePeriodLoss(), 100, "loss should revert");
+    }
+
+    function test_dailyLoss_usesPostSwapExposureForHighWaterLimit() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setSlippage(50);
+        exchange.setRates(9_950, 9_950);
+
+        looper.swapAssetToCollateral(amount);
+
+        assertEq(looper.slippagePeriodLoss(), 500, "loss");
+        assertEq(looper.slippagePeriodLossLimit(), 500, "loss limit");
+    }
+
+    function test_dailyLoss_usesTotalCollateralBalanceInSnapshot() public {
+        _depositTvlAndFundLoose(100_000, 0);
+        looper.setExtraCollateralBalance(300_000);
+        looper.setSlippage(50);
+
+        looper.updateLossLimit();
+
+        assertEq(looper.slippagePeriodLossLimit(), 1_500, "loss limit");
+
+        looper.setReportBuffer(1_000);
+        assertEq(looper.estimatedTotalAssets(), 370_000, "report buffer");
+    }
+
+    function test_dailyLoss_usesActualExposureWhenTargetIsLowered() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setPosition(amount * 8, amount * 7);
+        looper.setLeverageParams(0, 0, 1e18);
+        looper.setSlippage(50);
+        exchange.setRates(MAX_BPS, 9_950);
+
+        looper.withdrawAndSwapCollateral(amount);
+        looper.withdrawAndSwapCollateral(amount);
+
+        assertEq(looper.slippagePeriodLoss(), 1_000, "loss");
+        assertEq(looper.slippagePeriodLossLimit(), 4_000, "loss limit");
+    }
+
+    function test_dailyLoss_keepsHighWaterLimitWhenExposureShrinks() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setPosition(amount * 8, amount * 7);
+        looper.setLeverageParams(0, 0, 1e18);
+        looper.setSlippage(50);
+        exchange.setRates(MAX_BPS, 9_950);
+
+        for (uint256 i; i < 8; i++) {
+            looper.withdrawAndSwapCollateral(amount);
+        }
+
+        assertEq(looper.balanceOfCollateral(), 0, "collateral");
+        assertEq(looper.slippagePeriodLoss(), 4_000, "loss");
+        assertEq(looper.slippagePeriodLossLimit(), 4_000, "loss limit");
+    }
+
+    function test_dailyLoss_resetsHighWaterLimitAfterOneDay() public {
+        uint256 amount = 100_000;
+
+        _depositTvlAndFundLoose(amount, 0);
+        looper.setPosition(amount * 8, amount * 7);
+        looper.setLeverageParams(0, 0, 1e18);
+        looper.setSlippage(50);
+        exchange.setRates(MAX_BPS, 9_950);
+
+        looper.withdrawAndSwapCollateral(amount);
+        assertEq(looper.slippagePeriodLossLimit(), 4_000, "first limit");
+
+        vm.warp(block.timestamp + 1 days + 1);
+        looper.setPosition(amount, 0);
+        looper.withdrawAndSwapCollateral(amount);
+
+        assertEq(looper.slippagePeriodLoss(), 500, "loss");
+        assertEq(looper.slippagePeriodLossLimit(), 500, "reset limit");
     }
 }

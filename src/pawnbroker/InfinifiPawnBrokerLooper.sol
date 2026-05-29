@@ -45,6 +45,7 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
     ) internal virtual override returns (uint256) {
         if (amount == 0) return 0;
 
+        _updateSlippageLossLimit();
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
         uint256 amountOut = balanceOfCollateralToken() - collateralBalance;
@@ -57,6 +58,7 @@ contract InfinifiPawnBrokerLooper is PawnBrokerLooper {
     ) internal virtual override returns (uint256) {
         if (amount == 0) return 0;
 
+        _updateSlippageLossLimit();
         uint256 iusdBalance = IInfiniFiGatewayV1(GATEWAY).unstake(
             address(this),
             amount

@@ -52,17 +52,17 @@ abstract contract BaseLooper is BaseHealthCheck {
     /// @notice Exchange address
     address public exchange;
 
-    /// @notice Slippage parameter in basis points for swaps and the 1-day budget.
+    /// @notice Slippage parameter in basis points for per-swap checks and the 1-day loss cap.
     uint64 public slippage;
 
     /// @notice Start timestamp for the current slippage accounting period.
     uint256 public slippagePeriodStart;
 
-    /// @notice Cumulative expected swap notional in asset terms for the current period.
-    uint256 public slippagePeriodNotional;
-
     /// @notice Cumulative realized swap loss in asset terms for the current period.
     uint256 public slippagePeriodLoss;
+
+    /// @notice Highest realized-loss limit reached during the current slippage period.
+    uint256 public slippagePeriodLossLimit;
 
     /// @notice The timestamp of the last tend.
     uint256 public lastTend;
@@ -217,7 +217,7 @@ abstract contract BaseLooper is BaseHealthCheck {
         maxGasPriceToTend = _maxGasPriceToTend;
     }
 
-    /// @notice Set the slippage parameter used by swap checks and the 1-day budget.
+    /// @notice Set the slippage parameter used by per-swap checks and the 1-day loss cap.
     /// @dev Value is in BPS and must be strictly less than `MAX_BPS`. If the
     ///      strategy is not shutdown, it must also be strictly less than
     ///      `MAX_SLIPPAGE`.
@@ -333,10 +333,14 @@ abstract contract BaseLooper is BaseHealthCheck {
     function estimatedTotalAssets() public view virtual returns (uint256) {
         // Collateral value discounted by the report buffer.
         uint256 collateralValue = (_collateralToAsset(
-            balanceOfCollateral() + balanceOfCollateralToken()
+            totalCollateralBalance()
         ) * (MAX_BPS - reportBuffer)) / MAX_BPS;
 
         return balanceOfAsset() + collateralValue - balanceOfDebt();
+    }
+
+    function totalCollateralBalance() public view virtual returns (uint256) {
+        return balanceOfCollateral() + balanceOfCollateralToken();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -671,6 +675,8 @@ abstract contract BaseLooper is BaseHealthCheck {
     ) internal virtual returns (uint256) {
         if (amount == 0) return 0;
 
+        _updateSlippageLossLimit();
+
         uint256 amountOut = IExchange(exchange).exchange(
             address(asset),
             collateralToken,
@@ -686,6 +692,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 amount
     ) internal virtual returns (uint256) {
         if (amount == 0) return 0;
+
+        _updateSlippageLossLimit();
 
         uint256 expectedAmountOut = _collateralToAsset(amount);
 
@@ -874,24 +882,53 @@ abstract contract BaseLooper is BaseHealthCheck {
         return (targetCollateral, targetDebt);
     }
 
+    /// @dev Records the realized loss for a swap in asset terms.
+    ///      `expected` is the oracle-priced fair output and `actual` is the
+    ///      real output received. Each swap must pass the per-transaction
+    ///      slippage check, then any shortfall is added to the current daily
+    ///      loss bucket. Positive slippage does not offset prior losses.
+    ///      The daily loss limit is refreshed before enforcing the cap so the
+    ///      check uses the high-water exposure from before or after the swap.
     function _recordSlippage(uint256 expected, uint256 actual) internal {
-        if (block.timestamp >= slippagePeriodStart + SLIPPAGE_PERIOD) {
-            slippagePeriodStart = block.timestamp;
-            slippagePeriodNotional = expected;
-            slippagePeriodLoss = 0;
-        } else {
-            slippagePeriodNotional += expected;
-        }
+        require(
+            actual >= Math.mulDiv(expected, MAX_BPS - slippage, MAX_BPS),
+            "!slippage"
+        );
 
         if (actual < expected) {
             slippagePeriodLoss += expected - actual;
         }
 
-        require(
-            slippagePeriodLoss <=
-                Math.mulDiv(slippagePeriodNotional, slippage, MAX_BPS),
-            "!slippage"
+        _updateSlippageLossLimit();
+
+        require(slippagePeriodLoss <= slippagePeriodLossLimit, "!slippage");
+    }
+
+    /// @dev Maintains the 1-day realized-loss cap for swap slippage.
+    ///      A new period resets accumulated loss and the high-water limit.
+    ///      During a period the limit can only increase, never decrease, so an
+    ///      unwind from a larger exposure keeps enough loss budget even as the
+    ///      position shrinks. Exposure is measured in asset terms as the larger
+    ///      of reported strategy assets and total collateral exposure.
+    function _updateSlippageLossLimit() internal {
+        if (block.timestamp >= slippagePeriodStart + SLIPPAGE_PERIOD) {
+            slippagePeriodStart = block.timestamp;
+            slippagePeriodLoss = 0;
+            slippagePeriodLossLimit = 0;
+        }
+
+        uint256 periodLossLimit = Math.mulDiv(
+            Math.max(
+                TokenizedStrategy.totalAssets(),
+                _collateralToAsset(totalCollateralBalance())
+            ),
+            slippage,
+            MAX_BPS
         );
+
+        if (periodLossLimit > slippagePeriodLossLimit) {
+            slippagePeriodLossLimit = periodLossLimit;
+        }
     }
 
     /// @notice Check if the current base fee is acceptable for tending

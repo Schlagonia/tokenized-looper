@@ -44,22 +44,21 @@ contract SyrupMorphoLooper is MorphoLooper {
             _governance
         )
     {
-        try ISyrupPool(_collateralToken).asset() returns (address _underlying) {
-            UNDERLYING = _underlying;
-        } catch {
-            UNDERLYING = _asset;
-        }
+        UNDERLYING = ISyrupPool(_collateralToken).asset();
     }
 
-    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
-    function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 pendingAssets;
-        if (pendingRedemptionShares > 0) {
-            pendingAssets = ISyrupPool(collateralToken).convertToAssets(
-                pendingRedemptionShares
+    function totalCollateralBalance() public view override returns (uint256) {
+        uint256 looseUnderlyingShares;
+        if (UNDERLYING != address(asset)) {
+            looseUnderlyingShares = ISyrupPool(collateralToken).convertToShares(
+                balanceOfUnderlying()
             );
         }
-        return super.estimatedTotalAssets() + pendingAssets;
+
+        return
+            super.totalCollateralBalance() +
+            pendingRedemptionShares +
+            looseUnderlyingShares;
     }
 
     function _harvestAndReport()
@@ -124,24 +123,23 @@ contract SyrupMorphoLooper is MorphoLooper {
     function convertUnderlyingToAsset(
         uint256 amount
     ) external onlyKeepers returns (uint256) {
+        require(UNDERLYING != address(asset), "!underlying");
         amount = Math.min(amount, balanceOfUnderlying());
         if (amount == 0) return 0;
 
-        uint256 amountOut = amount;
-        if (UNDERLYING != address(asset)) {
-            uint256 expectedAmountOut = _collateralToAsset(
-                ISyrupPool(collateralToken).convertToShares(amount)
-            );
+        uint256 expectedAmountOut = _collateralToAsset(
+            ISyrupPool(collateralToken).convertToShares(amount)
+        );
+        _updateSlippageLossLimit();
 
-            ERC20(UNDERLYING).forceApprove(exchange, amount);
-            amountOut = IExchange(exchange).exchange(
-                UNDERLYING,
-                address(asset),
-                amount,
-                0
-            );
-            _recordSlippage(expectedAmountOut, amountOut);
-        }
+        ERC20(UNDERLYING).forceApprove(exchange, amount);
+        uint256 amountOut = IExchange(exchange).exchange(
+            UNDERLYING,
+            address(asset),
+            amount,
+            0
+        );
+        _recordSlippage(expectedAmountOut, amountOut);
 
         return amountOut;
     }

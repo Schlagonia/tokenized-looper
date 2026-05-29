@@ -47,13 +47,11 @@ contract sUSDeAaveLooper is AaveLooper {
         )
     {}
 
-    function estimatedTotalAssets() public view override returns (uint256) {
+    function totalCollateralBalance() public view override returns (uint256) {
         return
-            super.estimatedTotalAssets() +
-            _collateralToAsset(
-                IERC4626(address(collateralToken)).convertToShares(
-                    pendingRedemptions + balanceOfUnderlying()
-                )
+            super.totalCollateralBalance() +
+            IERC4626(SUSDE).convertToShares(
+                pendingRedemptions + balanceOfUnderlying()
             );
     }
 
@@ -104,6 +102,7 @@ contract sUSDeAaveLooper is AaveLooper {
         if (amount > balance) amount = balance;
 
         uint256 shares = IERC4626(SUSDE).convertToShares(amount);
+        _updateSlippageLossLimit();
         ERC20(USDE).forceApprove(exchange, amount);
         uint256 amountOut = IExchange(exchange).exchange(
             USDE,

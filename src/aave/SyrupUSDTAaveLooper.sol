@@ -2,8 +2,11 @@
 pragma solidity ^0.8.18;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {AaveLooper} from "./AaveLooper.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
 import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
 
 /**
@@ -13,6 +16,10 @@ import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
  *         - Management path supports direct syrup redemption requests.
  */
 contract SyrupUSDTAaveLooper is AaveLooper {
+    using SafeERC20 for ERC20;
+
+    address internal immutable UNDERLYING;
+
     /// @notice Shares queued for direct syrup redemption.
     uint256 public pendingRedemptionShares;
 
@@ -37,18 +44,21 @@ contract SyrupUSDTAaveLooper is AaveLooper {
             _governance
         )
     {
-        require(ISyrupPool(_collateralToken).asset() == _asset, "!underlying");
+        UNDERLYING = ISyrupPool(_collateralToken).asset();
     }
 
-    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
-    function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 pendingAssets;
-        if (pendingRedemptionShares > 0) {
-            pendingAssets = ISyrupPool(collateralToken).convertToAssets(
-                pendingRedemptionShares
+    function totalCollateralBalance() public view override returns (uint256) {
+        uint256 looseUnderlyingShares;
+        if (UNDERLYING != address(asset)) {
+            looseUnderlyingShares = ISyrupPool(collateralToken).convertToShares(
+                balanceOfUnderlying()
             );
         }
-        return super.estimatedTotalAssets() + pendingAssets;
+
+        return
+            super.totalCollateralBalance() +
+            pendingRedemptionShares +
+            looseUnderlyingShares;
     }
 
     function _harvestAndReport()
@@ -61,7 +71,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
-        return balanceOfAsset();
+        return ERC20(UNDERLYING).balanceOf(address(this));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -109,15 +119,25 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     function convertUnderlyingToAsset(
         uint256 amount
     ) external onlyKeepers returns (uint256) {
+        require(UNDERLYING != address(asset), "!underlying");
         amount = Math.min(amount, balanceOfUnderlying());
         if (amount == 0) return 0;
 
         uint256 expectedAmountOut = _collateralToAsset(
             ISyrupPool(collateralToken).convertToShares(amount)
         );
+        _updateSlippageLossLimit();
 
-        _recordSlippage(expectedAmountOut, amount);
-        return amount;
+        ERC20(UNDERLYING).forceApprove(exchange, amount);
+        uint256 amountOut = IExchange(exchange).exchange(
+            UNDERLYING,
+            address(asset),
+            amount,
+            0
+        );
+
+        _recordSlippage(expectedAmountOut, amountOut);
+        return amountOut;
     }
 
     function _claimAndSellRewards() internal pure override {}
