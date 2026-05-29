@@ -71,6 +71,70 @@ contract PawnBrokerSIUSDOperationTest is SetupPawnBrokerSIUSD, OperationTest {
         vm.stopPrank();
     }
 
+    function test_marketDebtCallAllowsPartialWithdraws() public {
+        uint256 amount = 50_000e6;
+
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 idle = strategy.balanceOfAsset();
+        uint256 debt = strategy.balanceOfDebt();
+        assertGt(debt, 0, "!debt");
+
+        vm.prank(management);
+        pawnBroker.callDebt(debt / 4);
+
+        assertGt(pawnBroker.calledDebt(), 0, "!called debt");
+
+        uint256 limit = strategy.availableWithdrawLimit(user);
+        assertEq(limit, _expectedAvailableWithdrawLimit(), "!withdraw limit");
+        assertGt(limit, idle, "!equity unavailable");
+
+        uint256 maxWithdraw = strategy.maxWithdraw(user);
+        assertGt(maxWithdraw, idle, "!max withdraw");
+
+        uint256 userBalanceBefore = asset.balanceOf(user);
+        vm.prank(user);
+        strategy.withdraw(maxWithdraw / 4, user, user);
+
+        assertGt(asset.balanceOf(user), userBalanceBefore, "!withdraw");
+        assertTrue(pawnBroker.isSolvent(), "!solvent");
+    }
+
+    function test_marketDebtCallMaxRedeemUsesWithdrawableEquity() public {
+        uint256 amount = 50_000e6;
+
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 debt = strategy.balanceOfDebt();
+        assertGt(debt, 0, "!debt");
+
+        vm.prank(management);
+        pawnBroker.callDebt(debt / 4);
+
+        uint256 limit = strategy.availableWithdrawLimit(user);
+        uint256 holderBalance = strategy.balanceOf(user);
+        uint256 maxRedeem = strategy.maxRedeem(user);
+        uint256 maxRedeemAssets = strategy.previewRedeem(maxRedeem);
+
+        assertGt(limit, strategy.balanceOfAsset(), "!equity unavailable");
+        assertGt(maxRedeem, 0, "!max redeem");
+        assertLe(maxRedeem, holderBalance, "!holder balance");
+        assertLe(maxRedeemAssets, limit, "!limit");
+
+        uint256 userBalanceBefore = asset.balanceOf(user);
+        vm.prank(user);
+        strategy.redeem(maxRedeem, user, user);
+
+        assertGt(asset.balanceOf(user), userBalanceBefore, "!redeem");
+        assertTrue(pawnBroker.isSolvent(), "!solvent");
+    }
+
     function test_marketShutdownBlocksFreshDeposits() public {
         uint256 amount = 50_000e6;
 
