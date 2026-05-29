@@ -124,12 +124,7 @@ contract DeployMainnetMetaExchange is Script {
     function _deploy() internal returns (Deployment memory d) {
         d.metaExchange = _deployMetaExchange();
         d.uniswapUniversal = address(
-            new UniswapUniversalRouterExchange(
-                WETH,
-                UNISWAP_ROUTER,
-                UNISWAP_POSITION_MANAGER,
-                exchangeGovernance
-            )
+            new UniswapUniversalRouterExchange(WETH, UNISWAP_ROUTER, UNISWAP_POSITION_MANAGER, exchangeGovernance)
         );
         d.curve = address(new CurveExchange(CURVE_ROUTER, exchangeGovernance));
         d.fluid = address(new FluidExchange(WETH, exchangeGovernance));
@@ -144,10 +139,8 @@ contract DeployMainnetMetaExchange is Script {
     function _deployMetaExchange() internal returns (address) {
         bytes memory initCode = abi.encodePacked(type(MetaExchange).creationCode, abi.encode(governance));
 
-        return ICreateXDeployer(CREATE_X).deployCreate2(
-            0x1b5f15dcb82d25f91c65b53cee151e8b9fbdd271000000000000000000098677,
-            initCode
-        );
+        return ICreateXDeployer(CREATE_X)
+            .deployCreate2(0x1b5f15dcb82d25f91c65b53cee151e8b9fbdd271000000000000000000098677, initCode);
     }
 
     function _configureVenues(Deployment memory d) internal {
@@ -269,9 +262,14 @@ contract DeployMainnetMetaExchange is Script {
         view
         returns (uint256)
     {
-        index = _appendCall(calls, index, d.uniswapUniversal, abi.encodeCall(UniswapUniversalRouterExchange.setBase, (USDC)));
         index = _appendCall(
-            calls, index, d.uniswapUniversal, abi.encodeCall(UniswapUniversalRouterExchange.setUniFees, (USDT, USDC, 100))
+            calls, index, d.uniswapUniversal, abi.encodeCall(UniswapUniversalRouterExchange.setBase, (USDC))
+        );
+        index = _appendCall(
+            calls,
+            index,
+            d.uniswapUniversal,
+            abi.encodeCall(UniswapUniversalRouterExchange.setUniFees, (USDT, USDC, 100))
         );
         index = _appendCall(
             calls,
@@ -327,9 +325,8 @@ contract DeployMainnetMetaExchange is Script {
             d.fluid,
             abi.encodeWithSignature("setFluidDex(address,address,address)", USDE, USDTB, FLUID_USDE_USDTB)
         );
-        index = _appendCall(
-            calls, index, d.fluid, abi.encodeCall(FluidExchange.setFluidBaseForPair, (USDE, USDTB, USDE))
-        );
+        index =
+            _appendCall(calls, index, d.fluid, abi.encodeCall(FluidExchange.setFluidBaseForPair, (USDE, USDTB, USDE)));
 
         index = _appendCall(
             calls,
@@ -343,13 +340,17 @@ contract DeployMainnetMetaExchange is Script {
             calls,
             index,
             d.syrupDeposit,
-            abi.encodeCall(SyrupDepositExchange.setSyrupDepositConfig, (SYRUP_USDC, SYRUP_USDC_ROUTER, SYRUP_DEPOSIT_DATA))
+            abi.encodeCall(
+                SyrupDepositExchange.setSyrupDepositConfig, (SYRUP_USDC, SYRUP_USDC_ROUTER, SYRUP_DEPOSIT_DATA)
+            )
         );
         index = _appendCall(
             calls,
             index,
             d.syrupDeposit,
-            abi.encodeCall(SyrupDepositExchange.setSyrupDepositConfig, (SYRUP_USDT, SYRUP_USDT_ROUTER, SYRUP_DEPOSIT_DATA))
+            abi.encodeCall(
+                SyrupDepositExchange.setSyrupDepositConfig, (SYRUP_USDT, SYRUP_USDT_ROUTER, SYRUP_DEPOSIT_DATA)
+            )
         );
 
         return index;
@@ -360,17 +361,39 @@ contract DeployMainnetMetaExchange is Script {
         pure
         returns (uint256)
     {
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.uniswapUniversal, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.curve, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.fluid, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.pendle, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.erc4626, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.litePsm, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.syrupDeposit, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.susds, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.originMint, true)));
-        index = _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setContextAwareExchange, (d.syrupDeposit, true)));
-        index = _appendCall(calls, index, d.syrupDeposit, abi.encodeCall(SyrupDepositExchange.setAllowedForwarder, (d.metaExchange, true)));
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.uniswapUniversal, true))
+        );
+        index =
+            _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.curve, true)));
+        index =
+            _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.fluid, true)));
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.pendle, true))
+        );
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.erc4626, true))
+        );
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.litePsm, true))
+        );
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.syrupDeposit, true))
+        );
+        index =
+            _appendCall(calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.susds, true)));
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.originMint, true))
+        );
+        index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setContextAwareExchange, (d.syrupDeposit, true))
+        );
+        index = _appendCall(
+            calls,
+            index,
+            d.syrupDeposit,
+            abi.encodeCall(SyrupDepositExchange.setAllowedForwarder, (d.metaExchange, true))
+        );
 
         return index;
     }
@@ -380,9 +403,15 @@ contract DeployMainnetMetaExchange is Script {
         view
         returns (uint256)
     {
-        index = _appendRoute2Call(calls, index, d.metaExchange, PYUSD, SYRUP_USDC, d.curve, USDC, d.syrupDeposit, SYRUP_USDC);
-        index = _appendRoute2Call(calls, index, d.metaExchange, SYRUP_USDC, PYUSD, d.uniswapUniversal, USDC, d.curve, PYUSD);
-        index = _appendRoute3Call(calls, index, d.metaExchange, PYUSD, SUSDE, d.curve, USDC, d.fluid, USDE, d.erc4626, SUSDE);
+        index = _appendRoute2Call(
+            calls, index, d.metaExchange, PYUSD, SYRUP_USDC, d.curve, USDC, d.syrupDeposit, SYRUP_USDC
+        );
+        index = _appendRoute2Call(
+            calls, index, d.metaExchange, SYRUP_USDC, PYUSD, d.uniswapUniversal, USDC, d.curve, PYUSD
+        );
+        index = _appendRoute3Call(
+            calls, index, d.metaExchange, PYUSD, SUSDE, d.curve, USDC, d.fluid, USDE, d.erc4626, SUSDE
+        );
         index = _appendRoute2Call(calls, index, d.metaExchange, SUSDE, PYUSD, d.fluid, USDC, d.curve, PYUSD);
         index = _appendRoute2Call(calls, index, d.metaExchange, USDE, PYUSD, d.fluid, USDC, d.curve, PYUSD);
         index = _appendRoute3Call(
@@ -396,9 +425,8 @@ contract DeployMainnetMetaExchange is Script {
         index = _appendRoute2Call(
             calls, index, d.metaExchange, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026
         );
-        index = _appendRoute2Call(
-            calls, index, d.metaExchange, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC
-        );
+        index =
+            _appendRoute2Call(calls, index, d.metaExchange, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         index = _appendRoute2Call(calls, index, d.metaExchange, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, SUSDE, d.fluid, USDE, d.erc4626, SUSDE);
@@ -460,7 +488,9 @@ contract DeployMainnetMetaExchange is Script {
 
         address[5] memory pools;
 
-        return _appendCall(calls, index, curve, abi.encodeCall(CurveExchange.setCurveRoute, (from, to, route, swapParams, pools)));
+        return _appendCall(
+            calls, index, curve, abi.encodeCall(CurveExchange.setCurveRoute, (from, to, route, swapParams, pools))
+        );
     }
 
     function _appendRoute1Call(

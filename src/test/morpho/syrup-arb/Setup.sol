@@ -4,9 +4,9 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
-import {Id} from "../../../interfaces/morpho/IMorpho.sol";
+import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 
@@ -50,12 +50,13 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         asset = ERC20(ARB_USDC);
         decimals = asset.decimals();
 
-        // Keep conservative while pool depth evolves. Small Arb positions can
-        // unwind into sub-min Fluid trades on zero-amount delevers.
-        maxFuzzAmount = 50_000e6;
+        // Keep conservative while pool depth evolves. This route uses real
+        // Arb Fluid liquidity, not a mocked deep market.
+        maxFuzzAmount = 15_000e6;
         minFuzzAmount = 5_000e6;
 
         strategy = IStrategyInterface(setUpStrategy());
+        _seedArbMorphoLiquidity(MORPHO_LIQUIDITY_SEED);
         factory = strategy.FACTORY();
 
         vm.label(keeper, "keeper");
@@ -76,7 +77,7 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         exchange = new MetaExchange(management);
         fluidExchange = new FluidExchange(ARB_WETH, management);
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        MorphoLooper looper = new MorphoLooper(
             address(asset),
             "syrupUSDC/USDC Arbitrum Morpho Looper",
             ARB_SYRUP_USDC,
@@ -118,6 +119,15 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), _amount / 30);
+    }
+
+    function _seedArbMorphoLiquidity(uint256 _amount) internal {
+        MarketParams memory params = IMorpho(ARB_MORPHO).idToMarketParams(
+            SYRUP_USDC_MARKET_ID
+        );
+        deal(address(asset), address(this), _amount);
+        asset.approve(ARB_MORPHO, _amount);
+        IMorpho(ARB_MORPHO).supply(params, _amount, 0, address(this), "");
     }
 
     function _setRoutes() internal {

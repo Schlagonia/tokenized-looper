@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Governance} from "@periphery/utils/Governance.sol";
 
 import {IOracle} from "../interfaces/morpho/IOracle.sol";
@@ -15,7 +16,7 @@ import {IOracle} from "../interfaces/morpho/IOracle.sol";
  * @dev `ORACLE.price()` follows Morpho's convention: one collateral token
  *      quoted in loan token units, scaled by 1e36.
  */
-contract InventorySwapper is Governance {
+contract InventorySwapper is Governance, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     uint256 internal constant MAX_BPS = 10_000;
@@ -104,7 +105,7 @@ contract InventorySwapper is Governance {
         uint256 amountIn,
         uint256 amountOutMin,
         address context
-    ) external returns (uint256 amountOut) {
+    ) external nonReentrant returns (uint256 amountOut) {
         require(allowedForwarders[msg.sender], "!forwarder");
         require(allowed[context], "!allowed");
 

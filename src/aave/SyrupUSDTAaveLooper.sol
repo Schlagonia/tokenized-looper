@@ -74,6 +74,21 @@ contract SyrupUSDTAaveLooper is AaveLooper {
         return ERC20(UNDERLYING).balanceOf(address(this));
     }
 
+    function protectedTokens()
+        public
+        view
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](6);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = A_TOKEN;
+        _protected[3] = ASSET_A_TOKEN;
+        _protected[4] = VARIABLE_DEBT_TOKEN;
+        _protected[5] = UNDERLYING;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         DIRECT REDEMPTION PATH
     //////////////////////////////////////////////////////////////*/

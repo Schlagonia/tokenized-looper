@@ -473,7 +473,7 @@ contract Deploy is Script {
     function deploySyrupArbitrum(SyrupArbConfig memory cfg) internal returns (address) {
         MetaExchange exchange = _resolveMetaExchange();
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        MorphoLooper looper = new MorphoLooper(
             cfg.base.asset,
             cfg.base.name,
             cfg.base.collateralToken,

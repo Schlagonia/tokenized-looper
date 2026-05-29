@@ -219,7 +219,9 @@ contract StrategyAprOracle is AprOracleBase {
             collateralValue == 0 ||
             slippageBps == 0 ||
             collateralDeltaAsset == 0
-        ) return price;
+        ) {
+            return price;
+        }
 
         uint256 absDelta = uint256(
             collateralDeltaAsset > 0

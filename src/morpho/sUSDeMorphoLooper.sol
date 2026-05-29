@@ -63,6 +63,18 @@ contract sUSDeMorphoLooper is MorphoLooper {
         return ERC20(USDE).balanceOf(address(this));
     }
 
+    function protectedTokens()
+        public
+        view
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](3);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = USDE;
+    }
+
     /// @notice Block reports while a cooldown is in flight — the protocol's
     ///         queued payout isn't observable on-chain until `unstake`, so a
     ///         report run mid-flight would mismark.

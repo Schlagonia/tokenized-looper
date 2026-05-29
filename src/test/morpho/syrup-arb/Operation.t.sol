@@ -4,7 +4,6 @@ pragma solidity ^0.8.18;
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupSyrupUsdcArbMorpho} from "./Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
 import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 contract SyrupUsdcArbMorphoOperationTest is
@@ -38,36 +37,6 @@ contract SyrupUsdcArbMorphoOperationTest is
             relativeDust > MIN_UNWIND_COLLATERAL_DUST
                 ? relativeDust
                 : MIN_UNWIND_COLLATERAL_DUST;
-    }
-
-    function test_zeroPendingRedemptions_onlyManagement() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-
-        vm.prank(user);
-        vm.expectRevert("!management");
-        looper.zeroPendingRedemptions();
-
-        vm.prank(management);
-        looper.zeroPendingRedemptions();
-    }
-
-    function test_convertUnderlyingToAsset_revertsSameAssetPath() public {
-        SyrupMorphoLooper looper = SyrupMorphoLooper(
-            payable(address(strategy))
-        );
-        uint256 amount = 1_000e6;
-
-        deal(ARB_USDC, address(strategy), amount);
-        assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
-
-        vm.prank(keeper);
-        vm.expectRevert("!underlying");
-        looper.convertUnderlyingToAsset(type(uint256).max);
-
-        assertEq(looper.balanceOfUnderlying(), amount, "!still asset");
-        assertEq(asset.balanceOf(address(strategy)), amount, "!asset");
     }
 
     function test_exchange_routes_areConfiguredForArbSyrupMarket() public view {

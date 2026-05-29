@@ -349,7 +349,7 @@ abstract contract BaseLooper is BaseHealthCheck {
 
     /// @notice Calculate the maximum amount that can be deposited by an address
     /// @dev Override to customize deposit limits. Default checks allowlist, pause states,
-    ///      deposit limit, collateral capacity, and borrow capacity.
+    ///      deposit limit.
     /// @param _owner The address attempting to deposit
     /// @return The maximum amount that can be deposited
     function availableDepositLimit(
@@ -378,13 +378,18 @@ abstract contract BaseLooper is BaseHealthCheck {
     function availableWithdrawLimit(
         address /*_owner*/
     ) public view virtual override returns (uint256) {
-        uint256 currentDebt = balanceOfDebt();
+        uint256 idleAssets = balanceOfAsset();
+        (uint256 currentCollateralValue, uint256 currentDebt) = position();
+
+        if (currentDebt > currentCollateralValue) return idleAssets;
+
+        uint256 currentEquity = currentCollateralValue - currentDebt;
         uint256 flashloanAvailable = maxFlashloan();
 
-        if (flashloanAvailable >= currentDebt) return type(uint256).max;
+        if (flashloanAvailable >= currentDebt) return idleAssets + currentEquity;
 
         // If target leverage ratio is 1 or 0 and we cant repay the debt, we cant withdraw yet.
-        if (targetLeverageRatio <= WAD) return balanceOfAsset();
+        if (targetLeverageRatio <= WAD) return idleAssets;
 
         // Limited by flashloan: calculate max withdrawable
         // When debtToRepay is capped at maxFlashloan:
@@ -393,11 +398,11 @@ abstract contract BaseLooper is BaseHealthCheck {
         //   maxWithdraw = currentEquity - targetEquity
         uint256 targetDebt = currentDebt - flashloanAvailable;
         uint256 targetEquity = (targetDebt * WAD) / (targetLeverageRatio - WAD);
+        uint256 withdrawableEquity = currentEquity > targetEquity
+            ? currentEquity - targetEquity
+            : 0;
 
-        (uint256 collateralValue, ) = position();
-        uint256 currentEquity = collateralValue - currentDebt;
-
-        return currentEquity > targetEquity ? currentEquity - targetEquity : 0;
+        return idleAssets + withdrawableEquity;
     }
 
     /// @notice Rebalance the position to maintain target leverage
@@ -958,13 +963,10 @@ abstract contract BaseLooper is BaseHealthCheck {
             getLiquidateCollateralFactor(),
             Math.Rounding.Up
         );
-        uint256 requiredCollateral = Math.mulDiv(
-            requiredCollateralValue,
-            ORACLE_PRICE_SCALE,
-            _getCollateralPrice(),
-            Math.Rounding.Up
+        // Convert to collateral amount plus buffer
+        uint256 requiredCollateral = _assetToCollateral(
+            Math.mulDiv(requiredCollateralValue, MAX_BPS + 1, MAX_BPS)
         );
-        requiredCollateral += Math.max(requiredCollateral / MAX_BPS, 1);
 
         uint256 maxWithdraw = balanceOfCollateral();
 

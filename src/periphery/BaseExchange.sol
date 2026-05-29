@@ -3,6 +3,7 @@ pragma solidity ^0.8.18;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Governance} from "@periphery/utils/Governance.sol";
 import {IExchange} from "../interfaces/IExchange.sol";
 
@@ -12,7 +13,7 @@ import {IExchange} from "../interfaces/IExchange.sol";
  *         exchange; admin setters are governed separately.
  *         Concrete exchanges override `_exchange` with their conversion logic.
  */
-abstract contract BaseExchange is IExchange, Governance {
+abstract contract BaseExchange is IExchange, Governance, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     mapping(address => bool) public operators;
@@ -42,7 +43,7 @@ abstract contract BaseExchange is IExchange, Governance {
         address to,
         uint256 amountIn,
         uint256 amountOutMin
-    ) external returns (uint256 amountOut) {
+    ) external nonReentrant returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
 
         ERC20(from).safeTransferFrom(msg.sender, address(this), amountIn);

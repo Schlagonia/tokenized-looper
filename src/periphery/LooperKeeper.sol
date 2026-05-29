@@ -65,7 +65,6 @@ contract LooperKeeper is Governance {
         address strategy,
         uint256 allocatorFee
     ) external payable onlyKeepers {
-        require(vault != address(0), "vault=0");
         require(strategy != address(0), "strategy=0");
 
         uint256 callsValue = _sumValues(calls);
@@ -107,5 +106,12 @@ contract LooperKeeper is Governance {
 
     function tendStrategy(address _strategyAddress) public onlyKeepers {
         IStrategyInterface(_strategyAddress).tend();
+    }
+
+    function forwardCall(
+        address target,
+        bytes memory data
+    ) public onlyKeepers returns (bool success) {
+        (success, ) = target.call(data);
     }
 }

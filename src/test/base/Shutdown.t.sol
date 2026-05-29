@@ -83,6 +83,12 @@ abstract contract ShutdownTest is Setup {
         vm.prank(emergencyAdmin);
         strategy.emergencyWithdraw(type(uint256).max);
 
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(management);
+        strategy.report();
+
         // Make sure we can still withdraw the full amount
         uint256 balanceBefore = asset.balanceOf(user);
 

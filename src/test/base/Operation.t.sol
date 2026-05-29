@@ -42,6 +42,31 @@ abstract contract OperationTest is Setup {
         return 1e18 - (1e36 / strategy.maxLeverageRatio());
     }
 
+    function _expectedAvailableWithdrawLimit() internal view returns (uint256) {
+        uint256 idleAssets = strategy.balanceOfAsset();
+        (uint256 collateralValue, uint256 currentDebt) = strategy.position();
+
+        if (currentDebt > collateralValue) return idleAssets;
+
+        uint256 currentEquity = collateralValue - currentDebt;
+        uint256 flashloanAvailable = strategy.maxFlashloan();
+
+        if (flashloanAvailable >= currentDebt) {
+            return idleAssets + currentEquity;
+        }
+
+        if (strategy.targetLeverageRatio() <= 1e18) return idleAssets;
+
+        uint256 targetDebt = currentDebt - flashloanAvailable;
+        uint256 targetEquity = (targetDebt * 1e18) /
+            (strategy.targetLeverageRatio() - 1e18);
+        uint256 withdrawableEquity = currentEquity > targetEquity
+            ? currentEquity - targetEquity
+            : 0;
+
+        return idleAssets + withdrawableEquity;
+    }
+
     function test_setupStrategyOK() public virtual {
         console2.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
@@ -584,17 +609,17 @@ abstract contract OperationTest is Setup {
                     AVAILABLE WITHDRAW LIMIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_availableWithdrawLimit_maxWhenNoPosition() public {
-        // With no position, withdraw limit should be max
+    function test_availableWithdrawLimit_returnsIdleWhenNoPosition() public {
         uint256 limit = strategy.availableWithdrawLimit(user);
-        assertEq(
-            limit,
-            type(uint256).max,
-            "!limit should be max with no position"
-        );
+        assertEq(limit, strategy.balanceOfAsset(), "!idle only");
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
+        assertEq(strategy.availableWithdrawLimit(user), idleAmount, "!idle limit");
     }
 
-    function test_availableWithdrawLimit_maxWhenFlashloanCoversDebt(
+    function test_availableWithdrawLimit_equityPlusIdleWhenFlashloanCoversDebt(
         uint256 _amount
     ) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
@@ -608,13 +633,17 @@ abstract contract OperationTest is Setup {
         uint256 debt = strategy.balanceOfDebt();
         uint256 flashloan = strategy.maxFlashloan();
 
-        // If flashloan >= debt, limit should be max
+        // If flashloan >= debt, limit should be idle assets plus position equity.
         if (flashloan >= debt) {
             uint256 limit = strategy.availableWithdrawLimit(user);
+            (uint256 collateralValue, ) = strategy.position();
+            uint256 expected = strategy.balanceOfAsset() +
+                (collateralValue > debt ? collateralValue - debt : 0);
+
             assertEq(
                 limit,
-                type(uint256).max,
-                "!limit should be max when flashloan covers debt"
+                expected,
+                "!limit should be idle plus equity when flashloan covers debt"
             );
         }
     }
@@ -627,7 +656,7 @@ abstract contract OperationTest is Setup {
         // This is hard to simulate in a real fork, so we verify the formula:
         //   targetDebt = currentDebt - flashloanAvailable
         //   targetEquity = targetDebt * WAD / (L - WAD)
-        //   maxWithdraw = currentEquity - targetEquity
+        //   maxWithdraw = idleAssets + currentEquity - targetEquity
 
         uint256 _amount = _baseTestAmount();
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -637,41 +666,47 @@ abstract contract OperationTest is Setup {
         uint256 currentDebt = strategy.balanceOfDebt();
         uint256 flashloanAvailable = strategy.maxFlashloan();
         uint256 targetLeverage = strategy.targetLeverageRatio();
+        uint256 expectedLimit = _expectedAvailableWithdrawLimit();
 
-        if (flashloanAvailable >= currentDebt) {
-            // Normal case - max withdraw
-            assertEq(
-                strategy.availableWithdrawLimit(user),
-                type(uint256).max,
-                "!max withdraw when flashloan covers debt"
-            );
-        } else {
-            // Limited case - verify formula
+        assertEq(
+            strategy.availableWithdrawLimit(user),
+            expectedLimit,
+            "!withdraw limit calculation mismatch"
+        );
+
+        if (
+            flashloanAvailable < currentDebt &&
+            currentDebt > 0 &&
+            targetLeverage > 1e18
+        ) {
+            uint256 idleAssets = strategy.balanceOfAsset();
             uint256 targetDebt = currentDebt - flashloanAvailable;
             uint256 targetEquity = (targetDebt * 1e18) /
                 (targetLeverage - 1e18);
 
             (uint256 collateralValue, ) = strategy.position();
-            uint256 currentEquity = collateralValue - currentDebt;
-
-            uint256 expectedLimit = currentEquity > targetEquity
+            uint256 currentEquity = collateralValue > currentDebt
+                ? collateralValue - currentDebt
+                : 0;
+            uint256 withdrawableEquity = currentEquity > targetEquity
                 ? currentEquity - targetEquity
                 : 0;
 
-            assertEq(
-                strategy.availableWithdrawLimit(user),
-                expectedLimit,
-                "!withdraw limit calculation mismatch"
-            );
+            assertEq(expectedLimit, idleAssets + withdrawableEquity, "!limited formula");
         }
     }
 
-    function test_availableWithdrawLimit_zeroWhenEquityBelowTarget() public {
-        // Edge case: if currentEquity <= targetEquity, should return 0
-        // This is hard to simulate but the code handles it
-        uint256 limit = strategy.availableWithdrawLimit(user);
-        // With no position, should be max (no debt scenario)
-        assertEq(limit, type(uint256).max, "!limit should be max with no debt");
+    function test_availableWithdrawLimit_noDebtReturnsIdlePlusEquity() public {
+        uint256 amount = _baseTestAmount();
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertEq(
+            strategy.availableWithdrawLimit(user),
+            strategy.balanceOfAsset(),
+            "!idle plus equity"
+        );
+        assertEq(strategy.maxRedeem(user), amount, "!max redeem");
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -38,7 +38,7 @@ contract SetupPawnBrokerPTUSDG is Setup {
     uint256 public constant PAWN_BROKER_LIQUIDITY = 5_000_000e6;
     uint256 public constant MORPHO_FLASHLOAN_LIQUIDITY = 5_000_000e6;
     uint256 public constant PAWN_BROKER_LLTV = 915e15;
-    uint256 public constant PAWN_BROKER_RATE = 400;
+    uint256 public constant PAWN_BROKER_RATE = 300;
     uint256 public constant PAWN_BROKER_CALL_DURATION = 7 days;
     uint256 public constant PT_ORACLE_PRICE = 995e33; // 0.995 USDG per PT
 
