@@ -386,7 +386,8 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 currentEquity = currentCollateralValue - currentDebt;
         uint256 flashloanAvailable = maxFlashloan();
 
-        if (flashloanAvailable >= currentDebt) return idleAssets + currentEquity;
+        if (flashloanAvailable >= currentDebt)
+            return idleAssets + currentEquity;
 
         // If target leverage ratio is 1 or 0 and we cant repay the debt, we cant withdraw yet.
         if (targetLeverageRatio <= WAD) return idleAssets;
@@ -525,12 +526,12 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             if (debtToRepay <= minAmountToBorrow) return;
 
-            // Flashloan to repay debt, withdraw collateral to cover
+            // Gross up by inverse slippage so worst-case output still covers the flashloan.
             uint256 collateralToWithdraw = debtToRepay == currentDebt &&
                 targetLeverageRatio == 0
                 ? balanceOfCollateral()
-                : (_assetToCollateral(debtToRepay) * (MAX_BPS + slippage)) /
-                    MAX_BPS;
+                : (_assetToCollateral(debtToRepay) * MAX_BPS) /
+                    (MAX_BPS - slippage);
 
             bytes memory data = abi.encode(
                 FlashLoanData({

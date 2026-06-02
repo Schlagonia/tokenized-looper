@@ -6,6 +6,7 @@ import {console2} from "forge-std/console2.sol";
 
 import {IPoolPermissionManager} from "../src/interfaces/syrup/IPoolPermissionManager.sol";
 import {ISyrupRouter} from "../src/interfaces/syrup/ISyrupRouter.sol";
+import {CapUSDExchange} from "../src/periphery/CapUSDExchange.sol";
 import {CurveExchange} from "../src/periphery/CurveExchange.sol";
 import {ERC4626Exchange} from "../src/periphery/ERC4626Exchange.sol";
 import {FluidExchange} from "../src/periphery/FluidExchange.sol";
@@ -34,6 +35,7 @@ contract DeployMainnetMetaExchange is Script {
         address syrupDeposit;
         address susds;
         address originMint;
+        address capUsd;
     }
 
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
@@ -59,6 +61,8 @@ contract DeployMainnetMetaExchange is Script {
     address internal constant OUSD = 0x2A8e1E676Ec238d8A992307B495b45B3fEAa5e86;
     address internal constant WOUSD = 0xD2af830E8CBdFed6CC11Bab697bB25496ed6FA62;
     address internal constant USDG = 0xe343167631d89B6Ffc58B88d6b7fB0228795491D;
+    address internal constant CUSD = 0xcCcc62962d17b8914c62D74FfB843d73B2a3cccC;
+    address internal constant STCUSD = 0x88887bE419578051FF9F4eb6C858A951921D8888;
 
     address internal constant SYRUP_USDC = 0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
     address internal constant SYRUP_USDC_ROUTER = 0x134cCaaA4F1e4552eC8aEcb9E4A2360dDcF8df76;
@@ -134,6 +138,7 @@ contract DeployMainnetMetaExchange is Script {
         d.syrupDeposit = address(new SyrupDepositExchange(exchangeGovernance));
         d.susds = address(new SUSDSExchange(exchangeGovernance));
         d.originMint = address(new OriginMintExchange(exchangeGovernance));
+        d.capUsd = address(new CapUSDExchange(USDC, CUSD, exchangeGovernance));
     }
 
     function _deployMetaExchange() internal returns (address) {
@@ -192,6 +197,7 @@ contract DeployMainnetMetaExchange is Script {
         meta.setAllowedExchange(d.syrupDeposit, true);
         meta.setAllowedExchange(d.susds, true);
         meta.setAllowedExchange(d.originMint, true);
+        meta.setAllowedExchange(d.capUsd, true);
 
         meta.setContextAwareExchange(d.syrupDeposit, true);
         SyrupDepositExchange(d.syrupDeposit).setAllowedForwarder(d.metaExchange, true);
@@ -213,6 +219,8 @@ contract DeployMainnetMetaExchange is Script {
 
         _setRoute2(meta, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026);
         _setRoute2(meta, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
+        _setRoute2(meta, USDC, STCUSD, d.capUsd, CUSD, d.erc4626, STCUSD);
+        _setRoute2(meta, STCUSD, USDC, d.erc4626, CUSD, d.capUsd, USDC);
 
         _setRoute2(meta, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         _setRoute2(meta, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
@@ -240,7 +248,7 @@ contract DeployMainnetMetaExchange is Script {
     }
 
     function _configureThroughMulticall(Deployment memory d) internal {
-        uint256 callCount = 61;
+        uint256 callCount = 64;
         if (syrupUsdtUniFee != 0) {
             ++callCount;
         }
@@ -386,6 +394,9 @@ contract DeployMainnetMetaExchange is Script {
             calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.originMint, true))
         );
         index = _appendCall(
+            calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setAllowedExchange, (d.capUsd, true))
+        );
+        index = _appendCall(
             calls, index, d.metaExchange, abi.encodeCall(MetaExchange.setContextAwareExchange, (d.syrupDeposit, true))
         );
         index = _appendCall(
@@ -427,6 +438,8 @@ contract DeployMainnetMetaExchange is Script {
         );
         index =
             _appendRoute2Call(calls, index, d.metaExchange, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
+        index = _appendRoute2Call(calls, index, d.metaExchange, USDC, STCUSD, d.capUsd, CUSD, d.erc4626, STCUSD);
+        index = _appendRoute2Call(calls, index, d.metaExchange, STCUSD, USDC, d.erc4626, CUSD, d.capUsd, USDC);
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         index = _appendRoute2Call(calls, index, d.metaExchange, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
         index = _appendRoute2Call(calls, index, d.metaExchange, USDC, SUSDE, d.fluid, USDE, d.erc4626, SUSDE);
@@ -572,6 +585,7 @@ contract DeployMainnetMetaExchange is Script {
         require(meta.allowedExchanges(d.syrupDeposit), "!allow syrup");
         require(meta.allowedExchanges(d.susds), "!allow susds");
         require(meta.allowedExchanges(d.originMint), "!allow origin");
+        require(meta.allowedExchanges(d.capUsd), "!allow cap");
         require(meta.contextAwareExchanges(d.syrupDeposit), "!context aware syrup");
         require(syrup.allowedForwarders(d.metaExchange), "!syrup forwarder");
         _assertOperators(d);
@@ -601,6 +615,8 @@ contract DeployMainnetMetaExchange is Script {
         _assertRoute2(meta, SUSDS, USDC, d.erc4626, USDS, d.litePsm, USDC);
         _assertRoute2(meta, USDC, PT_USDG_24_SEP_2026, d.curve, USDG, d.pendle, PT_USDG_24_SEP_2026);
         _assertRoute2(meta, PT_USDG_24_SEP_2026, USDC, d.pendle, USDG, d.curve, USDC);
+        _assertRoute2(meta, USDC, STCUSD, d.capUsd, CUSD, d.erc4626, STCUSD);
+        _assertRoute2(meta, STCUSD, USDC, d.erc4626, CUSD, d.capUsd, USDC);
         _assertRoute2(meta, USDC, WOUSD, d.originMint, OUSD, d.erc4626, WOUSD);
         _assertRoute2(meta, WOUSD, USDC, d.erc4626, OUSD, d.curve, USDC);
         _assertRoute2(meta, USDC, SUSDE, d.fluid, USDE, d.erc4626, SUSDE);
@@ -768,6 +784,7 @@ contract DeployMainnetMetaExchange is Script {
         console2.log("SyrupDepositExchange:", d.syrupDeposit);
         console2.log("SUSDSExchange:", d.susds);
         console2.log("OriginMintExchange:", d.originMint);
+        console2.log("CapUSDExchange:", d.capUsd);
         if (address(deploymentMulticall) != address(0)) {
             console2.log("DeploymentMulticall:", address(deploymentMulticall));
             console2.log("MulticallGovernance:", governance);

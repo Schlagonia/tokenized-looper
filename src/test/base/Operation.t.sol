@@ -616,7 +616,11 @@ abstract contract OperationTest is Setup {
         uint256 idleAmount = _baseIdleAmount();
         airdrop(asset, address(strategy), idleAmount);
 
-        assertEq(strategy.availableWithdrawLimit(user), idleAmount, "!idle limit");
+        assertEq(
+            strategy.availableWithdrawLimit(user),
+            idleAmount,
+            "!idle limit"
+        );
     }
 
     function test_availableWithdrawLimit_equityPlusIdleWhenFlashloanCoversDebt(
@@ -692,7 +696,11 @@ abstract contract OperationTest is Setup {
                 ? currentEquity - targetEquity
                 : 0;
 
-            assertEq(expectedLimit, idleAssets + withdrawableEquity, "!limited formula");
+            assertEq(
+                expectedLimit,
+                idleAssets + withdrawableEquity,
+                "!limited formula"
+            );
         }
     }
 
