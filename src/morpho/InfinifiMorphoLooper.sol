@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol";
+import {IRedeemController} from "../interfaces/infinifi/IRedeemController.sol";
 
 /**
  * @notice Infinifi/Morpho looper using sIUSD (staked iUSD) as collateral and USDC as borrow token.
@@ -18,12 +19,15 @@ import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol"
 contract InfinifiMorphoLooper is MorphoLooper {
     using SafeERC20 for ERC20;
 
-    /// @notice iUSD receipt token (12 decimals).
+    /// @notice iUSD receipt token.
     address public constant IUSD = 0x48f9e38f3070AD8945DFEae3FA70987722E3D89c;
 
     /// @notice Infinifi gateway V1 (proxy address on mainnet).
     address public constant GATEWAY =
         0x3f04b65Ddbd87f9CE0A2e7Eb24d80e7fb87625b5;
+
+    /// @notice USDC assets queued in InfiniFi's redemption controller.
+    uint256 public pendingRedemptions;
 
     constructor(
         address _asset, // USDC
@@ -96,10 +100,57 @@ contract InfinifiMorphoLooper is MorphoLooper {
         return amountOut;
     }
 
-    /// @notice Claim any enqueued redemptions from Infinifi
-    /// @dev Called by keepers if a redemption was delayed and enqueued by the gateway.
-    function claimRedemption() external onlyKeepers {
+    /// @notice Queue loose sIUSD for nonatomic redemption through InfiniFi.
+    function initiateRedemption(
+        uint256 shares
+    ) external onlyManagement returns (uint256 assetsOut, uint256 queuedAssets) {
+        require(pendingRedemptions == 0, "pending redemptions");
+
+        uint256 balance = balanceOfCollateralToken();
+        if (shares > balance) shares = balance;
+        require(shares > 0, "!shares");
+
+        uint256 iusdAmount = IInfiniFiGatewayV1(GATEWAY).unstake(
+            address(this),
+            shares
+        );
+        uint256 expectedAssets = _redeemController().receiptToAsset(
+            iusdAmount
+        );
+
+        uint256 preBalance = asset.balanceOf(address(this));
+        IInfiniFiGatewayV1(GATEWAY).redeem(address(this), iusdAmount, 0);
+        assetsOut = asset.balanceOf(address(this)) - preBalance;
+
+        if (expectedAssets > assetsOut) {
+            queuedAssets = expectedAssets - assetsOut;
+            pendingRedemptions = queuedAssets;
+        }
+    }
+
+    /// @notice Claim any enqueued redemptions from InfiniFi.
+    function claimRedemption() external onlyKeepers returns (uint256 assets) {
+        uint256 claimable = _redeemController().userPendingClaims(
+            address(this)
+        );
+        require(claimable > 0, "!claim");
+
+        uint256 preBalance = asset.balanceOf(address(this));
         IInfiniFiGatewayV1(GATEWAY).claimRedemption();
+        assets = asset.balanceOf(address(this)) - preBalance;
+        require(assets > 0, "!assets");
+
+        if (assets >= pendingRedemptions) {
+            delete pendingRedemptions;
+        } else {
+            unchecked {
+                pendingRedemptions -= assets;
+            }
+        }
+    }
+
+    function zeroPendingRedemptions() external onlyManagement {
+        delete pendingRedemptions;
     }
 
     function protectedTokens()
@@ -112,6 +163,30 @@ contract InfinifiMorphoLooper is MorphoLooper {
         _protected[0] = address(asset);
         _protected[1] = collateralToken;
         _protected[2] = IUSD;
+    }
+
+    function estimatedTotalAssets() public view override returns (uint256) {
+        return super.estimatedTotalAssets() + pendingRedemptions;
+    }
+
+    function _harvestAndReport()
+        internal
+        override
+        returns (uint256 _totalAssets)
+    {
+        require(pendingRedemptions == 0, "pending redemptions");
+        return super._harvestAndReport();
+    }
+
+    function _redeemController()
+        internal
+        view
+        returns (IRedeemController)
+    {
+        return
+            IRedeemController(
+                IInfiniFiGatewayV1(GATEWAY).getAddress("redeemController")
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
