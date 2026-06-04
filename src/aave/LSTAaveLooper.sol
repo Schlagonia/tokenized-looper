@@ -65,7 +65,7 @@ contract LSTAaveLooper is AaveLooper {
     /// @notice Initiate stETH withdrawal through Lido queue for 1:1 redemption
     /// @param _amount Amount of LST to queue for withdrawal
     /// @return nftId Withdrawal ID number from the withdrawal request
-    function initiateLSTWithdrawal(
+    function initiateCooldown(
         uint256 _amount
     ) external onlyManagement returns (uint256 nftId) {
         uint256 balance = ERC20(WSTETH).balanceOf(address(this));
@@ -90,7 +90,7 @@ contract LSTAaveLooper is AaveLooper {
     /// @notice Claim ETH from completed Lido withdrawal request
     /// @param _claimId The claim ID from the withdrawal request
     /// @return assets Amount of LST redeemed
-    function claimLSTWithdrawal(
+    function claimCooldown(
         uint256 _claimId
     ) external payable onlyKeepers returns (uint256 assets) {
         uint256 preBalance = IWETH(WETH).balanceOf(address(this));

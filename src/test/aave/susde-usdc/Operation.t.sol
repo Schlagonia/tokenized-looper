@@ -129,10 +129,6 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.zeroPendingRedemptions();
-
-        vm.prank(user);
-        vm.expectRevert("!management");
         looper.initiateCooldown(0);
 
         vm.prank(user);
@@ -142,9 +138,6 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         vm.prank(user);
         vm.expectRevert("!keeper");
         looper.convertUnderlyingToAsset(0);
-
-        vm.prank(management);
-        looper.zeroPendingRedemptions();
     }
 
     function test_estimatedTotalAssets_countsPendingCooldownSharesInAssetTerms()

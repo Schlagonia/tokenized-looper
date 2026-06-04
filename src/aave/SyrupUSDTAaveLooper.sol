@@ -55,9 +55,19 @@ contract SyrupUSDTAaveLooper is AaveLooper {
             );
         }
 
+        uint256 pendingRedemptionShareValue;
+        if (pendingRedemptionShares != 0) {
+            pendingRedemptionShareValue = ISyrupPool(collateralToken)
+                .convertToShares(
+                    ISyrupPool(collateralToken).convertToExitAssets(
+                        pendingRedemptionShares
+                    )
+                );
+        }
+
         return
             super.totalCollateralBalance() +
-            pendingRedemptionShares +
+            pendingRedemptionShareValue +
             looseUnderlyingShares;
     }
 
@@ -94,7 +104,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Queue syrup shares for direct redemption (non-swap path).
-    function initiateDirectRedemption(
+    function initiateCooldown(
         uint256 _shares
     ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
@@ -127,7 +137,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     }
 
     /// @notice Manually zero pending redemptions in exceptional scenarios.
-    function zeroPendingRedemptions() external onlyManagement {
+    function claimCooldown() external onlyManagement {
         pendingRedemptionShares = 0;
     }
 

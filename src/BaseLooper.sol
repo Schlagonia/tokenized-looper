@@ -504,15 +504,17 @@ abstract contract BaseLooper is BaseHealthCheck {
                 if (targetLeverageRatio == 0) {
                     _withdrawAndConvertCollateral();
                 } else {
-                    _convertAndSupplyCollateral(_amount - debtToRepay);
+                    _convertAndSupplyCollateral(
+                        Math.min(_amount - debtToRepay, maxSupply)
+                    );
                 }
                 return;
             }
 
             // First repay what is loose.
             _repay(_amount);
-            debtToRepay -= _amount;
-            currentDebt -= _amount;
+            currentDebt = balanceOfDebt();
+            debtToRepay = currentDebt - targetDebt;
 
             // Cap flashloan by available liquidity and maxAmountToSwap
             uint256 maxDebtToRepay = Math.min(maxAmountToSwap, maxFlashloan());
@@ -521,12 +523,19 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             if (debtToRepay <= minAmountToBorrow) return;
 
-            // Gross up by inverse slippage so worst-case output still covers the flashloan.
-            uint256 collateralToWithdraw = debtToRepay == currentDebt &&
-                targetLeverageRatio == 0
-                ? balanceOfCollateral()
-                : (_assetToCollateral(debtToRepay) * MAX_BPS) /
+            uint256 collateralToWithdraw;
+            if (debtToRepay == currentDebt && targetLeverageRatio == 0) {
+                // If target = 0 withdraw max respecting caps.
+                collateralToWithdraw = Math.min(
+                    balanceOfCollateral(),
+                    _assetToCollateral(maxAmountToSwap)
+                );
+            } else {
+                // Gross up by inverse slippage so worst-case output still covers the flashloan.
+                collateralToWithdraw =
+                    (_assetToCollateral(debtToRepay) * MAX_BPS) /
                     (MAX_BPS - slippage);
+            }
 
             bytes memory data = abi.encode(
                 FlashLoanData({
@@ -540,7 +549,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             if (targetLeverageRatio == 0) {
                 _withdrawAndConvertCollateral();
             } else {
-                _convertAndSupplyCollateral(_amount);
+                _convertAndSupplyCollateral(Math.min(_amount, maxSupply));
             }
         }
     }

@@ -55,9 +55,19 @@ contract SyrupMorphoLooper is MorphoLooper {
             );
         }
 
+        uint256 pendingRedemptionShareValue;
+        if (pendingRedemptionShares != 0) {
+            pendingRedemptionShareValue = ISyrupPool(collateralToken)
+                .convertToShares(
+                    ISyrupPool(collateralToken).convertToExitAssets(
+                        pendingRedemptionShares
+                    )
+                );
+        }
+
         return
             super.totalCollateralBalance() +
-            pendingRedemptionShares +
+            pendingRedemptionShareValue +
             looseUnderlyingShares;
     }
 
@@ -93,7 +103,7 @@ contract SyrupMorphoLooper is MorphoLooper {
 
     /// @notice Queue syrup shares for direct redemption.
     /// @dev asset is directly sent back to the strategy once filled
-    function initiateDirectRedemption(
+    function initiateCooldown(
         uint256 _shares
     ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
@@ -128,7 +138,7 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @notice Manually clear pending redemptions.
     /// NOTE: Maple will automatically send usdc to the strategy. So this will
     ///       need to be called once done to allow reports to continue.
-    function zeroPendingRedemptions() external onlyManagement {
+    function claimCooldown() external onlyManagement {
         pendingRedemptionShares = 0;
     }
 

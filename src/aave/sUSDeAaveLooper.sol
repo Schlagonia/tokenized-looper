@@ -48,11 +48,15 @@ contract sUSDeAaveLooper is AaveLooper {
     {}
 
     function totalCollateralBalance() public view override returns (uint256) {
+        uint256 underlyingAssets = pendingRedemptions;
+        // If USDe is the strategy asset, loose USDe is already counted as asset.
+        if (USDE != address(asset)) {
+            underlyingAssets += balanceOfUnderlying();
+        }
+
         return
             super.totalCollateralBalance() +
-            IERC4626(SUSDE).convertToShares(
-                pendingRedemptions + balanceOfUnderlying()
-            );
+            IERC4626(SUSDE).convertToShares(underlyingAssets);
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
@@ -101,12 +105,6 @@ contract sUSDeAaveLooper is AaveLooper {
     /// @notice Claim cooldowned assets
     function claimCooldown() external onlyKeepers {
         _claimCooldown();
-        pendingRedemptions = 0;
-    }
-
-    /// @notice Manually zero the pending cooldowns in case of significant dust or a cooldown event.
-    /// @dev Only may be called by governance.
-    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptions = 0;
     }
 

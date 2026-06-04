@@ -41,17 +41,17 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
                 : MIN_UNWIND_COLLATERAL_DUST;
     }
 
-    function test_zeroPendingRedemptions_onlyManagement() public {
+    function test_claimCooldown_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.zeroPendingRedemptions();
+        looper.claimCooldown();
 
         vm.prank(management);
-        looper.zeroPendingRedemptions();
+        looper.claimCooldown();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -77,17 +77,17 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         loose = strategy.balanceOfCollateralToken();
     }
 
-    function test_initiateDirectRedemption_onlyManagement() public {
+    function test_initiateCooldown_onlyManagement() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.initiateDirectRedemption(1);
+        looper.initiateCooldown(1);
     }
 
-    function test_initiateDirectRedemption_revertsWithoutShares() public {
+    function test_initiateCooldown_revertsWithoutShares() public {
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
@@ -97,12 +97,10 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
 
         vm.prank(management);
         vm.expectRevert("!shares");
-        looper.initiateDirectRedemption(type(uint256).max);
+        looper.initiateCooldown(type(uint256).max);
     }
 
-    function test_initiateDirectRedemption_queuesRealSharesOnSyrupPool()
-        public
-    {
+    function test_initiateCooldown_queuesRealSharesOnSyrupPool() public {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
         assertGt(loose, 0, "!loose");
 
@@ -116,7 +114,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         );
 
         vm.prank(management);
-        uint256 exitShares = looper.initiateDirectRedemption(loose);
+        uint256 exitShares = looper.initiateCooldown(loose);
 
         assertGt(exitShares, 0, "!exitShares");
         assertEq(
@@ -163,7 +161,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             payable(address(strategy))
         );
         vm.prank(management);
-        uint256 exitShares = looper.initiateDirectRedemption(loose);
+        uint256 exitShares = looper.initiateCooldown(loose);
         assertEq(looper.pendingRedemptionShares(), exitShares, "!queued");
 
         uint256 strategyBalanceMid = ERC20(SYRUP_USDC).balanceOf(
@@ -190,7 +188,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             payable(address(strategy))
         );
         vm.prank(management);
-        looper.initiateDirectRedemption(loose);
+        looper.initiateCooldown(loose);
 
         assertGt(looper.pendingRedemptionShares(), 0, "!pending");
 
@@ -208,7 +206,7 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
             payable(address(strategy))
         );
         vm.prank(management);
-        looper.initiateDirectRedemption(loose);
+        looper.initiateCooldown(loose);
 
         // After request, the strategy no longer holds the loose shares but
         // estimatedTotalAssets() should still include them via the pending
@@ -222,20 +220,20 @@ contract SyrupMorphoOperationTest is SetupSyrupMorpho, OperationTest {
         );
     }
 
-    function test_zeroPendingRedemptions_clearsAccountingOnly() public {
+    function test_claimCooldown_clearsAccountingOnly() public {
         uint256 loose = _stageLooseSyrupShares(10_000e6, 500); // 5%
 
         SyrupMorphoLooper looper = SyrupMorphoLooper(
             payable(address(strategy))
         );
         vm.prank(management);
-        looper.initiateDirectRedemption(loose);
+        looper.initiateCooldown(loose);
         assertGt(looper.pendingRedemptionShares(), 0, "!pending");
 
-        // zeroPendingRedemptions must not call into Maple; it is purely a
+        // claimCooldown must not call into Maple; it is purely a
         // bookkeeping reset to be used after Maple has filled the request.
         vm.prank(management);
-        looper.zeroPendingRedemptions();
+        looper.claimCooldown();
 
         assertEq(looper.pendingRedemptionShares(), 0, "!pending cleared");
 

@@ -52,11 +52,15 @@ contract sUSDeMorphoLooper is MorphoLooper {
     {}
 
     function totalCollateralBalance() public view override returns (uint256) {
+        uint256 underlyingAssets = pendingRedemptions;
+        // If USDe is the strategy asset, loose USDe is already counted as asset.
+        if (USDE != address(asset)) {
+            underlyingAssets += balanceOfUnderlying();
+        }
+
         return
             super.totalCollateralBalance() +
-            IERC4626(collateralToken).convertToShares(
-                pendingRedemptions + balanceOfUnderlying()
-            );
+            IERC4626(collateralToken).convertToShares(underlyingAssets);
     }
 
     function balanceOfUnderlying() public view returns (uint256) {
@@ -89,8 +93,7 @@ contract sUSDeMorphoLooper is MorphoLooper {
 
     /// @notice Queue loose sUSDe shares for the protocol cooldown.
     /// @dev Ethena's silo overrides existing cooldowns on a new request, so we
-    ///      block until the prior queue is cleared via `claimCooldown` or
-    ///      `zeroPendingRedemptions`.
+    ///      block until the prior queue is cleared via `claimCooldown`.
     /// @param _shares sUSDe shares to send into cooldown.
     /// @return assets USDe that will be claimable after the cooldown window.
     function initiateCooldown(
@@ -107,12 +110,6 @@ contract sUSDeMorphoLooper is MorphoLooper {
     /// @notice Pull queued USDe out of the cooldown silo into this strategy.
     function claimCooldown() external onlyKeepers {
         _claimCooldown();
-        pendingRedemptions = 0;
-    }
-
-    /// @notice Manually clear the pending tracker after a stuck/dust queue.
-    /// @dev Pure bookkeeping — does not call into Ethena.
-    function zeroPendingRedemptions() external onlyManagement {
         pendingRedemptions = 0;
     }
 

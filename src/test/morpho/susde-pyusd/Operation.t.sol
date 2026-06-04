@@ -127,10 +127,6 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.zeroPendingRedemptions();
-
-        vm.prank(user);
-        vm.expectRevert("!management");
         looper.initiateCooldown(0);
 
         vm.prank(user);
@@ -140,9 +136,6 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
         vm.prank(user);
         vm.expectRevert("!keeper");
         looper.convertUnderlyingToAsset(0);
-
-        vm.prank(management);
-        looper.zeroPendingRedemptions();
     }
 
     function test_estimatedTotalAssets_countsPendingCooldownSharesInAssetTerms()
@@ -250,37 +243,6 @@ contract sUSDePYUSDMorphoOperationTest is SetupSUSDePYUSD, OperationTest {
 
         vm.prank(keeper);
         vm.expectRevert("pending redemptions");
-        strategy.report();
-    }
-
-    function test_zeroPendingRedemptions_clearsAccountingOnly() public {
-        uint256 depositAmount = _baseTestAmount();
-        mintAndDepositIntoStrategy(strategy, user, depositAmount);
-
-        vm.prank(keeper);
-        strategy.tend();
-
-        sUSDeMorphoLooper looper = sUSDeMorphoLooper(
-            payable(address(strategy))
-        );
-
-        uint256 withdrawShares = looper.balanceOfCollateral() / 20;
-        vm.prank(emergencyAdmin);
-        looper.manualWithdrawCollateral(withdrawShares);
-
-        uint256 looseShares = looper.balanceOfCollateralToken();
-        vm.prank(management);
-        looper.initiateCooldown(looseShares);
-        assertGt(looper.pendingRedemptions(), 0, "!pending");
-
-        vm.prank(management);
-        looper.zeroPendingRedemptions();
-
-        assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
-
-        vm.prank(management);
-        strategy.setDoHealthCheck(false);
-        vm.prank(keeper);
         strategy.report();
     }
 

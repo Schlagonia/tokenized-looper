@@ -101,7 +101,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
     }
 
     /// @notice Queue loose sIUSD for nonatomic redemption through InfiniFi.
-    function initiateRedemption(
+    function initiateCooldown(
         uint256 shares
     )
         external
@@ -132,7 +132,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
     }
 
     /// @notice Claim any enqueued redemptions from InfiniFi.
-    function claimRedemption() external onlyKeepers returns (uint256 assets) {
+    function claimCooldown() external onlyKeepers returns (uint256 assets) {
         uint256 claimable = _redeemController().userPendingClaims(
             address(this)
         );

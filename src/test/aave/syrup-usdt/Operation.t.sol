@@ -28,17 +28,17 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         SetupAaveSyrupUSDT.accrueYield(_amount);
     }
 
-    function test_zeroPendingRedemptions_onlyManagement() public {
+    function test_claimCooldown_onlyManagement() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.zeroPendingRedemptions();
+        looper.claimCooldown();
 
         vm.prank(management);
-        looper.zeroPendingRedemptions();
+        looper.claimCooldown();
     }
 
     function test_convertUnderlyingToAsset_revertsSameAssetPath() public {

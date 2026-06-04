@@ -45,17 +45,17 @@ contract InfinifiOperationTest is OperationTest {
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.initiateRedemption(1);
+        looper.initiateCooldown(1);
 
         vm.prank(user);
         vm.expectRevert("!keeper");
-        looper.claimRedemption();
+        looper.claimCooldown();
 
         vm.prank(management);
         looper.zeroPendingRedemptions();
     }
 
-    function test_initiateRedemption_tracksQueuedAssets() public {
+    function test_initiateCooldown_tracksQueuedAssets() public {
         (
             InfinifiMorphoLooper looper,
             uint256 looseShares
@@ -65,7 +65,7 @@ contract InfinifiOperationTest is OperationTest {
         uint256 totalQueuedBefore = controller.totalEnqueuedRedemptions();
 
         vm.prank(management);
-        (uint256 assetsOut, uint256 queuedAssets) = looper.initiateRedemption(
+        (uint256 assetsOut, uint256 queuedAssets) = looper.initiateCooldown(
             looseShares
         );
 
@@ -95,7 +95,7 @@ contract InfinifiOperationTest is OperationTest {
         _prepareLiveRedeemController();
 
         vm.prank(management);
-        (, uint256 queuedAssets) = looper.initiateRedemption(looseShares);
+        (, uint256 queuedAssets) = looper.initiateCooldown(looseShares);
 
         (uint256 collateralValue, uint256 debt) = looper.position();
         uint256 withoutPending = looper.balanceOfAsset() +
@@ -118,7 +118,7 @@ contract InfinifiOperationTest is OperationTest {
         _prepareLiveRedeemController();
 
         vm.prank(management);
-        looper.initiateRedemption(looseShares);
+        looper.initiateCooldown(looseShares);
 
         assertGt(looper.pendingRedemptions(), 0, "!pending");
 
@@ -127,7 +127,7 @@ contract InfinifiOperationTest is OperationTest {
         strategy.report();
     }
 
-    function test_initiateRedemption_revertsWhileAlreadyPending() public {
+    function test_initiateCooldown_revertsWhileAlreadyPending() public {
         (
             InfinifiMorphoLooper looper,
             uint256 looseShares
@@ -136,11 +136,11 @@ contract InfinifiOperationTest is OperationTest {
         _prepareLiveRedeemController();
 
         vm.prank(management);
-        looper.initiateRedemption(looseShares);
+        looper.initiateCooldown(looseShares);
 
         vm.prank(management);
         vm.expectRevert("pending redemptions");
-        looper.initiateRedemption(1);
+        looper.initiateCooldown(1);
     }
 
     function test_zeroPendingRedemptions_clearsAccountingOnly() public {
@@ -152,7 +152,7 @@ contract InfinifiOperationTest is OperationTest {
         _prepareLiveRedeemController();
 
         vm.prank(management);
-        looper.initiateRedemption(looseShares);
+        looper.initiateCooldown(looseShares);
         assertGt(looper.pendingRedemptions(), 0, "!pending");
 
         vm.prank(management);
@@ -161,7 +161,7 @@ contract InfinifiOperationTest is OperationTest {
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
     }
 
-    function test_claimRedemption_clearsPendingWithClaimedAssets() public {
+    function test_claimCooldown_clearsPendingWithClaimedAssets() public {
         (
             InfinifiMorphoLooper looper,
             uint256 looseShares
@@ -170,7 +170,7 @@ contract InfinifiOperationTest is OperationTest {
         MorphoInfinifiRedeemController controller = _prepareLiveRedeemController();
 
         vm.prank(management);
-        (, uint256 queuedAssets) = looper.initiateRedemption(looseShares);
+        (, uint256 queuedAssets) = looper.initiateCooldown(looseShares);
         assertEq(looper.pendingRedemptions(), queuedAssets, "!pending");
         assertEq(controller.userPendingClaims(address(looper)), 0, "!claim");
 
@@ -184,7 +184,7 @@ contract InfinifiOperationTest is OperationTest {
         uint256 assetBefore = asset.balanceOf(address(looper));
 
         vm.prank(keeper);
-        uint256 claimed = looper.claimRedemption();
+        uint256 claimed = looper.claimCooldown();
 
         assertEq(claimed, queuedAssets, "!claimed");
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
@@ -195,12 +195,12 @@ contract InfinifiOperationTest is OperationTest {
         );
     }
 
-    function test_initiateRedemption_revertsWithoutShares() public {
+    function test_initiateCooldown_revertsWithoutShares() public {
         InfinifiMorphoLooper looper = InfinifiMorphoLooper(address(strategy));
 
         vm.prank(management);
         vm.expectRevert("!shares");
-        looper.initiateRedemption(type(uint256).max);
+        looper.initiateCooldown(type(uint256).max);
     }
 
     function _stageLooseInfinifiShares()

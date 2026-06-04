@@ -33,21 +33,14 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
 
         vm.prank(user);
         vm.expectRevert("!management");
-        looper.zeroPendingWithdrawals();
-
-        vm.prank(user);
-        vm.expectRevert("!management");
-        looper.initiateWithdrawal(0);
+        looper.initiateCooldown(0);
 
         vm.prank(user);
         vm.expectRevert("!keeper");
-        looper.claimWithdrawal(0);
-
-        vm.prank(management);
-        looper.zeroPendingWithdrawals();
+        looper.claimCooldown(0);
     }
 
-    function test_initiateWithdrawal_queuesLiveOriginWithdrawal() public {
+    function test_initiateCooldown_queuesLiveOriginWithdrawal() public {
         (
             OriginMorphoLooper looper,
             uint256 requestId,
@@ -66,7 +59,7 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         assertFalse(request.claimed, "!claimed");
     }
 
-    function test_claimWithdrawal_clearsPendingOusdAccounting() public {
+    function test_claimCooldown_clearsPendingOusdAccounting() public {
         (
             OriginMorphoLooper looper,
             uint256 requestId,
@@ -88,7 +81,7 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         );
 
         vm.prank(keeper);
-        uint256 claimed = looper.claimWithdrawal(requestId);
+        uint256 claimed = looper.claimCooldown(requestId);
 
         assertEq(claimed, claimedUsdc, "!claimed");
         assertEq(looper.pendingWithdrawalAssets(), 0, "!pending cleared");
@@ -116,7 +109,7 @@ contract WOUSDMorphoOperationTest is SetupWOUSDMorpho, OperationTest {
         assertGt(looseShares, 0, "!looseShares");
 
         vm.prank(management);
-        (requestId, assets) = looper.initiateWithdrawal(looseShares);
+        (requestId, assets) = looper.initiateCooldown(looseShares);
 
         assertEq(ERC20(OUSD).balanceOf(address(looper)), 0, "!ousd");
     }
