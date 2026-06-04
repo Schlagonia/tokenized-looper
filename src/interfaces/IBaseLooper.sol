@@ -100,6 +100,9 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Max available flashloan from protocol
     function maxFlashloan() external view returns (uint256);
 
+    /// @notice Max asset amount that can be converted and supplied in one lever-up step.
+    function maxSupplyInAsset() external view returns (uint256);
+
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external;
 

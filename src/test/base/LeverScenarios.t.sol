@@ -899,6 +899,84 @@ abstract contract LeverScenariosTest is Setup {
         _assertLeverageWithinBuffer();
     }
 
+    /// @notice Donated idle must not force an unsafe position into the lever-up branch
+    ///         when no asset can be deployed as additional collateral.
+    function test_lever_aboveMax_donatedIdleRepaysWhenDeployBlocked() public {
+        uint256 equityAmount = _assetAmount(10);
+        uint256 targetLeverage = strategy.targetLeverageRatio();
+        uint256 buffer = strategy.leverageBuffer();
+        uint256 originalMaxLeverage = strategy.maxLeverageRatio();
+
+        _setupAtTargetPosition(equityAmount);
+
+        uint256 desiredLeverage = targetLeverage + buffer + 0.1e18;
+        if (desiredLeverage >= originalMaxLeverage) {
+            desiredLeverage =
+                targetLeverage +
+                buffer +
+                ((originalMaxLeverage - targetLeverage - buffer) / 2);
+        }
+        assertGt(desiredLeverage, targetLeverage + buffer, "!desired");
+
+        (uint256 collateralBeforeBorrow, uint256 debtBeforeBorrow) = strategy
+            .position();
+        uint256 desiredDebt = collateralBeforeBorrow -
+            ((collateralBeforeBorrow * WAD) / desiredLeverage);
+        assertGt(desiredDebt, debtBeforeBorrow, "!manual borrow");
+
+        vm.prank(management);
+        strategy.manualBorrow(desiredDebt - debtBeforeBorrow);
+
+        vm.prank(management);
+        strategy.setLeverageParams(
+            targetLeverage,
+            buffer,
+            targetLeverage + buffer
+        );
+
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(leverageBefore, strategy.maxLeverageRatio(), "!above max");
+
+        (uint256 collateralBefore, uint256 debtBefore) = strategy.position();
+        uint256 currentEquity = collateralBefore - debtBefore;
+        (, uint256 targetDebt) = _getTargetPosition(currentEquity);
+        uint256 debtToRepay = debtBefore - targetDebt;
+        assertGt(debtToRepay, 0, "!debt to repay");
+
+        assertGt(targetLeverage, WAD, "!target leverage");
+
+        uint256 donationToFlip = (debtBefore * WAD) / (targetLeverage - WAD);
+        donationToFlip = donationToFlip > currentEquity
+            ? donationToFlip - currentEquity + 1
+            : 1;
+        uint256 donatedIdle = debtToRepay > donationToFlip
+            ? debtToRepay
+            : donationToFlip;
+
+        (, uint256 uncappedTargetDebt) = _getTargetPosition(
+            currentEquity + donatedIdle
+        );
+        assertGt(
+            uncappedTargetDebt,
+            debtBefore,
+            "uncapped idle would choose lever-up"
+        );
+
+        airdrop(asset, address(strategy), donatedIdle);
+
+        vm.prank(management);
+        strategy.setMaxAmountToSwap(0);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 debtAfter = strategy.balanceOfDebt();
+        uint256 leverageAfter = strategy.getCurrentLeverageRatio();
+
+        assertLt(debtAfter, debtBefore, "donated idle should repay debt");
+        assertLt(leverageAfter, leverageBefore, "leverage should improve");
+    }
+
     /*//////////////////////////////////////////////////////////////
                             GROUP 5: EDGE CASES
     //////////////////////////////////////////////////////////////*/

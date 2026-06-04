@@ -458,7 +458,12 @@ abstract contract BaseLooper is BaseHealthCheck {
     function _lever(uint256 _amount) internal virtual {
         lastTend = block.timestamp;
         (uint256 currentCollateralValue, uint256 currentDebt) = position();
-        uint256 currentEquity = currentCollateralValue - currentDebt + _amount;
+
+        uint256 maxSupply = maxSupplyInAsset();
+
+        uint256 currentEquity = currentCollateralValue -
+            currentDebt +
+            Math.min(_amount, maxSupply);
         (, uint256 targetDebt) = getTargetPosition(currentEquity);
 
         if (targetDebt > currentDebt) {
@@ -466,16 +471,6 @@ abstract contract BaseLooper is BaseHealthCheck {
 
             uint256 maxBorrow = Math.min(maxFlashloan(), _maxBorrowAmount());
             if (flashloanAmount > maxBorrow) flashloanAmount = maxBorrow;
-
-            uint256 maxSupply = _collateralToAsset(_maxCollateralDeposit());
-            if (maxSupply != type(uint256).max) {
-                maxSupply = Math.min(
-                    maxAmountToSwap,
-                    (maxSupply * (MAX_BPS - slippage)) / MAX_BPS
-                );
-            } else {
-                maxSupply = maxAmountToSwap;
-            }
 
             if (_amount + flashloanAmount > maxSupply) {
                 if (_amount >= maxSupply) {
@@ -579,7 +574,7 @@ abstract contract BaseLooper is BaseHealthCheck {
             ? getTargetPosition(equity - _amountNeeded)
             : (0, 0);
 
-        if (currentDebt == 0 || targetDebt > currentDebt) {
+        if (currentDebt == 0 || targetDebt >= currentDebt) {
             // No debt, just withdraw collateral
             uint256 toWithdraw = _assetToCollateral(_amountNeeded);
             _withdrawCollateral(Math.min(toWithdraw, balanceOfCollateral()));
@@ -592,8 +587,6 @@ abstract contract BaseLooper is BaseHealthCheck {
         uint256 debtToRepay = currentDebt - targetDebt;
 
         require(debtToRepay <= maxFlashloan(), "!liquidity");
-
-        if (debtToRepay == 0) return;
 
         uint256 collateralToWithdraw = debtToRepay == currentDebt
             ? balanceOfCollateral()
@@ -842,6 +835,17 @@ abstract contract BaseLooper is BaseHealthCheck {
         }
         uint256 price = _getCollateralPrice();
         return (assetAmount * ORACLE_PRICE_SCALE) / price;
+    }
+
+    /// @notice Max asset amount that can be converted and supplied in one lever-up step.
+    function maxSupplyInAsset() public view virtual returns (uint256) {
+        uint256 maxSupply = _isSupplyPaused()
+            ? 0
+            : _collateralToAsset(_maxCollateralDeposit());
+        if (maxSupply != type(uint256).max) {
+            maxSupply = (maxSupply * (MAX_BPS - slippage)) / MAX_BPS;
+        }
+        return Math.min(maxSupply, maxAmountToSwap);
     }
 
     /// @notice Get current leverage ratio
