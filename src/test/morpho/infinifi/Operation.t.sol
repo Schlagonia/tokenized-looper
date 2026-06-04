@@ -298,11 +298,7 @@ contract InfinifiOperationTest is OperationTest {
     function _liveGovernor(
         MorphoInfinifiRedeemController controller
     ) internal view returns (address) {
-        return
-            MorphoInfinifiCore(controller.core()).getRoleMember(
-                GOVERNOR,
-                0
-            );
+        return MorphoInfinifiCore(controller.core()).getRoleMember(GOVERNOR, 0);
     }
 
     function _liveFarmManager(

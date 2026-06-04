@@ -103,7 +103,11 @@ contract InfinifiMorphoLooper is MorphoLooper {
     /// @notice Queue loose sIUSD for nonatomic redemption through InfiniFi.
     function initiateRedemption(
         uint256 shares
-    ) external onlyManagement returns (uint256 assetsOut, uint256 queuedAssets) {
+    )
+        external
+        onlyManagement
+        returns (uint256 assetsOut, uint256 pendingAssets)
+    {
         require(pendingRedemptions == 0, "pending redemptions");
 
         uint256 balance = balanceOfCollateralToken();
@@ -114,18 +118,17 @@ contract InfinifiMorphoLooper is MorphoLooper {
             address(this),
             shares
         );
-        uint256 expectedAssets = _redeemController().receiptToAsset(
-            iusdAmount
-        );
+        uint256 expectedAssets = _redeemController().receiptToAsset(iusdAmount);
 
         uint256 preBalance = asset.balanceOf(address(this));
         IInfiniFiGatewayV1(GATEWAY).redeem(address(this), iusdAmount, 0);
         assetsOut = asset.balanceOf(address(this)) - preBalance;
 
         if (expectedAssets > assetsOut) {
-            queuedAssets = expectedAssets - assetsOut;
-            pendingRedemptions = queuedAssets;
+            pendingRedemptions = expectedAssets - assetsOut;
         }
+
+        return (assetsOut, pendingRedemptions);
     }
 
     /// @notice Claim any enqueued redemptions from InfiniFi.
@@ -178,11 +181,7 @@ contract InfinifiMorphoLooper is MorphoLooper {
         return super._harvestAndReport();
     }
 
-    function _redeemController()
-        internal
-        view
-        returns (IRedeemController)
-    {
+    function _redeemController() internal view returns (IRedeemController) {
         return
             IRedeemController(
                 IInfiniFiGatewayV1(GATEWAY).getAddress("redeemController")
