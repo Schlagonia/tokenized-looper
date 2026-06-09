@@ -9,19 +9,15 @@ import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {IPawnBroker} from "pawn-broker/interfaces/IPawnBroker.sol";
 import {IMorphoOracle} from "pawn-broker/interfaces/IMorphoOracle.sol";
 import {PawnBrokerFactory} from "pawn-broker/PawnBrokerFactory.sol";
-import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 import {CapUSDExchange} from "../../../periphery/CapUSDExchange.sol";
-import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
 
 /// @notice Setup for a USDC / stcUSD pawn broker looper.
 contract SetupPawnBrokerSTCUSD is Setup {
     PawnBrokerLooper public looper;
-    MetaExchange public exchange;
+    CapUSDExchange public exchange;
     IPawnBroker public pawnBroker;
     PawnBrokerFactory public pawnBrokerFactory;
     IMorphoOracle public oracle;
-    CapUSDExchange public capExchange;
-    ERC4626Exchange public erc4626Exchange;
 
     address public lender = makeAddr("pawn-broker-stcusd-lender");
     address public user2 = makeAddr("pawn-broker-stcusd-second-user");
@@ -80,9 +76,7 @@ contract SetupPawnBrokerSTCUSD is Setup {
 
         oracle = IMorphoOracle(STCUSD_ORACLE);
 
-        exchange = new MetaExchange(management);
-        capExchange = new CapUSDExchange(address(asset), CUSD, management);
-        erc4626Exchange = new ERC4626Exchange(management);
+        exchange = new CapUSDExchange(address(asset), CUSD, STCUSD, management);
 
         address predictedLooper = vm.computeCreateAddress(
             address(this),
@@ -120,9 +114,7 @@ contract SetupPawnBrokerSTCUSD is Setup {
 
         vm.startPrank(management);
         _strategy.acceptManagement();
-        exchange.setAllowedExchange(address(capExchange), true);
-        exchange.setAllowedExchange(address(erc4626Exchange), true);
-        _setRoutes();
+        exchange.setAllowed(address(_strategy), true);
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _strategy.setEmergencyAdmin(emergencyAdmin);
@@ -158,35 +150,5 @@ contract SetupPawnBrokerSTCUSD is Setup {
     function _seedMorphoFlashloanLiquidity(uint256 _amount) internal {
         uint256 existingBalance = asset.balanceOf(MORPHO);
         deal(address(asset), MORPHO, existingBalance + _amount);
-    }
-
-    function _setRoutes() internal {
-        MetaExchange.RouteStep[]
-            memory assetToStcUsd = new MetaExchange.RouteStep[](2);
-        assetToStcUsd[0] = MetaExchange.RouteStep({
-            exchange: address(capExchange),
-            tokenFrom: address(asset),
-            tokenTo: CUSD
-        });
-        assetToStcUsd[1] = MetaExchange.RouteStep({
-            exchange: address(erc4626Exchange),
-            tokenFrom: CUSD,
-            tokenTo: STCUSD
-        });
-        exchange.setRoute(address(asset), STCUSD, assetToStcUsd);
-
-        MetaExchange.RouteStep[]
-            memory stcUsdToAsset = new MetaExchange.RouteStep[](2);
-        stcUsdToAsset[0] = MetaExchange.RouteStep({
-            exchange: address(erc4626Exchange),
-            tokenFrom: STCUSD,
-            tokenTo: CUSD
-        });
-        stcUsdToAsset[1] = MetaExchange.RouteStep({
-            exchange: address(capExchange),
-            tokenFrom: CUSD,
-            tokenTo: address(asset)
-        });
-        exchange.setRoute(STCUSD, address(asset), stcUsdToAsset);
     }
 }

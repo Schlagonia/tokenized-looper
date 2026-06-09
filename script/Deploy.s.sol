@@ -6,6 +6,7 @@ import "forge-std/Script.sol";
 import {Id} from "../src/interfaces/morpho/IMorpho.sol";
 import {InfinifiMorphoLooper} from "../src/morpho/InfinifiMorphoLooper.sol";
 import {MorphoLooper} from "../src/morpho/MorphoLooper.sol";
+import {OriginMorphoLooper} from "../src/morpho/OriginMorphoLooper.sol";
 import {sUSDeMorphoLooper} from "../src/morpho/sUSDeMorphoLooper.sol";
 import {SyrupMorphoLooper} from "../src/morpho/SyrupMorphoLooper.sol";
 import {AaveLooper} from "../src/aave/AaveLooper.sol";
@@ -17,6 +18,7 @@ import {WETHWstETHExchange} from "../src/periphery/WETHWstETHExchange.sol";
 import {LooperKeeper} from "../src/periphery/LooperKeeper.sol";
 import {StrategyAprOracle} from "../src/periphery/StrategyAprOracle.sol";
 import {AaveStrategyAprOracle} from "../src/periphery/AaveStrategyAprOracle.sol";
+import {IAaveLooper} from "../src/interfaces/IAaveLooper.sol";
 
 interface ICreateXDeployer {
     function deployCreate2(bytes32 salt, bytes memory initCode) external payable returns (address newContract);
@@ -30,18 +32,18 @@ contract Deploy is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev ========== CHANGE THIS LINE TO SELECT DEPLOYMENT ==========
-    string public DEPLOY_CONFIG = "SUSDE_USDTB_MAINNET";
-    /// @dev Options: INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SUSDE_PYUSD_MAINNET, SUSDE_USDTB_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_WSTETH_WETH_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_IUSD_MAINNET, PT_SUSDAI_ARB, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
+    string public DEPLOY_CONFIG = "MAINNET_BATCH";
+    /// @dev Options: MAINNET_BATCH, INFINIFI_MAINNET, LST_MAINNET, SUSDS_USDT_MAINNET, SUSDE_PYUSD_MAINNET, SUSDE_USDTB_MAINNET, SYRUP_USDC_MAINNET, AAVE_SYRUP_USDT_MAINNET, AAVE_SUSDE_USDC_MAINNET, AAVE_SUSDE_USDT_MAINNET, AAVE_WSTETH_WETH_MAINNET, SPARK_WSTETH_WETH_MAINNET, ORIGIN_USDC_MAINNET, SYRUP_USDC_ARB, PT_CUSD_MAINNET, PT_IUSD_MAINNET, PT_SUSDAI_ARB, MORPHO_LBTC_WBTC_MAINNET, AAVE_LBTC_WBTC_MAINNET, APR_ORACLE, AAVE_APR_ORACLE, LOOPER_KEEPER
     /// @dev =============================================================
 
     address internal constant DEFAULT_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
 
     /// @dev Global looper governance used by all looper deployments in this script run.
-    address public LOOPER_GOVERNANCE = 0x1b5f15DCb82d25f91c65b53CEe151E8b9fBdD271;
+    address public LOOPER_GOVERNANCE = 0x88Ba032be87d5EF1fbE87336B7090767F367BF73;
 
     /// @dev Final governance for exchange deployments created by this script.
     address public EXCHANGE_GOVERNANCE = 0x1b5f15DCb82d25f91c65b53CEe151E8b9fBdD271;
-    address public META_EXCHANGE = 0xaAe7a68437E28584bEd077FEC0c069D16ae60dFE;
+    address public META_EXCHANGE = 0x3E7A91F87c1b6C9D8FA806235fd69Aa0D7577caA;
 
     /// @dev CreateX deployer for CREATE2 deployments
     address constant CREATE_X = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
@@ -106,6 +108,7 @@ contract Deploy is Script {
     // Mainnet core addresses
     address constant WETH_MAINNET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant AAVE_MAINNET_ADDRESSES_PROVIDER = 0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e;
+    address constant SPARK_MAINNET_ADDRESSES_PROVIDER = 0x02C3eA4e34C0cBd694D2adFa2c690EECbC1793eE;
 
     // Mainnet BTC assets
     address constant WBTC_MAINNET = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
@@ -121,12 +124,13 @@ contract Deploy is Script {
     address constant SUSDE_MAINNET = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
     address constant SYRUP_USDC_MAINNET = 0x80ac24aA929eaF5013f6436cdA2a7ba190f5Cc0b;
     address constant SYRUP_USDT_MAINNET = 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D;
+    address constant WOUSD_MAINNET = 0xD2af830E8CBdFed6CC11Bab697bB25496ed6FA62;
 
     // ===== INFINIFI MAINNET (USDC/sIUSD) =====
     function getInfinifiMainnet() internal pure returns (BaseConfig memory) {
         return BaseConfig({
             asset: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
-            name: "Infinifi sIUSD Morpho Looper",
+            name: "sIUSD/USDC Morpho Looper",
             collateralToken: 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB, // sIUSD
             morpho: MORPHO_MAINNET,
             marketId: 0xbbf7ce1b40d32d3e3048f5cf27eeaa6de8cb27b80194690aab191a63381d8c99
@@ -199,6 +203,17 @@ contract Deploy is Script {
         });
     }
 
+    // ===== wOUSD/USDC MAINNET =====
+    function getOriginUSDCMainnet() internal pure returns (BaseConfig memory) {
+        return BaseConfig({
+            asset: USDC_MAINNET,
+            name: "wOUSD/USDC Morpho Looper",
+            collateralToken: WOUSD_MAINNET,
+            morpho: MORPHO_MAINNET,
+            marketId: 0xad656d430bb3d8c1469bf45c8ad4ebae1b04be04757c69fa424eec78d7b3f4dc
+        });
+    }
+
     // ===== AAVE LBTC/WBTC MAINNET =====
     function getAaveLBTCWBTCMainnet() internal pure returns (AaveConfig memory) {
         return AaveConfig({
@@ -264,6 +279,19 @@ contract Deploy is Script {
             name: "wstETH/WETH Aave Looper",
             collateralToken: WSTETH_MAINNET,
             addressesProvider: AAVE_MAINNET_ADDRESSES_PROVIDER,
+            morpho: MORPHO_MAINNET,
+            eModeCategoryId: 1,
+            weth: WETH_MAINNET
+        });
+    }
+
+    // ===== SPARK wstETH/WETH MAINNET =====
+    function getSparkWstETHWETHMainnet() internal pure returns (AaveConfig memory) {
+        return AaveConfig({
+            asset: WETH_MAINNET,
+            name: "wstETH/WETH Spark Looper",
+            collateralToken: WSTETH_MAINNET,
+            addressesProvider: SPARK_MAINNET_ADDRESSES_PROVIDER,
             morpho: MORPHO_MAINNET,
             eModeCategoryId: 1,
             weth: WETH_MAINNET
@@ -364,7 +392,9 @@ contract Deploy is Script {
 
         address deployed;
 
-        if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("INFINIFI_MAINNET")) {
+        if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("MAINNET_BATCH")) {
+            deployed = deployMainnetBatch();
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("INFINIFI_MAINNET")) {
             deployed = deployInfinifi(getInfinifiMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SUSDS_USDT_MAINNET")) {
             deployed = deploySUSDSUSDT(getSUSDSUSDTMainnet());
@@ -382,6 +412,10 @@ contract Deploy is Script {
             deployed = deployAaveSUSDe(getAaveSUSDeUSDTMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("AAVE_WSTETH_WETH_MAINNET")) {
             deployed = deployAaveLST(getAaveWstETHWETHMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SPARK_WSTETH_WETH_MAINNET")) {
+            deployed = deployAaveLST(getSparkWstETHWETHMainnet());
+        } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("ORIGIN_USDC_MAINNET")) {
+            deployed = deployOrigin(getOriginUSDCMainnet());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("SYRUP_USDC_ARB")) {
             deployed = deploySyrupArbitrum(getSyrupUSDCArbitrum());
         } else if (keccak256(bytes(DEPLOY_CONFIG)) == keccak256("PT_CUSD_MAINNET")) {
@@ -412,6 +446,36 @@ contract Deploy is Script {
         if (lastMetaExchange != address(0)) {
             console.log("MetaExchange:", lastMetaExchange);
         }
+    }
+
+    function deployMainnetBatch() internal returns (address) {
+        address sms = 0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7;
+        address syrup = deploySyrup(getSyrupUSDCMainnet());
+        console.log("syrupUSDC/PYUSD Morpho:", syrup);
+
+        IAaveLooper(syrup).setPendingManagement(sms);
+
+        address siusd = deployInfinifi(getInfinifiMainnet());
+        console.log("sIUSD/USDC Morpho:", siusd);
+
+        IAaveLooper(siusd).setPendingManagement(sms);
+
+        address spark = deployAaveLST(getSparkWstETHWETHMainnet());
+        console.log("wstETH/WETH Spark:", spark);
+
+        IAaveLooper(spark).setPendingManagement(sms);
+
+        address origin = deployOrigin(getOriginUSDCMainnet());
+        console.log("wOUSD/USDC Morpho:", origin);
+
+        IAaveLooper(origin).setPendingManagement(sms);
+
+        address susde = deploySUSDe(getSUSDeUSDTBMainnet());
+        console.log("sUSDe/USDT Morpho:", susde);
+
+        IAaveLooper(susde).setPendingManagement(sms);
+
+        return origin;
     }
 
     function deployInfinifi(BaseConfig memory cfg) internal returns (address) {
@@ -463,6 +527,22 @@ contract Deploy is Script {
             cfg.base.collateralToken,
             cfg.base.morpho,
             Id.wrap(cfg.base.marketId),
+            address(exchange),
+            LOOPER_GOVERNANCE
+        );
+
+        return address(looper);
+    }
+
+    function deployOrigin(BaseConfig memory cfg) internal returns (address) {
+        MetaExchange exchange = _resolveMetaExchange();
+
+        OriginMorphoLooper looper = new OriginMorphoLooper(
+            cfg.asset,
+            cfg.name,
+            cfg.collateralToken,
+            cfg.morpho,
+            Id.wrap(cfg.marketId),
             address(exchange),
             LOOPER_GOVERNANCE
         );
@@ -538,7 +618,7 @@ contract Deploy is Script {
     }
 
     function deployAaveLST(AaveConfig memory cfg) internal returns (address) {
-        WETHWstETHExchange exchange = new WETHWstETHExchange(EXCHANGE_GOVERNANCE);
+        WETHWstETHExchange exchange = new WETHWstETHExchange(0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7);
         LSTAaveLooper looper = new LSTAaveLooper(
             cfg.asset,
             cfg.name,
