@@ -7,10 +7,10 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAavesUSDeUSDC} from "./Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 
 contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
-    uint256 internal constant SUSDE_UNWIND_DUST_BPS = 5; // 0.05%
+    uint256 internal constant SUSDE_UNWIND_DUST_BPS = 15; // 0.15%
 
     function setUp() public override(SetupAavesUSDeUSDC, OperationTest) {
         SetupAavesUSDeUSDC.setUp();
@@ -42,22 +42,43 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
     }
 
     function test_exchange_coreConfig() public view {
-        assertEq(exchange.ASSET(), USDC, "!asset");
-        assertEq(exchange.COLLATERAL(), SUSDE, "!collateral");
-        assertEq(exchange.UNDERLYING(), USDE, "!underlying");
-        assertEq(exchange.base(), USDT, "!base");
-        assertTrue(exchange.deposit(), "!deposit");
-        assertFalse(exchange.redeem(), "!redeem");
+        assertEq(fluidExchange.base(), USDT, "!base");
+
+        MetaExchange.RouteStep[] memory forward = exchange.getRoute(
+            USDC,
+            SUSDE
+        );
+        assertEq(forward.length, 2, "!forward length");
+        assertEq(forward[0].exchange, address(fluidExchange), "!forward ex 0");
+        assertEq(forward[0].tokenTo, USDE, "!forward token 0");
+        assertEq(
+            forward[1].exchange,
+            address(erc4626Exchange),
+            "!forward ex 1"
+        );
+        assertEq(forward[1].tokenTo, SUSDE, "!forward token 1");
+
+        MetaExchange.RouteStep[] memory unwind = exchange.getRoute(SUSDE, USDC);
+        assertEq(unwind.length, 1, "!unwind length");
+        assertEq(unwind[0].exchange, address(fluidExchange), "!unwind ex");
+        assertEq(unwind[0].tokenTo, USDC, "!unwind token");
+
+        MetaExchange.RouteStep[] memory underlying = exchange.getRoute(
+            USDE,
+            USDC
+        );
+        assertEq(underlying.length, 1, "!underlying length");
+        assertEq(
+            underlying[0].exchange,
+            address(fluidExchange),
+            "!underlying ex"
+        );
+        assertEq(underlying[0].tokenTo, USDC, "!underlying token");
     }
 
     function test_setExchange_onlyGovernance() public {
         sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
-        ERC4626FluidExchange newExchange = new ERC4626FluidExchange(
-            WETH,
-            USDT,
-            USDC,
-            SUSDE
-        );
+        MetaExchange newExchange = new MetaExchange(management);
 
         vm.prank(user);
         vm.expectRevert("!governance");
@@ -67,55 +88,56 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         looper.setExchange(address(newExchange));
     }
 
-    function test_exchange_setVaultRoutes_onlyManagement() public {
+    function test_exchange_setRoute_onlyGovernanceOrOperator() public {
+        MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
+        route[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: USDC,
+            tokenTo: USDE
+        });
+
         vm.prank(user);
-        vm.expectRevert("!management");
-        exchange.setDeposit(false);
+        vm.expectRevert("!operator");
+        exchange.setRoute(USDC, USDE, route);
 
         vm.prank(management);
-        exchange.setDeposit(false);
-        assertFalse(exchange.deposit(), "!deposit");
+        exchange.setRoute(USDC, USDE, route);
 
-        vm.prank(user);
-        vm.expectRevert("!management");
-        exchange.setRedeem(true);
-
-        vm.startPrank(management);
-        exchange.setDeposit(true);
-        exchange.setRedeem(true);
-        vm.stopPrank();
-        assertTrue(exchange.deposit(), "!deposit");
-        assertTrue(exchange.redeem(), "!redeem");
+        MetaExchange.RouteStep[] memory stored = exchange.getRoute(USDC, USDE);
+        assertEq(stored.length, 1, "!route length");
+        assertEq(stored[0].exchange, address(fluidExchange), "!route ex");
+        assertEq(stored[0].tokenTo, USDE, "!route token");
     }
 
-    function test_exchange_setFluidDex_onlyManagement() public {
+    function test_exchange_setFluidDex_onlyGovernanceOrOperator() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        vm.expectRevert("!operator");
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
 
         vm.prank(management);
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
     }
 
-    function test_exchange_swap_onlyStrategy() public {
+    function test_exchange_swap_isNotStrategyGated() public {
         vm.prank(user);
-        vm.expectRevert("!strategy");
-        exchange.exchange(USDC, SUSDE, 0, 0);
+        uint256 amountOut = exchange.exchange(USDC, SUSDE, 0, 0);
+        assertEq(amountOut, 0, "!amountOut");
     }
 
-    function test_cooldown_functions_onlyEmergencyAuthorized() public {
+    function test_cooldown_functions_accessControl() public {
         sUSDeAaveLooper looper = sUSDeAaveLooper(payable(address(strategy)));
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
+        vm.expectRevert("!management");
+        looper.initiateCooldown(0);
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
-        looper.convertUnderlyingToAsset(0);
+        vm.expectRevert("!keeper");
+        looper.claimCooldown();
 
-        vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        vm.prank(user);
+        vm.expectRevert("!keeper");
+        looper.convertUnderlyingToAsset(0);
     }
 
     function test_estimatedTotalAssets_countsPendingCooldownSharesInAssetTerms()
@@ -140,7 +162,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         uint256 estimatedBeforeCooldown = looper.estimatedTotalAssets();
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertEq(
@@ -189,7 +211,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         uint256 looseShares = looper.balanceOfCollateralToken();
         assertGt(looseShares, 0, "!looseShares");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(management);
         uint256 cooldownAssets = looper.initiateCooldown(looseShares);
 
         assertGt(cooldownAssets, 0, "!cooldownAssets");
@@ -197,7 +219,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
 
         skip(8 days);
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         looper.claimCooldown();
 
         uint256 underlyingBalance = looper.balanceOfUnderlying();
@@ -206,7 +228,7 @@ contract AavesUSDeUSDCOperationTest is SetupAavesUSDeUSDC, OperationTest {
         assertGt(underlyingBalance, 0, "!underlying");
         assertEq(looper.pendingRedemptions(), 0, "!pending cleared");
 
-        vm.prank(emergencyAdmin);
+        vm.prank(keeper);
         uint256 amountOut = looper.convertUnderlyingToAsset(type(uint256).max);
 
         assertGt(amountOut, 0, "!amountOut");

@@ -55,7 +55,7 @@ contract SetupLST is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new WETHWstETHExchange();
+        exchange = new WETHWstETHExchange(management);
 
         IStrategyInterface _strategy = IStrategyInterface(
             address(
@@ -70,7 +70,6 @@ contract SetupLST is Setup {
                 )
             )
         );
-        exchange.setStrategy(address(_strategy));
 
         _strategy.setPendingManagement(management);
 

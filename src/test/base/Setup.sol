@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {InfinifiMorphoLooper} from "../../morpho/InfinifiMorphoLooper.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
-import {Id} from "../../interfaces/morpho/IMorpho.sol";
+import {IMorpho, Id, MarketParams} from "../../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../../interfaces/infinifi/IInfiniFiGatewayV1.sol";
 
 // Inherit the events so they can be checked if desired.
@@ -26,6 +26,8 @@ interface IFactory {
 contract Setup is Test, IEvents {
     using SafeERC20 for ERC20;
 
+    uint256 internal constant TEST_LEVERAGE_DUST_BPS = 100; // 1% of target leverage
+
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
@@ -41,6 +43,14 @@ contract Setup is Test, IEvents {
         0x3f04b65Ddbd87f9CE0A2e7Eb24d80e7fb87625b5;
     address public constant IUSD = 0x48f9e38f3070AD8945DFEae3FA70987722E3D89c;
     address public constant SIUSD = 0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB;
+    address public constant CURVE_ROUTER =
+        0xF0d4c12A5768D806021F80a262B4d39d26C58b8D;
+    address public constant PENDLE_ROUTER =
+        0x888888888889758F76e7103c6CbF23ABbF58F946;
+    address public constant UNISWAP_ROUTER =
+        0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+    address public constant UNISWAP_POSITION_MANAGER =
+        0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
 
     // Addresses for different roles we will use repeatedly.
     address public user = address(10);
@@ -62,6 +72,7 @@ contract Setup is Test, IEvents {
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
+    uint256 public constant MORPHO_LIQUIDITY_SEED = 5_000_000e6;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -73,6 +84,7 @@ contract Setup is Test, IEvents {
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(setUpStrategy());
+        _seedMorphoLiquidity(MORPHO_LIQUIDITY_SEED);
 
         factory = strategy.FACTORY();
 
@@ -114,9 +126,15 @@ contract Setup is Test, IEvents {
         // Set high gas price tolerance for testing
         _strategy.setMaxGasPriceToTend(type(uint256).max);
 
+        _strategy.setProfitMaxUnlockTime(0);
+
         vm.stopPrank();
 
         return address(_strategy);
+    }
+
+    function _defaultMaxAmountToSwap() internal view virtual returns (uint256) {
+        return type(uint256).max;
     }
 
     function depositIntoStrategy(
@@ -165,11 +183,23 @@ contract Setup is Test, IEvents {
     }
 
     function accrueYield(uint256 _amount) public virtual {
-        skip(1 days);
+        // Avoid warping the live Infinifi oracle feeds; stale feed windows can
+        // make the gateway revert with PriceError during fork tests.
         _amount = (_amount * 300) / 10_000;
         deal(address(asset), address(this), _amount);
         asset.approve(address(GATEWAY), _amount);
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(strategy), _amount);
+    }
+
+    function _seedMorphoLiquidity(uint256 _amount) internal {
+        // Fork tests should not depend on whatever scraps happen to be sitting
+        // in the live market at the current head.
+        MarketParams memory params = IMorpho(MORPHO).idToMarketParams(
+            MARKET_ID
+        );
+        deal(address(asset), address(this), _amount);
+        asset.approve(MORPHO, _amount);
+        IMorpho(MORPHO).supply(params, _amount, 0, address(this), "");
     }
 
     function setFees(uint16 _protocolFee, uint16 _performanceFee) public {
@@ -188,6 +218,68 @@ contract Setup is Test, IEvents {
 
     function _setTokenAddrs() internal {
         tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    }
+
+    function _leverageDust() internal view returns (uint256) {
+        return strategy.targetLeverageRatio() / TEST_LEVERAGE_DUST_BPS;
+    }
+
+    function _assetAmount(uint256 wholeTokens) internal view returns (uint256) {
+        return wholeTokens * (10 ** decimals);
+    }
+
+    function _lowerLeverageBound(
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (uint256) {
+        uint256 totalTolerance = buffer + _leverageDust();
+        return
+            targetLeverage > totalTolerance
+                ? targetLeverage - totalTolerance
+                : 0;
+    }
+
+    function _upperLeverageBound(
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (uint256) {
+        return targetLeverage + buffer + _leverageDust();
+    }
+
+    function _isWithinLeverageDust(
+        uint256 leverage,
+        uint256 targetLeverage
+    ) internal view returns (bool) {
+        uint256 dust = _leverageDust();
+        if (leverage > targetLeverage) {
+            return leverage - targetLeverage <= dust;
+        }
+        return targetLeverage - leverage <= dust;
+    }
+
+    function _isWithinTestBuffer(
+        uint256 leverage,
+        uint256 targetLeverage,
+        uint256 buffer
+    ) internal view returns (bool) {
+        return
+            leverage >= _lowerLeverageBound(targetLeverage, buffer) &&
+            leverage <= _upperLeverageBound(targetLeverage, buffer);
+    }
+
+    function _assertLeverageWithinTestBuffer(
+        uint256 leverage,
+        uint256 targetLeverage,
+        uint256 buffer,
+        string memory lowErr,
+        string memory highErr
+    ) internal view {
+        assertGe(leverage, _lowerLeverageBound(targetLeverage, buffer), lowErr);
+        assertLe(
+            leverage,
+            _upperLeverageBound(targetLeverage, buffer),
+            highErr
+        );
     }
 
     function logStrategyStatus(string memory label) public view {

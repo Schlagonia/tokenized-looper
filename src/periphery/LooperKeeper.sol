@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {MarketParams} from "../interfaces/morpho/IMorpho.sol";
 import {Governance} from "@periphery/utils/Governance.sol";
 import {IStrategyInterface} from "../interfaces/IStrategyInterface.sol";
+
 interface IPublicAllocator {
     struct Withdrawal {
         MarketParams marketParams;
@@ -24,6 +25,7 @@ interface IKeeperRelayer {
 /// @notice Simple executor that reallocates liquidity, runs arbitrary calls, then tend().
 contract LooperKeeper is Governance {
     event AllowedSet(address indexed _address, bool indexed _allowed);
+
     struct Call {
         address target;
         uint256 value;
@@ -63,7 +65,6 @@ contract LooperKeeper is Governance {
         address strategy,
         uint256 allocatorFee
     ) external payable onlyKeepers {
-        require(vault != address(0), "vault=0");
         require(strategy != address(0), "strategy=0");
 
         uint256 callsValue = _sumValues(calls);
@@ -105,5 +106,12 @@ contract LooperKeeper is Governance {
 
     function tendStrategy(address _strategyAddress) public onlyKeepers {
         IStrategyInterface(_strategyAddress).tend();
+    }
+
+    function forwardCall(
+        address target,
+        bytes memory data
+    ) public onlyKeepers returns (bool success) {
+        (success, ) = target.call(data);
     }
 }

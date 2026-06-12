@@ -11,8 +11,10 @@ import {IPoolAddressesProvider} from "../interfaces/aave/IPoolAddressesProvider.
 import {IAaveOracle} from "../interfaces/aave/IAaveOracle.sol";
 import {IRewardsController} from "../interfaces/aave/IRewardsController.sol";
 import {IAToken} from "../interfaces/aave/IAToken.sol";
+import {IMerklDistributor} from "../interfaces/IMerkleDistributor.sol";
 import {IMorpho} from "../interfaces/morpho/IMorpho.sol";
 import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCallback.sol";
+import {AaveOps} from "../libraries/AaveOps.sol";
 import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
@@ -22,12 +24,14 @@ import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
  */
 contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     using SafeERC20 for ERC20;
+    using AaveOps for address;
+    using AaveOps for IAaveOracle;
+    using AaveOps for IPoolDataProvider;
+    using AaveOps for IRewardsController;
 
-    /// @notice Interest rate mode: 2 = variable rate
-    uint256 internal constant VARIABLE_RATE_MODE = 2;
-
-    /// @notice Referral code (0 for no referral)
-    uint16 internal constant REFERRAL_CODE = 0;
+    /// @notice The Merkl Distributor contract for claiming rewards
+    IMerklDistributor public constant MERKL_DISTRIBUTOR =
+        IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
 
     /// @notice Morpho flashloan provider
     IMorpho public immutable MORPHO;
@@ -47,8 +51,14 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @notice aToken address for collateral
     address public immutable A_TOKEN;
 
+    /// @notice aToken address for asset
+    address internal immutable ASSET_A_TOKEN;
+
     /// @notice Variable debt token address for the asset (borrow token)
     address public immutable VARIABLE_DEBT_TOKEN;
+
+    /// @notice True when the pool exposes Aave virtual reserve balances
+    bool internal immutable USE_VIRTUAL_BALANCE;
 
     /// @notice Cached decimals for collateral token
     uint256 internal immutable COLLATERAL_DECIMALS;
@@ -90,9 +100,18 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         );
 
         // Get aToken and variable debt token for the asset (borrow token)
-        (, , address _variableDebtToken) = DATA_PROVIDER
+        (address _assetAToken, , address _variableDebtToken) = DATA_PROVIDER
             .getReserveTokensAddresses(_asset);
+        ASSET_A_TOKEN = _assetAToken;
         VARIABLE_DEBT_TOKEN = _variableDebtToken;
+
+        (bool _useVirtualBalance, ) = POOL.staticcall(
+            abi.encodeWithSelector(
+                IPool.getVirtualUnderlyingBalance.selector,
+                _asset
+            )
+        );
+        USE_VIRTUAL_BALANCE = _useVirtualBalance;
 
         // Cache decimals to avoid repeated external calls
         COLLATERAL_DECIMALS = ERC20(_collateralToken).decimals();
@@ -154,18 +173,13 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        uint256 collateralPrice = AAVE_ORACLE.getAssetPrice(collateralToken);
-        uint256 assetPrice = AAVE_ORACLE.getAssetPrice(address(asset));
-
-        if (assetPrice == 0) return 0;
-
-        // Both prices are in same denomination (USD), compute ratio
-        // Adjust for decimal differences between collateral and asset
-        // price = (collateralPrice * 10^assetDecimals * ORACLE_PRICE_SCALE) /
-        //         (assetPrice * 10^collateralDecimals)
         return
-            (collateralPrice * (10 ** ASSET_DECIMALS) * ORACLE_PRICE_SCALE) /
-            (assetPrice * (10 ** COLLATERAL_DECIMALS));
+            AAVE_ORACLE.getCollateralPrice(
+                collateralToken,
+                address(asset),
+                ASSET_DECIMALS,
+                COLLATERAL_DECIMALS
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -173,42 +187,19 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     //////////////////////////////////////////////////////////////*/
 
     function _supplyCollateral(uint256 amount) internal override {
-        if (amount == 0) return;
-        IPool(POOL).supply(
-            collateralToken,
-            amount,
-            address(this),
-            REFERRAL_CODE
-        );
-
-        // Enable as collateral (idempotent - safe to call multiple times)
-        //IPool(POOL).setUserUseReserveAsCollateral(collateralToken, true);
+        POOL.supply(collateralToken, amount);
     }
 
     function _withdrawCollateral(uint256 amount) internal override {
-        if (amount == 0) return;
-        IPool(POOL).withdraw(collateralToken, amount, address(this));
+        POOL.withdraw(collateralToken, amount);
     }
 
     function _borrow(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        IPool(POOL).borrow(
-            address(asset),
-            amount,
-            VARIABLE_RATE_MODE,
-            REFERRAL_CODE,
-            address(this)
-        );
+        POOL.borrow(address(asset), amount);
     }
 
     function _repay(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        IPool(POOL).repay(
-            address(asset),
-            amount,
-            VARIABLE_RATE_MODE,
-            address(this)
-        );
+        POOL.repay(address(asset), amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -216,30 +207,15 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     //////////////////////////////////////////////////////////////*/
 
     function _isSupplyPaused() internal view virtual override returns (bool) {
-        bool isPaused = DATA_PROVIDER.getPaused(collateralToken);
-        if (isPaused) return true;
-
-        (, , , , , , , , , bool isFrozen) = DATA_PROVIDER
-            .getReserveConfigurationData(collateralToken);
-        return isFrozen;
+        return DATA_PROVIDER.isSupplyPaused(collateralToken);
     }
 
     function _isBorrowPaused() internal view virtual override returns (bool) {
-        bool isPaused = DATA_PROVIDER.getPaused(address(asset));
-        if (isPaused) return true;
-
-        // Also check if borrowing is enabled and not frozen
-        (, , , , , , bool borrowingEnabled, , , bool isFrozen) = DATA_PROVIDER
-            .getReserveConfigurationData(address(asset));
-        return isFrozen || !borrowingEnabled;
+        return DATA_PROVIDER.isBorrowPaused(address(asset));
     }
 
     function _isLiquidatable() internal view virtual override returns (bool) {
-        (, , , , , uint256 healthFactor) = IPool(POOL).getUserAccountData(
-            address(this)
-        );
-        // Health factor < 1e18 means liquidatable
-        return healthFactor < 1e18 && healthFactor > 0;
+        return POOL.isLiquidatable();
     }
 
     function _maxCollateralDeposit()
@@ -249,18 +225,11 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        (, uint256 supplyCap) = DATA_PROVIDER.getReserveCaps(collateralToken);
-        if (supplyCap == 0) return type(uint256).max;
-
-        uint256 currentSupply = DATA_PROVIDER.getATokenTotalSupply(
-            collateralToken
-        );
-        uint256 supplyCapInTokens = supplyCap * (10 ** COLLATERAL_DECIMALS);
-
         return
-            supplyCapInTokens > currentSupply
-                ? supplyCapInTokens - currentSupply
-                : 0;
+            DATA_PROVIDER.maxCollateralDeposit(
+                collateralToken,
+                COLLATERAL_DECIMALS
+            );
     }
 
     function _maxBorrowAmount()
@@ -270,26 +239,14 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        uint256 virtualLiquidity = IPool(POOL).getVirtualUnderlyingBalance(
-            address(asset)
-        );
-
-        (uint256 borrowCap, ) = DATA_PROVIDER.getReserveCaps(address(asset));
-        if (borrowCap == 0) {
-            // No cap, bounded by virtual liquidity.
-            return virtualLiquidity;
-        }
-
-        uint256 currentDebt = DATA_PROVIDER.getTotalDebt(address(asset));
-        uint256 borrowCapInTokens = borrowCap * (10 ** ASSET_DECIMALS);
-        uint256 borrowCapRemaining = borrowCapInTokens > currentDebt
-            ? borrowCapInTokens - currentDebt
-            : 0;
-
         return
-            borrowCapRemaining < virtualLiquidity
-                ? borrowCapRemaining
-                : virtualLiquidity;
+            POOL.maxBorrowAmount(
+                DATA_PROVIDER,
+                address(asset),
+                ASSET_A_TOKEN,
+                USE_VIRTUAL_BALANCE,
+                ASSET_DECIMALS
+            );
     }
 
     function getLiquidateCollateralFactor()
@@ -299,20 +256,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        uint256 liquidationThreshold;
-        uint256 userEModeCategory = IPool(POOL).getUserEMode(address(this));
-        if (userEModeCategory != 0) {
-            liquidationThreshold = IPool(POOL)
-                .getEModeCategoryData(uint8(userEModeCategory))
-                .liquidationThreshold;
-            require(liquidationThreshold != 0, "bad emode");
-        } else {
-            (, , liquidationThreshold, , , , , , , ) = DATA_PROVIDER
-                .getReserveConfigurationData(collateralToken);
-        }
-
-        // Aave returns in basis points (10000 = 100%), convert to WAD
-        return liquidationThreshold * 1e14; // 10000 * 1e14 = 1e18
+        return POOL.liquidateCollateralFactor(DATA_PROVIDER, collateralToken);
     }
 
     function balanceOfCollateral()
@@ -322,11 +266,11 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        return ERC20(A_TOKEN).balanceOf(address(this));
+        return A_TOKEN.balanceOfCollateral();
     }
 
     function balanceOfDebt() public view virtual override returns (uint256) {
-        return ERC20(VARIABLE_DEBT_TOKEN).balanceOf(address(this));
+        return VARIABLE_DEBT_TOKEN.balanceOfDebt();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -335,12 +279,16 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
 
     /// @notice Claim all rewards from Aave incentives controller
     function claimRewards() external virtual onlyKeepers {
-        address[] memory assets = new address[](2);
-        assets[0] = A_TOKEN;
-        assets[1] = VARIABLE_DEBT_TOKEN;
+        REWARDS_CONTROLLER.claimRewards(A_TOKEN, VARIABLE_DEBT_TOKEN);
+    }
 
-        // Claim all rewards to this contract
-        REWARDS_CONTROLLER.claimAllRewardsToSelf(assets);
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external {
+        MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
 
     function _claimAndSellRewards() internal virtual override {}
@@ -349,18 +297,28 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         _setAuction(_auction);
     }
 
-    function setUseAuction(bool _useAuction) external onlyManagement {
-        _setUseAuction(_useAuction);
-    }
-
     function setEModeCategory(uint8 _eModeCategoryId) external onlyManagement {
         IPool(POOL).setUserEMode(_eModeCategoryId);
+    }
+
+    function protectedTokens()
+        public
+        view
+        virtual
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](5);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = A_TOKEN;
+        _protected[3] = ASSET_A_TOKEN;
+        _protected[4] = VARIABLE_DEBT_TOKEN;
     }
 
     function kickAuction(
         address _token
     ) external override onlyKeepers returns (uint256) {
-        require(_token != address(asset) && _token != A_TOKEN, "!token");
         return _kickAuction(_token);
     }
 }

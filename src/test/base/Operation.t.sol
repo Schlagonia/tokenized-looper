@@ -42,6 +42,31 @@ abstract contract OperationTest is Setup {
         return 1e18 - (1e36 / strategy.maxLeverageRatio());
     }
 
+    function _expectedAvailableWithdrawLimit() internal view returns (uint256) {
+        uint256 idleAssets = strategy.balanceOfAsset();
+        (uint256 collateralValue, uint256 currentDebt) = strategy.position();
+
+        if (currentDebt > collateralValue) return idleAssets;
+
+        uint256 currentEquity = collateralValue - currentDebt;
+        uint256 flashloanAvailable = strategy.maxFlashloan();
+
+        if (flashloanAvailable >= currentDebt) {
+            return idleAssets + currentEquity;
+        }
+
+        if (strategy.targetLeverageRatio() <= 1e18) return idleAssets;
+
+        uint256 targetDebt = currentDebt - flashloanAvailable;
+        uint256 targetEquity = (targetDebt * 1e18) /
+            (strategy.targetLeverageRatio() - 1e18);
+        uint256 withdrawableEquity = currentEquity > targetEquity
+            ? currentEquity - targetEquity
+            : 0;
+
+        return idleAssets + withdrawableEquity;
+    }
+
     function test_setupStrategyOK() public virtual {
         console2.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
@@ -107,15 +132,16 @@ abstract contract OperationTest is Setup {
 
         accrueYield(_amount);
 
+        uint256 pricePerShareBefore = strategy.pricePerShare();
+
         vm.prank(keeper);
-        strategy.report();
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        assertGt(profit, 0, "!profit");
+        assertGt(profit, loss, "!net profit");
 
         skip(strategy.profitMaxUnlockTime());
-
-        vm.prank(user);
-        strategy.redeem(_amount, user, user);
-
-        assertGt(asset.balanceOf(user), _amount, "!profit not realized");
+        assertGt(strategy.pricePerShare(), pricePerShareBefore, "!pps");
     }
 
     function test_report_aboveWarningLTV_onlyDelevers() public {
@@ -279,33 +305,60 @@ abstract contract OperationTest is Setup {
     }
 
     function test_setLeverageParams() public {
-        // Test setting leverage params
         vm.startPrank(management);
 
-        // Set new target leverage to 2.5x with 0.15 buffer
         strategy.setLeverageParams(2.5e18, 0.15e18, 5e18);
         assertEq(strategy.targetLeverageRatio(), 2.5e18, "!new target");
         assertEq(strategy.leverageBuffer(), 0.15e18, "!new buffer");
+        assertEq(strategy.maxLeverageRatio(), 5e18, "!new max");
 
-        // Test bounds validation - leverage < 1x
         vm.expectRevert("leverage < 1x");
         strategy.setLeverageParams(0.5e18, 0.1e18, 5e18);
 
-        // Test bounds validation - buffer too small
         vm.expectRevert("buffer too small");
         strategy.setLeverageParams(2e18, 0.001e18, 5e18);
 
-        // Test bounds validation - exceeds LLTV
-        // LLTV is ~91.5% which corresponds to max leverage of ~11.76x
-        // Setting target + buffer above that should fail
         vm.expectRevert("exceeds LLTV");
-        strategy.setLeverageParams(3e18, 1e18, 40e18); // 11x + 1x = 12x would exceed LLTV
+        strategy.setLeverageParams(3e18, 1e18, 40e18);
 
-        // Test bounds validation - max leverage < target + buffer
         vm.expectRevert("max leverage < target + buffer");
         strategy.setLeverageParams(2e18, 0.1e18, 1e18);
 
         vm.stopPrank();
+    }
+
+    function test_setLeverageParams_keeperCanTuneWithoutChangingMax() public {
+        uint256 buffer = strategy.leverageBuffer();
+
+        vm.prank(keeper);
+        strategy.setLeverageParams(2.25e18);
+
+        assertEq(strategy.targetLeverageRatio(), 2.25e18, "!new target");
+        assertEq(strategy.leverageBuffer(), buffer, "!buffer");
+        assertEq(
+            strategy.maxLeverageRatio(),
+            4e18,
+            "!max should stay unchanged"
+        );
+    }
+
+    function test_setLeverageParams_keeperZeroTargetClearsBuffer() public {
+        vm.prank(keeper);
+        strategy.setLeverageParams(0);
+
+        assertEq(strategy.targetLeverageRatio(), 0, "!target");
+        assertEq(strategy.leverageBuffer(), 0, "!buffer");
+        assertEq(
+            strategy.maxLeverageRatio(),
+            4e18,
+            "!max should stay unchanged"
+        );
+    }
+
+    function test_setLeverageParams_keeperSetter_rejectsNonKeeper() public {
+        vm.prank(user);
+        vm.expectRevert("!keeper");
+        strategy.setLeverageParams(2.25e18);
     }
 
     function test_manualFullUnwind(uint256 _amount) public {
@@ -400,17 +453,21 @@ abstract contract OperationTest is Setup {
     //////////////////////////////////////////////////////////////*/
 
     function test_setMaxAmountToSwap() public {
-        // Verify default value is type(uint256).max
+        // Verify configured default value.
         assertEq(
             strategy.maxAmountToSwap(),
-            type(uint256).max,
+            _defaultMaxAmountToSwap(),
             "!default maxAmountToSwap"
         );
 
         // Test setting a new value
         vm.prank(management);
-        strategy.setMaxAmountToSwap(1000e6);
-        assertEq(strategy.maxAmountToSwap(), 1000e6, "!new maxAmountToSwap");
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
+        assertEq(
+            strategy.maxAmountToSwap(),
+            _assetAmount(1000),
+            "!new maxAmountToSwap"
+        );
 
         // Test setting to 0
         vm.prank(management);
@@ -431,12 +488,12 @@ abstract contract OperationTest is Setup {
         // Non-management should not be able to set
         vm.prank(user);
         vm.expectRevert("!management");
-        strategy.setMaxAmountToSwap(1000e6);
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
 
         // Keeper should not be able to set
         vm.prank(keeper);
         vm.expectRevert("!management");
-        strategy.setMaxAmountToSwap(1000e6);
+        strategy.setMaxAmountToSwap(_assetAmount(1000));
     }
 
     function test_setMinTendInterval() public {
@@ -552,17 +609,21 @@ abstract contract OperationTest is Setup {
                     AVAILABLE WITHDRAW LIMIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_availableWithdrawLimit_maxWhenNoPosition() public {
-        // With no position, withdraw limit should be max
+    function test_availableWithdrawLimit_returnsIdleWhenNoPosition() public {
         uint256 limit = strategy.availableWithdrawLimit(user);
+        assertEq(limit, strategy.balanceOfAsset(), "!idle only");
+
+        uint256 idleAmount = _baseIdleAmount();
+        airdrop(asset, address(strategy), idleAmount);
+
         assertEq(
-            limit,
-            type(uint256).max,
-            "!limit should be max with no position"
+            strategy.availableWithdrawLimit(user),
+            idleAmount,
+            "!idle limit"
         );
     }
 
-    function test_availableWithdrawLimit_maxWhenFlashloanCoversDebt(
+    function test_availableWithdrawLimit_equityPlusIdleWhenFlashloanCoversDebt(
         uint256 _amount
     ) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
@@ -576,13 +637,17 @@ abstract contract OperationTest is Setup {
         uint256 debt = strategy.balanceOfDebt();
         uint256 flashloan = strategy.maxFlashloan();
 
-        // If flashloan >= debt, limit should be max
+        // If flashloan >= debt, limit should be idle assets plus position equity.
         if (flashloan >= debt) {
             uint256 limit = strategy.availableWithdrawLimit(user);
+            (uint256 collateralValue, ) = strategy.position();
+            uint256 expected = strategy.balanceOfAsset() +
+                (collateralValue > debt ? collateralValue - debt : 0);
+
             assertEq(
                 limit,
-                type(uint256).max,
-                "!limit should be max when flashloan covers debt"
+                expected,
+                "!limit should be idle plus equity when flashloan covers debt"
             );
         }
     }
@@ -595,7 +660,7 @@ abstract contract OperationTest is Setup {
         // This is hard to simulate in a real fork, so we verify the formula:
         //   targetDebt = currentDebt - flashloanAvailable
         //   targetEquity = targetDebt * WAD / (L - WAD)
-        //   maxWithdraw = currentEquity - targetEquity
+        //   maxWithdraw = idleAssets + currentEquity - targetEquity
 
         uint256 _amount = _baseTestAmount();
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -605,41 +670,51 @@ abstract contract OperationTest is Setup {
         uint256 currentDebt = strategy.balanceOfDebt();
         uint256 flashloanAvailable = strategy.maxFlashloan();
         uint256 targetLeverage = strategy.targetLeverageRatio();
+        uint256 expectedLimit = _expectedAvailableWithdrawLimit();
 
-        if (flashloanAvailable >= currentDebt) {
-            // Normal case - max withdraw
-            assertEq(
-                strategy.availableWithdrawLimit(user),
-                type(uint256).max,
-                "!max withdraw when flashloan covers debt"
-            );
-        } else {
-            // Limited case - verify formula
+        assertEq(
+            strategy.availableWithdrawLimit(user),
+            expectedLimit,
+            "!withdraw limit calculation mismatch"
+        );
+
+        if (
+            flashloanAvailable < currentDebt &&
+            currentDebt > 0 &&
+            targetLeverage > 1e18
+        ) {
+            uint256 idleAssets = strategy.balanceOfAsset();
             uint256 targetDebt = currentDebt - flashloanAvailable;
             uint256 targetEquity = (targetDebt * 1e18) /
                 (targetLeverage - 1e18);
 
             (uint256 collateralValue, ) = strategy.position();
-            uint256 currentEquity = collateralValue - currentDebt;
-
-            uint256 expectedLimit = currentEquity > targetEquity
+            uint256 currentEquity = collateralValue > currentDebt
+                ? collateralValue - currentDebt
+                : 0;
+            uint256 withdrawableEquity = currentEquity > targetEquity
                 ? currentEquity - targetEquity
                 : 0;
 
             assertEq(
-                strategy.availableWithdrawLimit(user),
                 expectedLimit,
-                "!withdraw limit calculation mismatch"
+                idleAssets + withdrawableEquity,
+                "!limited formula"
             );
         }
     }
 
-    function test_availableWithdrawLimit_zeroWhenEquityBelowTarget() public {
-        // Edge case: if currentEquity <= targetEquity, should return 0
-        // This is hard to simulate but the code handles it
-        uint256 limit = strategy.availableWithdrawLimit(user);
-        // With no position, should be max (no debt scenario)
-        assertEq(limit, type(uint256).max, "!limit should be max with no debt");
+    function test_availableWithdrawLimit_noDebtReturnsIdlePlusEquity() public {
+        uint256 amount = _baseTestAmount();
+        mintAndDepositIntoStrategy(strategy, user, amount);
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertEq(
+            strategy.availableWithdrawLimit(user),
+            strategy.balanceOfAsset(),
+            "!idle plus equity"
+        );
+        assertEq(strategy.maxRedeem(user), amount, "!max redeem");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -719,8 +794,8 @@ abstract contract OperationTest is Setup {
         uint256 lastTendAfter = strategy.lastTend();
         assertEq(lastTendAfter, block.timestamp, "!lastTend should update");
 
-        // Skip some time and tend again
-        skip(3 hours);
+        // Skip to a new timestamp and tend again.
+        skip(1);
         airdrop(asset, address(strategy), _amount / 30);
         vm.prank(keeper);
         strategy.tend();
@@ -1038,14 +1113,11 @@ abstract contract OperationTest is Setup {
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 
@@ -1144,14 +1216,11 @@ abstract contract OperationTest is Setup {
         // Verify within buffer (not under-leveraged which would override the idle check)
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 
@@ -1184,14 +1253,11 @@ abstract contract OperationTest is Setup {
         uint256 currentLeverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(
+        _assertLeverageWithinTestBuffer(
             currentLeverage,
-            target - buffer,
-            "should be within lower buffer"
-        );
-        assertLe(
-            currentLeverage,
-            target + buffer,
+            target,
+            buffer,
+            "should be within lower buffer",
             "should be within upper buffer"
         );
 

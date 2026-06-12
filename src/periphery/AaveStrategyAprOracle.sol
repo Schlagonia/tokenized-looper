@@ -17,6 +17,24 @@ interface IGlobalAprOracle {
     ) external view returns (uint256);
 }
 
+interface ILegacyReserveInterestRateStrategy {
+    struct CalculateInterestRatesParams {
+        uint256 unbacked;
+        uint256 liquidityAdded;
+        uint256 liquidityTaken;
+        uint256 totalStableDebt;
+        uint256 totalVariableDebt;
+        uint256 averageStableBorrowRate;
+        uint256 reserveFactor;
+        address reserve;
+        address aToken;
+    }
+
+    function calculateInterestRates(
+        CalculateInterestRatesParams memory params
+    ) external view returns (uint256, uint256, uint256);
+}
+
 contract AaveStrategyAprOracle is AprOracleBase {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant RAY_TO_WAD = 1e9;
@@ -26,6 +44,9 @@ contract AaveStrategyAprOracle is AprOracleBase {
 
     struct BorrowSnapshot {
         uint256 unbacked;
+        uint256 totalStableDebt;
+        uint256 totalVariableDebt;
+        uint256 averageStableBorrowRate;
         uint256 totalDebt;
         uint256 reserveFactor;
         bool usingVirtualBalance;
@@ -139,14 +160,21 @@ contract AaveStrategyAprOracle is AprOracleBase {
         ) return (0, 0);
 
         uint256 adjustedTotalDebt = snapshot.totalDebt;
+        uint256 adjustedVariableDebt = snapshot.totalVariableDebt;
         if (totalDebtDelta >= 0) {
             adjustedTotalDebt += uint256(totalDebtDelta);
+            adjustedVariableDebt += uint256(totalDebtDelta);
         } else {
             uint256 debtReduction = uint256(-totalDebtDelta);
             if (debtReduction > adjustedTotalDebt) {
                 debtReduction = adjustedTotalDebt;
             }
             adjustedTotalDebt -= debtReduction;
+
+            uint256 variableDebtReduction = debtReduction > adjustedVariableDebt
+                ? adjustedVariableDebt
+                : debtReduction;
+            adjustedVariableDebt -= variableDebtReduction;
         }
 
         uint256 liquidityAdded;
@@ -158,7 +186,7 @@ contract AaveStrategyAprOracle is AprOracleBase {
         }
 
         IReserveInterestRateStrategy.CalculateInterestRatesParams
-            memory params = IReserveInterestRateStrategy
+            memory modernParams = IReserveInterestRateStrategy
                 .CalculateInterestRatesParams({
                     unbacked: snapshot.unbacked,
                     liquidityAdded: liquidityAdded,
@@ -170,14 +198,45 @@ contract AaveStrategyAprOracle is AprOracleBase {
                     virtualUnderlyingBalance: snapshot.virtualUnderlyingBalance
                 });
 
-        (
-            uint256 liquidityRateRay,
-            uint256 variableBorrowRateRay
-        ) = IReserveInterestRateStrategy(snapshot.interestRateStrategyAddress)
-                .calculateInterestRates(params);
+        try
+            IReserveInterestRateStrategy(snapshot.interestRateStrategyAddress)
+                .calculateInterestRates(modernParams)
+        returns (uint256 liquidityRateRay, uint256 variableBorrowRateRay) {
+            return (
+                liquidityRateRay / RAY_TO_WAD,
+                variableBorrowRateRay / RAY_TO_WAD
+            );
+        } catch {}
 
-        liquidityApr = liquidityRateRay / RAY_TO_WAD;
-        variableBorrowApr = variableBorrowRateRay / RAY_TO_WAD;
+        ILegacyReserveInterestRateStrategy.CalculateInterestRatesParams
+            memory legacyParams = ILegacyReserveInterestRateStrategy
+                .CalculateInterestRatesParams({
+                    unbacked: snapshot.unbacked,
+                    liquidityAdded: liquidityAdded,
+                    liquidityTaken: liquidityTaken,
+                    totalStableDebt: snapshot.totalStableDebt,
+                    totalVariableDebt: adjustedVariableDebt,
+                    averageStableBorrowRate: snapshot.averageStableBorrowRate,
+                    reserveFactor: snapshot.reserveFactor,
+                    reserve: reserve,
+                    aToken: snapshot.aTokenAddress
+                });
+
+        try
+            ILegacyReserveInterestRateStrategy(
+                snapshot.interestRateStrategyAddress
+            ).calculateInterestRates(legacyParams)
+        returns (
+            uint256 liquidityRateRay,
+            uint256,
+            uint256 variableBorrowRateRay
+        ) {
+            liquidityApr = liquidityRateRay / RAY_TO_WAD;
+            variableBorrowApr = variableBorrowRateRay / RAY_TO_WAD;
+        } catch {
+            liquidityApr = 0;
+            variableBorrowApr = 0;
+        }
     }
 
     function _getBorrowSnapshot(
@@ -187,9 +246,20 @@ contract AaveStrategyAprOracle is AprOracleBase {
     ) internal view returns (BorrowSnapshot memory snapshot) {
         (, , , , snapshot.reserveFactor, , , , , ) = dataProvider
             .getReserveConfigurationData(asset);
-        (snapshot.unbacked, , , , , , , , , , , ) = dataProvider.getReserveData(
-            asset
-        );
+        (
+            snapshot.unbacked,
+            ,
+            ,
+            snapshot.totalStableDebt,
+            snapshot.totalVariableDebt,
+            ,
+            ,
+            ,
+            snapshot.averageStableBorrowRate,
+            ,
+            ,
+
+        ) = dataProvider.getReserveData(asset);
         (snapshot.aTokenAddress, , ) = dataProvider.getReserveTokensAddresses(
             asset
         );
@@ -197,9 +267,12 @@ contract AaveStrategyAprOracle is AprOracleBase {
         snapshot.interestRateStrategyAddress = dataProvider
             .getInterestRateStrategyAddress(asset);
         snapshot.totalDebt = dataProvider.getTotalDebt(asset);
-        snapshot.virtualUnderlyingBalance = IPool(pool)
-            .getVirtualUnderlyingBalance(asset);
-        snapshot.usingVirtualBalance = snapshot.virtualUnderlyingBalance > 0;
+        try IPool(pool).getVirtualUnderlyingBalance(asset) returns (
+            uint256 virtualUnderlyingBalance
+        ) {
+            snapshot.virtualUnderlyingBalance = virtualUnderlyingBalance;
+            snapshot.usingVirtualBalance = virtualUnderlyingBalance > 0;
+        } catch {}
     }
 
     function _assetToCollateralDelta(

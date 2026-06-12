@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
 import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol";
+import {IRedeemController} from "../interfaces/infinifi/IRedeemController.sol";
 
 /**
  * @notice Infinifi/Morpho looper using sIUSD (staked iUSD) as collateral and USDC as borrow token.
@@ -18,12 +19,15 @@ import {IInfiniFiGatewayV1} from "../interfaces/infinifi/IInfiniFiGatewayV1.sol"
 contract InfinifiMorphoLooper is MorphoLooper {
     using SafeERC20 for ERC20;
 
-    /// @notice iUSD receipt token (12 decimals).
+    /// @notice iUSD receipt token.
     address public constant IUSD = 0x48f9e38f3070AD8945DFEae3FA70987722E3D89c;
 
     /// @notice Infinifi gateway V1 (proxy address on mainnet).
     address public constant GATEWAY =
         0x3f04b65Ddbd87f9CE0A2e7Eb24d80e7fb87625b5;
+
+    /// @notice USDC assets queued in InfiniFi's redemption controller.
+    uint256 public pendingRedemptions;
 
     constructor(
         address _asset, // USDC
@@ -58,47 +62,130 @@ contract InfinifiMorphoLooper is MorphoLooper {
 
     /// @notice Convert USDC to sIUSD (staked iUSD) via Infinifi Gateway
     /// @dev Uses gateway.mintAndStake to atomically mint iUSD from USDC and stake it to sIUSD.
-    ///      The amountOutMin parameter is unused since Infinifi provides 1:1 minting.
     /// @param amount The amount of USDC to convert
     /// @return The amount of sIUSD received
     function _convertAssetToCollateral(
-        uint256 amount,
-        uint256
+        uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
+        _updateSlippageLossLimit();
         // Gateway mints iUSD and stakes directly to sIUSD for this contract.
         uint256 collateralBalance = balanceOfCollateralToken();
         IInfiniFiGatewayV1(GATEWAY).mintAndStake(address(this), amount);
-        return balanceOfCollateralToken() - collateralBalance;
+        uint256 amountOut = balanceOfCollateralToken() - collateralBalance;
+        _recordSlippage(amount, _collateralToAsset(amountOut));
+        return amountOut;
     }
 
     /// @notice Convert sIUSD (staked iUSD) back to USDC via Infinifi Gateway
     /// @dev First unstakes sIUSD to iUSD, then redeems iUSD for USDC via the gateway.
     /// @param amount The amount of sIUSD to convert
-    /// @param amountOutMin The minimum amount of USDC to receive (slippage protection)
     /// @return The amount of USDC received
     function _convertCollateralToAsset(
-        uint256 amount,
-        uint256 amountOutMin
+        uint256 amount
     ) internal override returns (uint256) {
         if (amount == 0) return 0;
+        _updateSlippageLossLimit();
         uint256 iusdBalance = IInfiniFiGatewayV1(GATEWAY).unstake(
             address(this),
             amount
         );
         // Gateway handles unstake + redemption back to USDC.
-        return
-            IInfiniFiGatewayV1(GATEWAY).redeem(
-                address(this),
-                iusdBalance,
-                amountOutMin
-            );
+        uint256 amountOut = IInfiniFiGatewayV1(GATEWAY).redeem(
+            address(this),
+            iusdBalance,
+            0
+        );
+        _recordSlippage(_collateralToAsset(amount), amountOut);
+        return amountOut;
     }
 
-    /// @notice Claim any enqueued redemptions from Infinifi
-    /// @dev Called by keepers if a redemption was delayed and enqueued by the gateway.
-    function claimRedemption() external onlyEmergencyAuthorized {
+    /// @notice Queue loose sIUSD for nonatomic redemption through InfiniFi.
+    function initiateCooldown(
+        uint256 shares
+    )
+        external
+        onlyManagement
+        returns (uint256 assetsOut, uint256 pendingAssets)
+    {
+        require(pendingRedemptions == 0, "pending redemptions");
+
+        uint256 balance = balanceOfCollateralToken();
+        if (shares > balance) shares = balance;
+        require(shares > 0, "!shares");
+
+        uint256 iusdAmount = IInfiniFiGatewayV1(GATEWAY).unstake(
+            address(this),
+            shares
+        );
+        uint256 expectedAssets = _redeemController().receiptToAsset(iusdAmount);
+
+        uint256 preBalance = asset.balanceOf(address(this));
+        IInfiniFiGatewayV1(GATEWAY).redeem(address(this), iusdAmount, 0);
+        assetsOut = asset.balanceOf(address(this)) - preBalance;
+
+        if (expectedAssets > assetsOut) {
+            pendingRedemptions = expectedAssets - assetsOut;
+        }
+
+        return (assetsOut, pendingRedemptions);
+    }
+
+    /// @notice Claim any enqueued redemptions from InfiniFi.
+    function claimCooldown() external onlyKeepers returns (uint256 assets) {
+        uint256 claimable = _redeemController().userPendingClaims(
+            address(this)
+        );
+        require(claimable > 0, "!claim");
+
+        uint256 preBalance = asset.balanceOf(address(this));
         IInfiniFiGatewayV1(GATEWAY).claimRedemption();
+        assets = asset.balanceOf(address(this)) - preBalance;
+        require(assets > 0, "!assets");
+
+        if (assets >= pendingRedemptions) {
+            delete pendingRedemptions;
+        } else {
+            unchecked {
+                pendingRedemptions -= assets;
+            }
+        }
+    }
+
+    function zeroPendingRedemptions() external onlyManagement {
+        delete pendingRedemptions;
+    }
+
+    function protectedTokens()
+        public
+        view
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](3);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = IUSD;
+    }
+
+    function estimatedTotalAssets() public view override returns (uint256) {
+        return super.estimatedTotalAssets() + pendingRedemptions;
+    }
+
+    function _harvestAndReport()
+        internal
+        override
+        returns (uint256 _totalAssets)
+    {
+        require(pendingRedemptions == 0, "pending redemptions");
+        return super._harvestAndReport();
+    }
+
+    function _redeemController() internal view returns (IRedeemController) {
+        return
+            IRedeemController(
+                IInfiniFiGatewayV1(GATEWAY).getAddress("redeemController")
+            );
     }
 
     /*//////////////////////////////////////////////////////////////

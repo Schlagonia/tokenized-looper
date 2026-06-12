@@ -24,11 +24,16 @@ interface IAaveLooper is IBaseLooper {
 
     function claimRewards() external;
 
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external;
+
     function setEModeCategory(uint8 _eModeCategoryId) external;
 
     function setAuction(address _auction) external;
-
-    function setUseAuction(bool _useAuction) external;
 
     function kickAuction(address _token) external returns (uint256);
 }

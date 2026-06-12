@@ -4,14 +4,16 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
-import {SyrupMorphoLooper} from "../../../morpho/SyrupMorphoLooper.sol";
-import {FluidExchange} from "../../../periphery/FluidExchange.sol";
+import {MorphoLooper} from "../../../morpho/MorphoLooper.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
-import {Id} from "../../../interfaces/morpho/IMorpho.sol";
+import {IMorpho, Id, MarketParams} from "../../../interfaces/morpho/IMorpho.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 
 /// @notice Setup for syrupUSDC/USDC Morpho looper tests on Arbitrum
 contract SetupSyrupUsdcArbMorpho is Setup {
-    FluidExchange public exchange;
+    MetaExchange public exchange;
+    FluidExchange public fluidExchange;
 
     // Arbitrum Morpho deployment
     address public constant ARB_MORPHO =
@@ -48,11 +50,13 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         asset = ERC20(ARB_USDC);
         decimals = asset.decimals();
 
-        // Keep conservative while pool depth evolves.
-        maxFuzzAmount = 50_000e6;
-        minFuzzAmount = 100e6;
+        // Keep conservative while pool depth evolves. This route uses real
+        // Arb Fluid liquidity, not a mocked deep market.
+        maxFuzzAmount = 15_000e6;
+        minFuzzAmount = 5_000e6;
 
         strategy = IStrategyInterface(setUpStrategy());
+        _seedArbMorphoLiquidity(MORPHO_LIQUIDITY_SEED);
         factory = strategy.FACTORY();
 
         vm.label(keeper, "keeper");
@@ -70,9 +74,10 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new FluidExchange(ARB_WETH);
+        exchange = new MetaExchange(management);
+        fluidExchange = new FluidExchange(ARB_WETH, management);
 
-        SyrupMorphoLooper looper = new SyrupMorphoLooper(
+        MorphoLooper looper = new MorphoLooper(
             address(asset),
             "syrupUSDC/USDC Arbitrum Morpho Looper",
             ARB_SYRUP_USDC,
@@ -83,7 +88,6 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
 
         _strategy.setPendingManagement(management);
 
@@ -91,12 +95,14 @@ contract SetupSyrupUsdcArbMorpho is Setup {
         _strategy.acceptManagement();
 
         vm.startPrank(management);
-        exchange.setBase(address(asset));
-        exchange.setFluidDex(
+        fluidExchange.setBase(address(asset));
+        fluidExchange.setFluidDex(
             address(asset),
             ARB_SYRUP_USDC,
             ARB_FLUID_DEX_SYRUP_USDC_USDC
         );
+        exchange.setAllowedExchange(address(fluidExchange), true);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -113,5 +119,36 @@ contract SetupSyrupUsdcArbMorpho is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), _amount / 30);
+    }
+
+    function _seedArbMorphoLiquidity(uint256 _amount) internal {
+        MarketParams memory params = IMorpho(ARB_MORPHO).idToMarketParams(
+            SYRUP_USDC_MARKET_ID
+        );
+        deal(address(asset), address(this), _amount);
+        asset.approve(ARB_MORPHO, _amount);
+        IMorpho(ARB_MORPHO).supply(params, _amount, 0, address(this), "");
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            1
+        );
+        forward[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: address(asset),
+            tokenTo: ARB_SYRUP_USDC
+        });
+        exchange.setRoute(address(asset), ARB_SYRUP_USDC, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            1
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: ARB_SYRUP_USDC,
+            tokenTo: address(asset)
+        });
+        exchange.setRoute(ARB_SYRUP_USDC, address(asset), reverse);
     }
 }

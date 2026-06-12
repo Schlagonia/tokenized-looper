@@ -5,12 +5,16 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {sUSDeAaveLooper} from "../../../aave/sUSDeAaveLooper.sol";
-import {ERC4626FluidExchange} from "../../../periphery/ERC4626FluidExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {ERC4626Exchange} from "../../../periphery/ERC4626Exchange.sol";
+import {FluidExchange} from "../../../periphery/FluidExchange.sol";
 
 /// @notice Setup for sUSDe/USDC Aave V3 looper tests.
 contract SetupAavesUSDeUSDC is Setup {
-    ERC4626FluidExchange public exchange;
+    MetaExchange public exchange;
+    FluidExchange public fluidExchange;
+    ERC4626Exchange public erc4626Exchange;
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -67,7 +71,9 @@ contract SetupAavesUSDeUSDC is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new ERC4626FluidExchange(WETH, USDT, address(asset), SUSDE);
+        exchange = new MetaExchange(management);
+        fluidExchange = new FluidExchange(WETH, management);
+        erc4626Exchange = new ERC4626Exchange(management);
 
         sUSDeAaveLooper looper = new sUSDeAaveLooper(
             address(asset),
@@ -81,16 +87,18 @@ contract SetupAavesUSDeUSDC is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
         _strategy.setPendingManagement(management);
 
         vm.startPrank(management);
         _strategy.acceptManagement();
 
-        exchange.setDeposit(true);
-        exchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
-        exchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
-        exchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
+        fluidExchange.setBase(USDT);
+        fluidExchange.setFluidDex(USDC, USDT, FLUID_USDC_USDT);
+        fluidExchange.setFluidDex(USDE, USDT, FLUID_USDE_USDT);
+        fluidExchange.setFluidDex(SUSDE, USDT, FLUID_SUSDE_USDT);
+        exchange.setAllowedExchange(address(fluidExchange), true);
+        exchange.setAllowedExchange(address(erc4626Exchange), true);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -110,5 +118,41 @@ contract SetupAavesUSDeUSDC is Setup {
     function accrueYield(uint256 _amount) public virtual override {
         skip(1 days);
         airdrop(asset, address(strategy), (_amount * 300) / 10_000);
+    }
+
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            2
+        );
+        forward[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: USDC,
+            tokenTo: USDE
+        });
+        forward[1] = MetaExchange.RouteStep({
+            exchange: address(erc4626Exchange),
+            tokenFrom: USDE,
+            tokenTo: SUSDE
+        });
+        exchange.setRoute(USDC, SUSDE, forward);
+
+        MetaExchange.RouteStep[] memory unwind = new MetaExchange.RouteStep[](
+            1
+        );
+        unwind[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: SUSDE,
+            tokenTo: USDC
+        });
+        exchange.setRoute(SUSDE, USDC, unwind);
+
+        MetaExchange.RouteStep[]
+            memory underlyingToAsset = new MetaExchange.RouteStep[](1);
+        underlyingToAsset[0] = MetaExchange.RouteStep({
+            exchange: address(fluidExchange),
+            tokenFrom: USDE,
+            tokenTo: USDC
+        });
+        exchange.setRoute(USDE, USDC, underlyingToAsset);
     }
 }

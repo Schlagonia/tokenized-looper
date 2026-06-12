@@ -83,6 +83,12 @@ abstract contract ShutdownTest is Setup {
         vm.prank(emergencyAdmin);
         strategy.emergencyWithdraw(type(uint256).max);
 
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        vm.prank(management);
+        strategy.report();
+
         // Make sure we can still withdraw the full amount
         uint256 balanceBefore = asset.balanceOf(user);
 
@@ -233,25 +239,257 @@ abstract contract ShutdownTest is Setup {
             "!deposit limit should be 0 in idle mode"
         );
 
+        uint256 assetBefore = strategy.balanceOfAsset();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 looseCollateralBefore = strategy.balanceOfCollateralToken();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertEq(debtBefore, 0, "!debt before idle tend");
+
         // Skip past minTendInterval for tend to work
         skip(strategy.minTendInterval() + 1);
 
-        // Note: In idle mode (targetLeverageRatio = 0), calling tend() will hit CASE 3
-        // which supplies collateral without borrowing. This is the expected behavior:
-        // assets are converted to collateral but no leverage is applied.
         vm.prank(keeper);
         strategy.tend();
 
-        // Verify NO DEBT (key assertion for idle mode)
+        assertEq(strategy.balanceOfDebt(), debtBefore, "!debt changed");
+        assertEq(strategy.balanceOfAsset(), assetBefore, "!asset changed");
         assertEq(
-            strategy.balanceOfDebt(),
-            0,
-            "!debt should still be 0 in idle mode"
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral changed"
         );
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            looseCollateralBefore,
+            "!loose collateral changed"
+        );
+    }
 
-        // Collateral may be non-zero as CASE 3 supplies collateral without leverage
-        // This is acceptable behavior - assets are deployed but not leveraged
-        // The key invariant is that debt = 0 (no borrowing in idle mode)
+    function test_idleMode_tendLeavesLooseAssetsIdle(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), _amount);
+
+        uint256 assetBefore = strategy.balanceOfAsset();
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 looseCollateralBefore = strategy.balanceOfCollateralToken();
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertEq(strategy.balanceOfAsset(), assetBefore, "!asset");
+        assertEq(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertEq(
+            strategy.balanceOfCollateralToken(),
+            looseCollateralBefore,
+            "!loose collateral"
+        );
+    }
+
+    function test_idleMode_tendRepaysDebtAndLeavesExcessIdle(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(debtBefore, 0, "!debt before");
+        assertGt(collateralBefore, 0, "!collateral before");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), debtBefore * 2 + minFuzzAmount);
+        uint256 assetBefore = strategy.balanceOfAsset();
+        assertGt(assetBefore, debtBefore, "!idle before");
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBefore),
+            "!collateral dust too high"
+        );
+        uint256 assetAfter = strategy.balanceOfAsset();
+        assertGt(assetAfter, 0, "!leftover idle");
+        assertGe(assetAfter, assetBefore - debtBefore, "!excess idle");
+    }
+
+    function test_idleMode_tendConvertsDebtlessCollateral(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        airdrop(asset, address(strategy), _amount);
+
+        vm.startPrank(management);
+        strategy.convertAssetToCollateral(_amount);
+        strategy.manualSupplyCollateral(type(uint256).max);
+        strategy.setLeverageParams(0, 0, 5e18);
+        vm.stopPrank();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertEq(strategy.balanceOfDebt(), 0, "!debt before");
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBefore),
+            "!collateral dust too high"
+        );
+        assertGt(strategy.balanceOfAsset(), 0, "!asset");
+    }
+
+    function test_manualFullUnwind_setsTargetToZero(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBeforeUnwind = strategy.balanceOfCollateral();
+        assertGt(collateralBeforeUnwind, 0, "!collateral before");
+        assertGt(strategy.targetLeverageRatio(), 0, "!target before");
+
+        vm.prank(management);
+        strategy.manualFullUnwind();
+
+        assertEq(strategy.targetLeverageRatio(), 0, "!target");
+        assertEq(strategy.leverageBuffer(), 0, "!buffer");
+        assertEq(strategy.maxLeverageRatio(), 1e18, "!max leverage");
+        assertEq(strategy.balanceOfDebt(), 0, "!debt");
+        assertLe(
+            strategy.balanceOfCollateral(),
+            _maxUnwindCollateralDust(collateralBeforeUnwind),
+            "!collateral dust too high"
+        );
+    }
+
+    function test_manualDelever_validAmountLowersPosition(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(debtBefore, 0, "!debt before");
+
+        uint256 amountToDelever = collateralBefore / 100;
+        if (amountToDelever == 0) amountToDelever = 1;
+
+        vm.prank(management);
+        strategy.manualDelever(amountToDelever);
+
+        assertLt(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt");
+        assertLt(
+            strategy.getCurrentLTV(),
+            strategy.getLiquidateCollateralFactor(),
+            "!ltv"
+        );
+    }
+
+    function test_manualDelever_maxUintCapsToSafeAmount(
+        uint256 _amount
+    ) public virtual {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        assertGt(collateralBefore, 0, "!collateral before");
+        assertGt(debtBefore, 0, "!debt before");
+
+        vm.prank(management);
+        strategy.manualDelever(type(uint256).max);
+
+        assertLt(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral"
+        );
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt");
+        assertLt(
+            strategy.getCurrentLTV(),
+            strategy.getLiquidateCollateralFactor(),
+            "!ltv"
+        );
+    }
+
+    function test_idleMode_tendDecreasesLeverageWhenIdleBelowDebt(
+        uint256 _amount
+    ) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 collateralBefore = strategy.balanceOfCollateral();
+        uint256 debtBefore = strategy.balanceOfDebt();
+        uint256 leverageBefore = strategy.getCurrentLeverageRatio();
+        assertGt(debtBefore, 0, "!debt before");
+        assertGt(collateralBefore, 0, "!collateral before");
+
+        vm.prank(management);
+        strategy.setLeverageParams(0, 0, 5e18);
+
+        airdrop(asset, address(strategy), debtBefore / 4);
+
+        skip(strategy.minTendInterval() + 1);
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        assertLt(strategy.balanceOfDebt(), debtBefore, "!debt not reduced");
+        assertLt(
+            strategy.getCurrentLeverageRatio(),
+            leverageBefore,
+            "!leverage not reduced"
+        );
+        assertLe(
+            strategy.balanceOfCollateral(),
+            collateralBefore,
+            "!collateral increased"
+        );
     }
 
     function test_idleMode_canReenableLeverage(uint256 _amount) public {
@@ -296,7 +534,12 @@ abstract contract ShutdownTest is Setup {
         uint256 leverage = strategy.getCurrentLeverageRatio();
         uint256 target = strategy.targetLeverageRatio();
         uint256 buffer = strategy.leverageBuffer();
-        assertGe(leverage, target - buffer, "!leverage too low");
-        assertLe(leverage, target + buffer, "!leverage too high");
+        _assertLeverageWithinTestBuffer(
+            leverage,
+            target,
+            buffer,
+            "!leverage too low",
+            "!leverage too high"
+        );
     }
 }

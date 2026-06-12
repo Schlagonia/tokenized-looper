@@ -2,17 +2,24 @@
 pragma solidity ^0.8.18;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {AaveLooper} from "./AaveLooper.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
 import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
 
 /**
  * @title SyrupUSDTAaveLooper
  * @notice Aave V3 looper for syrupUSDT collateral and USDT debt.
  *         - Default path delegates swaps to a dedicated exchange contract.
- *         - Emergency path supports direct syrup redemption requests.
+ *         - Management path supports direct syrup redemption requests.
  */
 contract SyrupUSDTAaveLooper is AaveLooper {
+    using SafeERC20 for ERC20;
+
+    address internal immutable UNDERLYING;
+
     /// @notice Shares queued for direct syrup redemption.
     uint256 public pendingRedemptionShares;
 
@@ -36,17 +43,32 @@ contract SyrupUSDTAaveLooper is AaveLooper {
             _exchange,
             _governance
         )
-    {}
+    {
+        UNDERLYING = ISyrupPool(_collateralToken).asset();
+    }
 
-    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
-    function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 pendingAssets;
-        if (pendingRedemptionShares > 0) {
-            pendingAssets = ISyrupPool(collateralToken).convertToAssets(
-                pendingRedemptionShares
+    function totalCollateralBalance() public view override returns (uint256) {
+        uint256 looseUnderlyingShares;
+        if (UNDERLYING != address(asset)) {
+            looseUnderlyingShares = ISyrupPool(collateralToken).convertToShares(
+                balanceOfUnderlying()
             );
         }
-        return super.estimatedTotalAssets() + pendingAssets;
+
+        uint256 pendingRedemptionShareValue;
+        if (pendingRedemptionShares != 0) {
+            pendingRedemptionShareValue = ISyrupPool(collateralToken)
+                .convertToShares(
+                    ISyrupPool(collateralToken).convertToExitAssets(
+                        pendingRedemptionShares
+                    )
+                );
+        }
+
+        return
+            super.totalCollateralBalance() +
+            pendingRedemptionShareValue +
+            looseUnderlyingShares;
     }
 
     function _harvestAndReport()
@@ -58,14 +80,33 @@ contract SyrupUSDTAaveLooper is AaveLooper {
         return super._harvestAndReport();
     }
 
+    function balanceOfUnderlying() public view returns (uint256) {
+        return ERC20(UNDERLYING).balanceOf(address(this));
+    }
+
+    function protectedTokens()
+        public
+        view
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](6);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = A_TOKEN;
+        _protected[3] = ASSET_A_TOKEN;
+        _protected[4] = VARIABLE_DEBT_TOKEN;
+        _protected[5] = UNDERLYING;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         DIRECT REDEMPTION PATH
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Queue syrup shares for direct redemption (non-swap path).
-    function initiateDirectRedemption(
+    function initiateCooldown(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _exitShares) {
+    ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
         require(_shares > 0, "!shares");
 
@@ -79,7 +120,7 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     /// @notice Cancel queued direct redemptions and restore shares to wallet.
     function cancelDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
+    ) external onlyManagement returns (uint256 _removedShares) {
         _shares = _shares == type(uint256).max
             ? pendingRedemptionShares
             : _shares;
@@ -96,8 +137,32 @@ contract SyrupUSDTAaveLooper is AaveLooper {
     }
 
     /// @notice Manually zero pending redemptions in exceptional scenarios.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function claimCooldown() external onlyManagement {
         pendingRedemptionShares = 0;
+    }
+
+    function convertUnderlyingToAsset(
+        uint256 amount
+    ) external onlyKeepers returns (uint256) {
+        require(UNDERLYING != address(asset), "!underlying");
+        amount = Math.min(amount, balanceOfUnderlying());
+        if (amount == 0) return 0;
+
+        uint256 expectedAmountOut = _collateralToAsset(
+            ISyrupPool(collateralToken).convertToShares(amount)
+        );
+        _updateSlippageLossLimit();
+
+        ERC20(UNDERLYING).forceApprove(exchange, amount);
+        uint256 amountOut = IExchange(exchange).exchange(
+            UNDERLYING,
+            address(asset),
+            amount,
+            0
+        );
+
+        _recordSlippage(expectedAmountOut, amountOut);
+        return amountOut;
     }
 
     function _claimAndSellRewards() internal pure override {}

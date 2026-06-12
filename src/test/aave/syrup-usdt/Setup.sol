@@ -7,15 +7,20 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {Setup} from "../../base/Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
 import {IStrategyInterface} from "../../../interfaces/IStrategyInterface.sol";
 import {ISyrupRouter} from "../../../interfaces/syrup/ISyrupRouter.sol";
 import {IPoolPermissionManager} from "../../../interfaces/syrup/IPoolPermissionManager.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
+import {SyrupDepositExchange} from "../../../periphery/SyrupDepositExchange.sol";
+import {UniswapUniversalRouterExchange} from "../../../periphery/UniswapUniversalRouterExchange.sol";
 
 /// @notice Setup for syrupUSDT/USDT Aave V3 looper tests
 contract SetupAaveSyrupUSDT is Setup {
-    SyrupExchange public exchange;
+    MetaExchange public exchange;
+    UniswapUniversalRouterExchange public uniExchange;
+    SyrupDepositExchange public syrupExchange;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
+    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
 
     // Aave V3 core (Ethereum mainnet)
     address public constant AAVE_ADDRESSES_PROVIDER =
@@ -37,6 +42,7 @@ contract SetupAaveSyrupUSDT is Setup {
     // Provide via env var when running tests:
     // export SYRUP_USDT_V4_POOL_ID=0x...
     bytes32 public syrupUsdtV4PoolId;
+    bool public useMint;
 
     function setUp() public virtual override {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
@@ -47,6 +53,7 @@ contract SetupAaveSyrupUSDT is Setup {
                 0xd861038a98942312d1495dd1313fb66c7e7de48f549a15edf3a45decf7338e1d
             )
         );
+        useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", true);
 
         tokenAddrs["USDT"] = USDT;
         tokenAddrs["SYRUP_USDT"] = SYRUP_USDT;
@@ -72,12 +79,14 @@ contract SetupAaveSyrupUSDT is Setup {
     }
 
     function setUpStrategy() public virtual override returns (address) {
-        exchange = new SyrupExchange(
+        exchange = new MetaExchange(management);
+        uniExchange = new UniswapUniversalRouterExchange(
             WETH,
-            address(asset),
-            SYRUP_USDT,
-            SYRUP_USDT_ROUTER
+            UNISWAP_ROUTER,
+            UNISWAP_POSITION_MANAGER,
+            management
         );
+        syrupExchange = new SyrupDepositExchange(management);
 
         SyrupUSDTAaveLooper looper = new SyrupUSDTAaveLooper(
             address(asset),
@@ -91,27 +100,35 @@ contract SetupAaveSyrupUSDT is Setup {
         );
 
         IStrategyInterface _strategy = IStrategyInterface(address(looper));
-        exchange.setStrategy(address(_strategy));
         _strategy.setPendingManagement(management);
 
         vm.prank(management);
         _strategy.acceptManagement();
 
-        bool useMint = vm.envOr("SYRUP_MAINNET_USE_MINT", true);
         if (useMint) {
             _authorizeExchangeForSyrupDeposit();
         }
 
         vm.startPrank(management);
-        exchange.setBase(address(asset));
-        exchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
-        exchange.setMint(useMint);
+        uniExchange.setBase(address(asset));
+        uniExchange.setV4Pool(address(asset), SYRUP_USDT, syrupUsdtV4PoolId);
+        syrupExchange.setSyrupDepositConfig(
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER,
+            SYRUP_DEPOSIT_DATA
+        );
 
         // Optional: force v3 route if SYRUP_USDT_UNI_FEE is set.
         uint24 uniFee = uint24(vm.envOr("SYRUP_USDT_UNI_FEE", uint256(0)));
         if (uniFee != 0) {
-            exchange.setUniFees(USDT, SYRUP_USDT, uniFee);
+            uniExchange.setUniFees(USDT, SYRUP_USDT, uniFee);
         }
+        exchange.setAllowedExchange(address(uniExchange), true);
+        exchange.setAllowedExchange(address(syrupExchange), true);
+        exchange.setContextAwareExchange(address(syrupExchange), true);
+        syrupExchange.setAllowedForwarder(address(exchange), true);
+        syrupExchange.setAllowed(address(_strategy), true);
+        _setRoutes();
 
         _strategy.setKeeper(keeper);
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -133,14 +150,35 @@ contract SetupAaveSyrupUSDT is Setup {
         airdrop(asset, address(strategy), (_amount * 500) / 10_000);
     }
 
+    function _setRoutes() internal {
+        MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](
+            1
+        );
+        forward[0] = MetaExchange.RouteStep({
+            exchange: useMint ? address(syrupExchange) : address(uniExchange),
+            tokenFrom: USDT,
+            tokenTo: SYRUP_USDT
+        });
+        exchange.setRoute(USDT, SYRUP_USDT, forward);
+
+        MetaExchange.RouteStep[] memory reverse = new MetaExchange.RouteStep[](
+            1
+        );
+        reverse[0] = MetaExchange.RouteStep({
+            exchange: address(uniExchange),
+            tokenFrom: SYRUP_USDT,
+            tokenTo: USDT
+        });
+        exchange.setRoute(SYRUP_USDT, USDT, reverse);
+    }
+
     function _authorizeExchangeForSyrupDeposit() internal {
-        address router = exchange.SYRUP_ROUTER();
-        address poolManager = ISyrupRouter(router).poolManager();
-        address permissionManager = ISyrupRouter(router)
+        address poolManager = ISyrupRouter(SYRUP_USDT_ROUTER).poolManager();
+        address permissionManager = ISyrupRouter(SYRUP_USDT_ROUTER)
             .poolPermissionManager();
 
         address[] memory lenders = new address[](1);
-        lenders[0] = address(exchange);
+        lenders[0] = address(syrupExchange);
         bool[] memory isAllowed = new bool[](1);
         isAllowed[0] = true;
 
@@ -154,7 +192,7 @@ contract SetupAaveSyrupUSDT is Setup {
         assertTrue(
             IPoolPermissionManager(permissionManager).hasPermission(
                 poolManager,
-                address(exchange),
+                address(syrupExchange),
                 MAPLE_DEPOSIT_PERMISSION
             ),
             "!deposit permission"

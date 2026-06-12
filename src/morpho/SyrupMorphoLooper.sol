@@ -2,9 +2,12 @@
 pragma solidity ^0.8.18;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {MorphoLooper} from "./MorphoLooper.sol";
 import {Id} from "../interfaces/morpho/IMorpho.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
 import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
 
 /**
@@ -15,6 +18,10 @@ import {ISyrupPool} from "../interfaces/syrup/ISyrupPool.sol";
  *         Primary conversion path delegates to an external exchange contract.
  */
 contract SyrupMorphoLooper is MorphoLooper {
+    using SafeERC20 for ERC20;
+
+    address internal immutable UNDERLYING;
+
     /// @notice Shares queued for direct (async) redemption.
     uint256 public pendingRedemptionShares;
 
@@ -36,17 +43,32 @@ contract SyrupMorphoLooper is MorphoLooper {
             _exchange,
             _governance
         )
-    {}
+    {
+        UNDERLYING = ISyrupPool(_collateralToken).asset();
+    }
 
-    /// NOTE: This may be very over inflated post redemption fill but before pending is zeroed out.
-    function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 pendingAssets;
-        if (pendingRedemptionShares > 0) {
-            pendingAssets = ISyrupPool(collateralToken).convertToAssets(
-                pendingRedemptionShares
+    function totalCollateralBalance() public view override returns (uint256) {
+        uint256 looseUnderlyingShares;
+        if (UNDERLYING != address(asset)) {
+            looseUnderlyingShares = ISyrupPool(collateralToken).convertToShares(
+                balanceOfUnderlying()
             );
         }
-        return super.estimatedTotalAssets() + pendingAssets;
+
+        uint256 pendingRedemptionShareValue;
+        if (pendingRedemptionShares != 0) {
+            pendingRedemptionShareValue = ISyrupPool(collateralToken)
+                .convertToShares(
+                    ISyrupPool(collateralToken).convertToExitAssets(
+                        pendingRedemptionShares
+                    )
+                );
+        }
+
+        return
+            super.totalCollateralBalance() +
+            pendingRedemptionShareValue +
+            looseUnderlyingShares;
     }
 
     function _harvestAndReport()
@@ -59,15 +81,31 @@ contract SyrupMorphoLooper is MorphoLooper {
         return super._harvestAndReport();
     }
 
+    function balanceOfUnderlying() public view returns (uint256) {
+        return ERC20(UNDERLYING).balanceOf(address(this));
+    }
+
+    function protectedTokens()
+        public
+        view
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](3);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
+        _protected[2] = UNDERLYING;
+    }
+
     /*//////////////////////////////////////////////////////////////
                         DIRECT REDEMPTION PATH
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Queue syrup shares for direct redemption.
     /// @dev asset is directly sent back to the strategy once filled
-    function initiateDirectRedemption(
+    function initiateCooldown(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _exitShares) {
+    ) external onlyManagement returns (uint256 _exitShares) {
         _shares = Math.min(_shares, balanceOfCollateralToken());
         require(_shares > 0, "!shares");
 
@@ -81,7 +119,7 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @notice Cancel queued redemption shares.
     function cancelDirectRedemption(
         uint256 _shares
-    ) external onlyEmergencyAuthorized returns (uint256 _removedShares) {
+    ) external onlyManagement returns (uint256 _removedShares) {
         _shares = _shares == type(uint256).max
             ? pendingRedemptionShares
             : _shares;
@@ -100,7 +138,31 @@ contract SyrupMorphoLooper is MorphoLooper {
     /// @notice Manually clear pending redemptions.
     /// NOTE: Maple will automatically send usdc to the strategy. So this will
     ///       need to be called once done to allow reports to continue.
-    function zeroPendingRedemptions() external onlyEmergencyAuthorized {
+    function claimCooldown() external onlyManagement {
         pendingRedemptionShares = 0;
+    }
+
+    function convertUnderlyingToAsset(
+        uint256 amount
+    ) external onlyKeepers returns (uint256) {
+        require(UNDERLYING != address(asset), "!underlying");
+        amount = Math.min(amount, balanceOfUnderlying());
+        if (amount == 0) return 0;
+
+        uint256 expectedAmountOut = _collateralToAsset(
+            ISyrupPool(collateralToken).convertToShares(amount)
+        );
+        _updateSlippageLossLimit();
+
+        ERC20(UNDERLYING).forceApprove(exchange, amount);
+        uint256 amountOut = IExchange(exchange).exchange(
+            UNDERLYING,
+            address(asset),
+            amount,
+            0
+        );
+        _recordSlippage(expectedAmountOut, amountOut);
+
+        return amountOut;
     }
 }

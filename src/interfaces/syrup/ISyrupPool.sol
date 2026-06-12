@@ -9,6 +9,16 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
  */
 interface ISyrupPool is IERC4626 {
     /**
+     * @notice Convert pool shares to the assets available through the exit path.
+     * @dev Maple exit accounting includes unrealized losses.
+     * @param shares The number of pool shares to convert.
+     * @return assets The amount of assets able to be exited.
+     */
+    function convertToExitAssets(
+        uint256 shares
+    ) external view returns (uint256 assets);
+
+    /**
      * @notice Queue shares for redemption.
      * @param shares The number of pool shares to redeem.
      * @param owner The owner of the shares.

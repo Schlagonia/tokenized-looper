@@ -24,6 +24,23 @@ interface IPendleOracle {
     ) external view returns (uint256);
 }
 
+interface IMetaExchangeRouteReader {
+    struct RouteStep {
+        address exchange;
+        address tokenFrom;
+        address tokenTo;
+    }
+
+    function getRoute(
+        address from,
+        address to
+    ) external view returns (RouteStep[] memory);
+}
+
+interface IPendleMarketRegistry {
+    function markets(address pt) external view returns (address market);
+}
+
 contract StrategyAprOracle is AprOracleBase {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_BPS = 10_000;
@@ -202,7 +219,9 @@ contract StrategyAprOracle is AprOracleBase {
             collateralValue == 0 ||
             slippageBps == 0 ||
             collateralDeltaAsset == 0
-        ) return price;
+        ) {
+            return price;
+        }
 
         uint256 absDelta = uint256(
             collateralDeltaAsset > 0
@@ -273,10 +292,58 @@ contract StrategyAprOracle is AprOracleBase {
                         "PENDLE_MARKET()"
                     );
                 }
+
+                if (pendleMarket == address(0)) {
+                    (address morpho, Id marketId) = _getMorphoData(_strategy);
+                    MarketParams memory marketParams = IMorpho(morpho)
+                        .idToMarketParams(marketId);
+                    pendleMarket = _readRoutePendleMarket(
+                        strategyExchange,
+                        marketParams.loanToken,
+                        marketParams.collateralToken
+                    );
+                }
             }
         }
 
         isPt = pendleMarket != address(0);
+    }
+
+    function _readRoutePendleMarket(
+        address strategyExchange,
+        address loanToken,
+        address collateralToken
+    ) internal view returns (address pendleMarket) {
+        try
+            IMetaExchangeRouteReader(strategyExchange).getRoute(
+                loanToken,
+                collateralToken
+            )
+        returns (IMetaExchangeRouteReader.RouteStep[] memory route) {
+            uint256 length = route.length;
+            for (uint256 i; i < length; ) {
+                pendleMarket = _readPendleMarket(
+                    route[i].exchange,
+                    collateralToken
+                );
+                if (pendleMarket != address(0)) return pendleMarket;
+
+                unchecked {
+                    ++i;
+                }
+            }
+        } catch {}
+    }
+
+    function _readPendleMarket(
+        address target,
+        address ptToken
+    ) internal view returns (address market) {
+        try IPendleMarketRegistry(target).markets(ptToken) returns (
+            address configuredMarket
+        ) {
+            market = configuredMarket;
+        } catch {}
     }
 
     function _readAddress(

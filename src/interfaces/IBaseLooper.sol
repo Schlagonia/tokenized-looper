@@ -27,7 +27,17 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function minTendInterval() external view returns (uint256);
 
+    /// @notice Slippage in basis points used for per-swap checks and the 1-day loss cap.
     function slippage() external view returns (uint64);
+
+    /// @notice Start timestamp for the current slippage accounting period.
+    function slippagePeriodStart() external view returns (uint256);
+
+    /// @notice Cumulative realized swap loss in asset terms for the current period.
+    function slippagePeriodLoss() external view returns (uint256);
+
+    /// @notice Highest realized-loss limit reached during the current slippage period.
+    function slippagePeriodLossLimit() external view returns (uint256);
 
     function reportBuffer() external view returns (uint256);
 
@@ -48,6 +58,7 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function setMaxGasPriceToTend(uint256 _maxGasPriceToTend) external;
 
+    /// @notice Set slippage in basis points for per-swap checks and the 1-day loss cap.
     function setSlippage(uint256 _slippage) external;
 
     function setReportBuffer(uint256 _reportBuffer) external;
@@ -62,6 +73,9 @@ interface IBaseLooper is IBaseHealthCheck {
 
     function estimatedTotalAssets() external view returns (uint256);
 
+    /// @notice Total collateral exposure denominated in collateral token units.
+    function totalCollateralBalance() external view returns (uint256);
+
     /// @notice Get current leverage ratio
     function getCurrentLeverageRatio() external view returns (uint256);
 
@@ -74,6 +88,9 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Get balance of collateral in the lending protocol
     function balanceOfCollateral() external view returns (uint256);
 
+    /// @notice Get balance of collateral token held by strategy
+    function balanceOfCollateralToken() external view returns (uint256);
+
     /// @notice Get balance of debt in the lending protocol
     function balanceOfDebt() external view returns (uint256);
 
@@ -83,8 +100,14 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Max available flashloan from protocol
     function maxFlashloan() external view returns (uint256);
 
+    /// @notice Max asset amount that can be converted and supplied in one lever-up step.
+    function maxSupplyInAsset() external view returns (uint256);
+
     /// @notice Emergency full position close via flashloan
     function manualFullUnwind() external;
+
+    /// @notice Manual: withdraw collateral, convert it to asset, and repay debt
+    function manualDelever(uint256 amount) external;
 
     /// @notice Manual: supply collateral (converts asset to collateral first)
     function manualSupplyCollateral(uint256 amount) external;
@@ -104,15 +127,17 @@ interface IBaseLooper is IBaseHealthCheck {
     /// @notice Manual: convert asset to collateral
     function convertAssetToCollateral(uint256 amount) external;
 
-    /// @notice Set target leverage ratio and buffer
-    /// @param _targetLeverageRatio Target leverage in WAD (e.g., 3e18 = 3x)
-    /// @param _leverageBuffer Buffer tolerance in WAD
-    /// @param _maxLeverageRatio Maximum leverage ratio in WAD (e.g., 10e18 = 10x)
+    /// @notice Set target leverage ratio, buffer, and max leverage.
+    /// @dev Management-only path for changing the hard max leverage ratio.
     function setLeverageParams(
         uint256 _targetLeverageRatio,
         uint256 _leverageBuffer,
         uint256 _maxLeverageRatio
     ) external;
+
+    /// @notice Set target leverage ratio without changing max leverage.
+    /// @dev Keeper path for day-to-day tuning. Reuses the current buffer unless target is 0.
+    function setLeverageParams(uint256 _targetLeverageRatio) external;
 
     function position()
         external

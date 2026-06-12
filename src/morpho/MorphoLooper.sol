@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.18;
 
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaseLooper} from "../BaseLooper.sol";
-import {IMorpho, Id, MarketParams, Position} from "../interfaces/morpho/IMorpho.sol";
-import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCallback.sol";
-import {IOracle} from "../interfaces/morpho/IOracle.sol";
-import {MarketParamsLib} from "../libraries/morpho/MarketParamsLib.sol";
-import {MorphoBalancesLib} from "../libraries/morpho/periphery/MorphoBalancesLib.sol";
-import {MorphoLib} from "../libraries/morpho/periphery/MorphoLib.sol";
-import {SharesMathLib} from "../libraries/morpho/SharesMathLib.sol";
 import {IMerklDistributor} from "../interfaces/IMerkleDistributor.sol";
+import {IMorpho, Id, MarketParams} from "../interfaces/morpho/IMorpho.sol";
+import {IMorphoFlashLoanCallback} from "../interfaces/morpho/IMorphoFlashLoanCallback.sol";
+import {MorphoOps} from "../libraries/MorphoOps.sol";
 import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 /**
@@ -23,9 +18,8 @@ import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
  */
 contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     using SafeERC20 for ERC20;
-    using MarketParamsLib for MarketParams;
-    using MorphoBalancesLib for IMorpho;
-    using MorphoLib for IMorpho;
+    using MorphoOps for IMorpho;
+    using MorphoOps for MarketParams;
 
     /// @notice The Merkl Distributor contract for claiming rewards
     IMerklDistributor public constant MERKL_DISTRIBUTOR =
@@ -84,7 +78,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         bytes calldata data
     ) external override {
         require(msg.sender == address(MORPHO), "!morpho");
-        require(isFlashloanActive, "flashloan active");
+        require(isFlashloanActive, "!flashloan active");
         // Delegate to parent's generic handler
         _onFlashloanReceived(assets, data);
 
@@ -109,7 +103,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        return IOracle(marketParams.oracle).price();
+        return marketParams.getCollateralPrice();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -120,29 +114,21 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @dev Calls morpho.supplyCollateral with the configured market params.
     /// @param amount The amount of collateral tokens to supply
     function _supplyCollateral(uint256 amount) internal override {
-        if (amount == 0) return;
-        MORPHO.supplyCollateral(marketParams, amount, address(this), "");
+        MORPHO.supplyCollateral(marketParams, amount);
     }
 
     /// @notice Withdraw collateral from Morpho Blue market
     /// @dev Calls morpho.withdrawCollateral with the configured market params.
     /// @param amount The amount of collateral tokens to withdraw
     function _withdrawCollateral(uint256 amount) internal override {
-        if (amount == 0) return;
-        MORPHO.withdrawCollateral(
-            marketParams,
-            amount,
-            address(this),
-            address(this)
-        );
+        MORPHO.withdrawCollateral(marketParams, amount);
     }
 
     /// @notice Borrow assets from Morpho Blue market
     /// @dev Override to customize borrow behavior. Calls morpho.borrow with amount (not shares).
     /// @param amount The amount of asset to borrow
     function _borrow(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        MORPHO.borrow(marketParams, amount, 0, address(this), address(this));
+        MORPHO.borrow(marketParams, amount);
     }
 
     /// @notice Repay borrowed assets to Morpho Blue market
@@ -150,24 +136,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     ///      Calculates shares from amount using expected market balances.
     /// @param amount The amount of asset to repay
     function _repay(uint256 amount) internal virtual override {
-        if (amount == 0) return;
-        (
-            ,
-            ,
-            uint256 totalBorrowAssets,
-            uint256 totalBorrowShares
-        ) = MorphoBalancesLib.expectedMarketBalances(MORPHO, marketParams);
-
-        uint256 shares = Math.min(
-            SharesMathLib.toSharesDown(
-                amount,
-                totalBorrowAssets,
-                totalBorrowShares
-            ),
-            MORPHO.borrowShares(marketId, address(this))
-        );
-
-        MORPHO.repay(marketParams, 0, shares, address(this), "");
+        MORPHO.repay(marketId, marketParams, amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -194,14 +163,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @dev Compares current debt against max borrow allowed by LLTV.
     /// @return True if debt exceeds max borrow (position is liquidatable)
     function _isLiquidatable() internal view virtual override returns (bool) {
-        Position memory p = MORPHO.position(marketId, address(this));
-        if (p.borrowShares == 0) return false;
-
-        uint256 collateralValue = (uint256(p.collateral) *
-            IOracle(marketParams.oracle).price()) / ORACLE_PRICE_SCALE;
-        uint256 maxBorrow = (collateralValue * marketParams.lltv) / WAD;
-
-        return balanceOfDebt() > maxBorrow;
+        return MORPHO.isLiquidatable(marketId, marketParams);
     }
 
     /// @notice Get the maximum collateral that can be deposited
@@ -228,12 +190,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        (uint256 totalSupplyAssets, , uint256 totalBorrowAssets, ) = MORPHO
-            .expectedMarketBalances(marketParams);
-        return
-            totalSupplyAssets > totalBorrowAssets
-                ? totalSupplyAssets - totalBorrowAssets
-                : 0;
+        return MORPHO.maxBorrowAmount(marketParams);
     }
 
     /// @notice Get the liquidation loan-to-value threshold (LLTV)
@@ -246,7 +203,7 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        return marketParams.lltv;
+        return marketParams.liquidateCollateralFactor();
     }
 
     /// @notice Get the collateral balance in Morpho Blue
@@ -259,15 +216,14 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         override
         returns (uint256)
     {
-        Position memory p = MORPHO.position(marketId, address(this));
-        return p.collateral;
+        return MORPHO.balanceOfCollateral(marketId);
     }
 
     /// @notice Get the current debt owed to Morpho Blue
     /// @dev Uses expectedBorrowAssets to include accrued interest.
     /// @return The total debt including accrued interest
     function balanceOfDebt() public view virtual override returns (uint256) {
-        return MORPHO.expectedBorrowAssets(marketParams, address(this));
+        return MORPHO.balanceOfDebt(marketParams);
     }
 
     ////////////////////////////////////////////////////////////////
@@ -298,6 +254,18 @@ contract MorphoLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
 
     function setUseAuction(bool _useAuction) external onlyManagement {
         _setUseAuction(_useAuction);
+    }
+
+    function protectedTokens()
+        public
+        view
+        virtual
+        override
+        returns (address[] memory _protected)
+    {
+        _protected = new address[](2);
+        _protected[0] = address(asset);
+        _protected[1] = collateralToken;
     }
 
     function kickAuction(

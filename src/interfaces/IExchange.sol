@@ -2,9 +2,7 @@
 pragma solidity ^0.8.18;
 
 interface IExchange {
-    function strategy() external view returns (address);
-
-    function setStrategy(address _strategy) external;
+    function name() external pure returns (string memory);
 
     function exchange(
         address from,

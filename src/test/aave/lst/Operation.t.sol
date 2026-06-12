@@ -3,26 +3,28 @@ pragma solidity ^0.8.18;
 
 import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
-import {SetupAaveLST} from "./Setup.sol";
+import {SetupSparkLendLST} from "./Setup.sol";
 import {AaveLooper} from "../../../aave/AaveLooper.sol";
 import {IPool} from "../../../interfaces/aave/IPool.sol";
 
-/// @notice Aave LST Operation tests - inherits all tests from OperationTest, uses Aave LST setup
-contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
-    function setUp() public override(SetupAaveLST, OperationTest) {
-        SetupAaveLST.setUp();
+/// @notice SparkLend LST Operation tests - inherits all tests from OperationTest, uses SparkLend LST setup
+contract SparkLendLSTOperationTest is SetupSparkLendLST, OperationTest {
+    function setUp() public override(SetupSparkLendLST, OperationTest) {
+        SetupSparkLendLST.setUp();
     }
 
     function setUpStrategy()
         public
-        override(SetupAaveLST, Setup)
+        override(SetupSparkLendLST, Setup)
         returns (address)
     {
-        return SetupAaveLST.setUpStrategy();
+        return SetupSparkLendLST.setUpStrategy();
     }
 
-    function accrueYield(uint256 _amount) public override(SetupAaveLST, Setup) {
-        SetupAaveLST.accrueYield(_amount);
+    function accrueYield(
+        uint256 _amount
+    ) public override(SetupSparkLendLST, Setup) {
+        SetupSparkLendLST.accrueYield(_amount);
     }
 
     function _maxUnwindCollateralDust(
@@ -62,7 +64,7 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
         );
     }
 
-    function _createUnderLeveragedPositionAave(uint256 equity) internal {
+    function _createUnderLeveragedPositionSparkLend(uint256 equity) internal {
         vm.prank(management);
         strategy.setLeverageParams(2e18, 0.25e18, 5e18);
 
@@ -88,7 +90,7 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
         override
     {
         uint256 equity = _baseTestAmount();
-        _createUnderLeveragedPositionAave(equity);
+        _createUnderLeveragedPositionSparkLend(equity);
 
         skip(strategy.minTendInterval() + 1);
 
@@ -110,7 +112,7 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
 
     function test_tendTrigger_underLeveragedCantDeposit() public override {
         uint256 equity = _baseTestAmount();
-        _createUnderLeveragedPositionAave(equity);
+        _createUnderLeveragedPositionSparkLend(equity);
 
         skip(strategy.minTendInterval() + 1);
 
@@ -249,11 +251,11 @@ contract AaveLSTOperationTest is SetupAaveLST, OperationTest {
         address aToken = looper.A_TOKEN();
 
         vm.prank(keeper);
-        vm.expectRevert("!token");
+        vm.expectRevert("protected token");
         looper.kickAuction(address(asset));
 
         vm.prank(keeper);
-        vm.expectRevert("!token");
+        vm.expectRevert("protected token");
         looper.kickAuction(aToken);
     }
 }

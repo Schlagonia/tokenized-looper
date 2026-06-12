@@ -13,3 +13,6 @@
 	path = lib/tokenized-strategy-periphery
 	url = https://github.com/yearn/tokenized-strategy-periphery
 	branch = master
+[submodule "lib/pawn-broker"]
+	path = lib/pawn-broker
+	url = https://github.com/Schlagonia/pawn-broker

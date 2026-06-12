@@ -3,23 +3,25 @@ pragma solidity ^0.8.18;
 
 import {Setup} from "../../base/Setup.sol";
 import {ShutdownTest} from "../../base/Shutdown.t.sol";
-import {SetupAaveLST} from "./Setup.sol";
+import {SetupSparkLendLST} from "./Setup.sol";
 
-/// @notice Aave LST Shutdown tests - inherits all tests from ShutdownTest, uses Aave LST setup
-contract AaveLSTShutdownTest is SetupAaveLST, ShutdownTest {
-    function setUp() public override(SetupAaveLST, ShutdownTest) {
-        SetupAaveLST.setUp();
+/// @notice SparkLend LST Shutdown tests - inherits all tests from ShutdownTest, uses SparkLend LST setup
+contract SparkLendLSTShutdownTest is SetupSparkLendLST, ShutdownTest {
+    function setUp() public override(SetupSparkLendLST, ShutdownTest) {
+        SetupSparkLendLST.setUp();
     }
 
     function setUpStrategy()
         public
-        override(SetupAaveLST, Setup)
+        override(SetupSparkLendLST, Setup)
         returns (address)
     {
-        return SetupAaveLST.setUpStrategy();
+        return SetupSparkLendLST.setUpStrategy();
     }
 
-    function accrueYield(uint256 _amount) public override(SetupAaveLST, Setup) {
-        SetupAaveLST.accrueYield(_amount);
+    function accrueYield(
+        uint256 _amount
+    ) public override(SetupSparkLendLST, Setup) {
+        SetupSparkLendLST.accrueYield(_amount);
     }
 }

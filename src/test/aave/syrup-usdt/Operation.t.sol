@@ -5,7 +5,7 @@ import {Setup} from "../../base/Setup.sol";
 import {OperationTest} from "../../base/Operation.t.sol";
 import {SetupAaveSyrupUSDT} from "./Setup.sol";
 import {SyrupUSDTAaveLooper} from "../../../aave/SyrupUSDTAaveLooper.sol";
-import {SyrupExchange} from "../../../periphery/SyrupExchange.sol";
+import {MetaExchange} from "../../../periphery/MetaExchange.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @notice Aave syrupUSDT operation tests
@@ -28,29 +28,41 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         SetupAaveSyrupUSDT.accrueYield(_amount);
     }
 
-    function test_zeroPendingRedemptions_onlyEmergencyAuthorized() public {
+    function test_claimCooldown_onlyManagement() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
 
         vm.prank(user);
-        vm.expectRevert("!emergency authorized");
-        looper.zeroPendingRedemptions();
+        vm.expectRevert("!management");
+        looper.claimCooldown();
 
-        vm.prank(emergencyAdmin);
-        looper.zeroPendingRedemptions();
+        vm.prank(management);
+        looper.claimCooldown();
+    }
+
+    function test_convertUnderlyingToAsset_revertsSameAssetPath() public {
+        SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
+            payable(address(strategy))
+        );
+        uint256 amount = 1_000e6;
+
+        deal(USDT, address(strategy), amount);
+        assertEq(looper.balanceOfUnderlying(), amount, "!underlying");
+
+        vm.prank(keeper);
+        vm.expectRevert("!underlying");
+        looper.convertUnderlyingToAsset(type(uint256).max);
+
+        assertEq(looper.balanceOfUnderlying(), amount, "!still asset");
+        assertEq(asset.balanceOf(address(strategy)), amount, "!asset");
     }
 
     function test_setExchange_onlyGovernance() public {
         SyrupUSDTAaveLooper looper = SyrupUSDTAaveLooper(
             payable(address(strategy))
         );
-        SyrupExchange newExchange = new SyrupExchange(
-            WETH,
-            USDT,
-            SYRUP_USDT,
-            SYRUP_USDT_ROUTER
-        );
+        MetaExchange newExchange = new MetaExchange(management);
 
         vm.prank(user);
         vm.expectRevert("!governance");
@@ -60,72 +72,89 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
         looper.setExchange(address(newExchange));
     }
 
-    function test_exchange_setV4Pool_onlyManagement() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_setV4Pool_onlyGovernanceOrOperator() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        syrupExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
+        vm.expectRevert("!operator");
+        uniExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
 
         vm.prank(management);
-        syrupExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
+        uniExchange.setV4Pool(USDT, SYRUP_USDT, bytes32(uint256(123)));
     }
 
-    function test_exchange_setUniFees_onlyManagement() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_setUniFees_onlyGovernanceOrOperator() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        syrupExchange.setUniFees(USDT, SYRUP_USDT, 500);
+        vm.expectRevert("!operator");
+        uniExchange.setUniFees(USDT, SYRUP_USDT, 500);
 
         vm.prank(management);
-        syrupExchange.setUniFees(USDT, SYRUP_USDT, 500);
+        uniExchange.setUniFees(USDT, SYRUP_USDT, 500);
     }
 
-    function test_exchange_swap_onlyStrategy() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_swap_isNotStrategyGated() public {
         vm.prank(user);
-        vm.expectRevert("!strategy");
-        syrupExchange.exchange(USDT, SYRUP_USDT, 0, 0);
+        uint256 amountOut = exchange.exchange(USDT, SYRUP_USDT, 0, 0);
+        assertEq(amountOut, 0, "!amountOut");
     }
 
-    function test_exchange_setBase_onlyManagement() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_setBase_onlyGovernanceOrOperator() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        syrupExchange.setBase(WETH);
+        vm.expectRevert("!operator");
+        uniExchange.setBase(WETH);
 
         vm.prank(management);
-        syrupExchange.setBase(WETH);
+        uniExchange.setBase(WETH);
     }
 
-    function test_exchange_router_isConfiguredInConstructor() public view {
-        SyrupExchange syrupExchange = exchange;
-        assertEq(syrupExchange.SYRUP_ROUTER(), SYRUP_USDT_ROUTER, "!router");
-    }
-
-    function test_exchange_setMint_onlyManagement() public {
-        SyrupExchange syrupExchange = exchange;
-
+    function test_exchange_setSyrupDepositConfig_onlyGovernance() public {
         vm.prank(user);
-        vm.expectRevert("!management");
-        syrupExchange.setMint(false);
+        vm.expectRevert("!governance");
+        syrupExchange.setSyrupDepositConfig(
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER,
+            bytes32("Maple")
+        );
 
         vm.prank(management);
-        syrupExchange.setMint(false);
+        syrupExchange.setSyrupDepositConfig(
+            SYRUP_USDT,
+            SYRUP_USDT_ROUTER,
+            bytes32("Maple")
+        );
 
-        assertFalse(syrupExchange.mint(), "!mint");
+        (address router, bytes32 depositData) = syrupExchange
+            .syrupDepositConfigs(SYRUP_USDT);
+        assertEq(router, SYRUP_USDT_ROUTER, "!router");
+        assertEq(depositData, bytes32("Maple"), "!depositData");
     }
 
-    function test_exchange_directMint_worksWhenMapleAuthorized() public {
+    function test_exchange_routes_areConfiguredForSyrupUsdt() public view {
+        MetaExchange.RouteStep[] memory forward = exchange.getRoute(
+            USDT,
+            SYRUP_USDT
+        );
+        assertEq(forward.length, 1, "!forward length");
+        assertEq(
+            forward[0].exchange,
+            useMint ? address(syrupExchange) : address(uniExchange),
+            "!forward exchange"
+        );
+        assertEq(forward[0].tokenTo, SYRUP_USDT, "!forward token");
+
+        MetaExchange.RouteStep[] memory reverse = exchange.getRoute(
+            SYRUP_USDT,
+            USDT
+        );
+        assertEq(reverse.length, 1, "!reverse length");
+        assertEq(reverse[0].exchange, address(uniExchange), "!reverse ex");
+        assertEq(reverse[0].tokenTo, USDT, "!reverse token");
+    }
+
+    function test_exchange_routeDrivenDeposit_worksWhenMapleAuthorized()
+        public
+    {
+        if (!useMint) return;
+
         uint256 amount = 10_000e6;
-
-        _authorizeExchangeForSyrupDeposit();
-
-        vm.prank(management);
-        exchange.setMint(true);
 
         mintAndDepositIntoStrategy(strategy, user, amount);
 
@@ -142,29 +171,27 @@ contract AaveSyrupUSDTOperationTest is SetupAaveSyrupUSDT, OperationTest {
     }
 
     function test_exchange_sweep_onlyGovernance() public {
-        SyrupExchange syrupExchange = exchange;
         address gov = management;
 
-        deal(USDT, address(syrupExchange), 1_000e6);
+        deal(USDT, address(exchange), 1_000e6);
 
         vm.prank(user);
         vm.expectRevert("!governance");
-        syrupExchange.sweep(USDT, type(uint256).max);
+        exchange.sweep(USDT, type(uint256).max);
 
         uint256 beforeBal = ERC20(USDT).balanceOf(gov);
         vm.prank(gov);
-        syrupExchange.sweep(USDT, type(uint256).max);
+        exchange.sweep(USDT, type(uint256).max);
 
-        assertEq(ERC20(USDT).balanceOf(address(syrupExchange)), 0, "!swept");
+        assertEq(ERC20(USDT).balanceOf(address(exchange)), 0, "!swept");
         assertEq(ERC20(USDT).balanceOf(gov), beforeBal + 1_000e6, "!recv");
     }
 
     function test_exchange_sweep_ethNotSupported() public {
-        SyrupExchange syrupExchange = exchange;
         address gov = management;
 
         vm.prank(gov);
         vm.expectRevert("!token");
-        syrupExchange.sweep(address(0), type(uint256).max);
+        exchange.sweep(address(0), type(uint256).max);
     }
 }
