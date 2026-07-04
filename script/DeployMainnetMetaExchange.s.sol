@@ -37,7 +37,7 @@ contract DeployMainnetMetaExchange is Script {
     }
 
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
-    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
+    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("0:Yearn");
 
     address internal constant DEFAULT_GOVERNANCE = 0x1b5f15DCb82d25f91c65b53CEe151E8b9fBdD271;
     address internal constant EXCHANGE_OPERATOR = 0x706EAcfC476f46547200a73709e2EFE1522c80e3;

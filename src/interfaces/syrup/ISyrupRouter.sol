@@ -26,11 +26,12 @@ interface ISyrupRouter {
      * @dev Used for first-time contract deposits when `P:deposit` is not yet set.
      */
     function authorizeAndDeposit(
-        uint256 amount,
-        bytes32 depositData,
+        uint256 bitmap,
         uint256 deadline,
         uint8 v,
         bytes32 r,
-        bytes32 s
+        bytes32 s,
+        uint256 amount,
+        bytes32 depositData
     ) external returns (uint256 amountOut);
 }
