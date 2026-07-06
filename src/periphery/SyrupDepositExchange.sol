@@ -21,6 +21,14 @@ contract SyrupDepositExchange is Governance, ReentrancyGuard {
         bytes32 depositData;
     }
 
+    struct SyrupAuthorization {
+        uint256 bitmap;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
+
     mapping(address => SyrupDepositConfig) public syrupDepositConfigs;
     mapping(address => bool) public allowed;
     mapping(address => bool) public allowedForwarders;
@@ -36,6 +44,12 @@ contract SyrupDepositExchange is Governance, ReentrancyGuard {
         address indexed vault,
         address indexed router,
         bytes32 depositData
+    );
+    event SyrupAuthorizedAndDeposited(
+        address indexed vault,
+        address indexed router,
+        uint256 amountIn,
+        uint256 amountOut
     );
 
     constructor(address _governance) Governance(_governance) {}
@@ -84,6 +98,40 @@ contract SyrupDepositExchange is Governance, ReentrancyGuard {
 
         ERC20(token).safeTransfer(msg.sender, amountToSweep);
         emit BalanceSwept(token, msg.sender, amountToSweep);
+    }
+
+    function authorizeAndDeposit(
+        address vault,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        SyrupAuthorization calldata auth
+    ) external onlyGovernance nonReentrant returns (uint256 amountOut) {
+        require(amountIn != 0, "!amountIn");
+
+        SyrupDepositConfig memory config = syrupDepositConfigs[vault];
+        require(config.router != address(0), "!syrup");
+
+        address from = IERC4626(vault).asset();
+        require(ERC20(from).balanceOf(address(this)) >= amountIn, "!balance");
+
+        ERC20(from).forceApprove(config.router, amountIn);
+        amountOut = ISyrupRouter(config.router).authorizeAndDeposit(
+            auth.bitmap,
+            auth.deadline,
+            auth.v,
+            auth.r,
+            auth.s,
+            amountIn,
+            config.depositData
+        );
+        require(amountOut >= amountOutMin, "!amountOut");
+
+        emit SyrupAuthorizedAndDeposited(
+            vault,
+            config.router,
+            amountIn,
+            amountOut
+        );
     }
 
     function exchangeWithContext(

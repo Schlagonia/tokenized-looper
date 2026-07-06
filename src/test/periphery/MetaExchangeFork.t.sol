@@ -259,7 +259,7 @@ contract MetaExchangeForkTest is Test {
         syrupExchange.setSyrupDepositConfig(
             SYRUP_USDC,
             SYRUP_USDC_ROUTER,
-            bytes32("Yearn")
+            bytes32("0:Yearn")
         );
 
         MetaExchange.RouteStep[] memory forward = new MetaExchange.RouteStep[](

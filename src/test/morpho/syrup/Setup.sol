@@ -23,7 +23,7 @@ contract SetupSyrupMorpho is Setup {
     CurveExchange public curveExchange;
     SyrupDepositExchange public syrupExchange;
     bytes32 internal constant MAPLE_DEPOSIT_PERMISSION = bytes32("P:deposit");
-    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("Yearn");
+    bytes32 internal constant SYRUP_DEPOSIT_DATA = bytes32("0:Yearn");
 
     Id public constant SYRUP_USDC_PYUSD_MARKET_ID =
         Id.wrap(

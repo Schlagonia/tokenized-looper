@@ -116,8 +116,14 @@ contract MockSyrupRouter is ISyrupRouter {
     MockSyrupVault public immutable vault;
 
     uint256 public depositCalls;
+    uint256 public authorizeAndDepositCalls;
     uint256 public lastAmount;
     bytes32 public lastDepositData;
+    uint256 public lastBitmap;
+    uint256 public lastDeadline;
+    uint8 public lastV;
+    bytes32 public lastR;
+    bytes32 public lastS;
 
     constructor(address asset_, address vault_) {
         asset = ERC20(asset_);
@@ -146,14 +152,26 @@ contract MockSyrupRouter is ISyrupRouter {
     }
 
     function authorizeAndDeposit(
-        uint256,
-        bytes32,
-        uint256,
-        uint8,
-        bytes32,
-        bytes32
-    ) external pure returns (uint256) {
-        revert("!unused");
+        uint256 bitmap,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
+        uint256 amount,
+        bytes32 depositData
+    ) external returns (uint256 amountOut) {
+        authorizeAndDepositCalls += 1;
+        lastBitmap = bitmap;
+        lastDeadline = deadline;
+        lastV = v;
+        lastR = r;
+        lastS = s;
+        lastAmount = amount;
+        lastDepositData = depositData;
+
+        asset.transferFrom(msg.sender, address(this), amount);
+        vault.mintShares(msg.sender, amount);
+        return amount;
     }
 }
 
@@ -943,7 +961,7 @@ contract MetaExchangeTest is Test {
         syrupExchange.setSyrupDepositConfig(
             address(syrupVault),
             address(syrupRouter),
-            bytes32("Yearn")
+            bytes32("0:Yearn")
         );
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
@@ -967,7 +985,80 @@ contract MetaExchangeTest is Test {
         assertEq(syrupVault.balanceOf(address(strategy)), 75e18, "!shares");
         assertEq(syrupRouter.depositCalls(), 1, "!depositCalls");
         assertEq(syrupRouter.lastAmount(), 75e18, "!amount");
-        assertEq(syrupRouter.lastDepositData(), bytes32("Yearn"), "!data");
+        assertEq(syrupRouter.lastDepositData(), bytes32("0:Yearn"), "!data");
+    }
+
+    function test_syrupDeposit_authorizeAndDeposit_onlyGovernance() public {
+        syrupExchange.setSyrupDepositConfig(
+            address(syrupVault),
+            address(syrupRouter),
+            bytes32("0:Yearn")
+        );
+
+        asset.mint(stranger, 75e18);
+
+        vm.startPrank(stranger);
+        asset.approve(address(syrupExchange), 75e18);
+        vm.expectRevert("!governance");
+        syrupExchange.authorizeAndDeposit(
+            address(syrupVault),
+            75e18,
+            0,
+            SyrupDepositExchange.SyrupAuthorization({
+                bitmap: 1,
+                deadline: block.timestamp + 1 days,
+                v: 28,
+                r: bytes32(uint256(2)),
+                s: bytes32(uint256(3))
+            })
+        );
+        vm.stopPrank();
+    }
+
+    function test_syrupDeposit_authorizeAndDeposit_usesSignatureAndDepositData()
+        public
+    {
+        bytes32 depositData = bytes32("0:Yearn");
+        bytes32 r = bytes32(uint256(2));
+        bytes32 s = bytes32(uint256(3));
+        uint256 deadline = block.timestamp + 1 days;
+
+        syrupExchange.setSyrupDepositConfig(
+            address(syrupVault),
+            address(syrupRouter),
+            depositData
+        );
+
+        asset.mint(address(syrupExchange), 75e18);
+
+        uint256 sharesOut = syrupExchange.authorizeAndDeposit(
+            address(syrupVault),
+            75e18,
+            75e18,
+            SyrupDepositExchange.SyrupAuthorization({
+                bitmap: 1,
+                deadline: deadline,
+                v: 28,
+                r: r,
+                s: s
+            })
+        );
+
+        assertEq(sharesOut, 75e18, "!sharesOut");
+        assertEq(syrupVault.balanceOf(address(syrupExchange)), 75e18, "!shares");
+        assertEq(syrupRouter.authorizeAndDepositCalls(), 1, "!authCalls");
+        assertEq(syrupRouter.depositCalls(), 0, "!depositCalls");
+        assertEq(syrupRouter.lastAmount(), 75e18, "!amount");
+        assertEq(syrupRouter.lastDepositData(), depositData, "!data");
+        assertEq(syrupRouter.lastBitmap(), 1, "!bitmap");
+        assertEq(syrupRouter.lastDeadline(), deadline, "!deadline");
+        assertEq(syrupRouter.lastV(), 28, "!v");
+        assertEq(syrupRouter.lastR(), r, "!r");
+        assertEq(syrupRouter.lastS(), s, "!s");
+
+        syrupExchange.sweep(address(syrupVault), type(uint256).max);
+        assertEq(syrupVault.balanceOf(address(this)), 75e18, "!swept");
+        assertEq(syrupVault.balanceOf(address(syrupExchange)), 0, "!dust");
     }
 
     function test_exchange_syrupDeposit_rejectsUnallowedContextThroughMetaExchange()
@@ -976,7 +1067,7 @@ contract MetaExchangeTest is Test {
         syrupExchange.setSyrupDepositConfig(
             address(syrupVault),
             address(syrupRouter),
-            bytes32("Yearn")
+            bytes32("0:Yearn")
         );
 
         MetaExchange.RouteStep[] memory route = new MetaExchange.RouteStep[](1);
@@ -997,7 +1088,7 @@ contract MetaExchangeTest is Test {
         syrupExchange.setSyrupDepositConfig(
             address(syrupVault),
             address(syrupRouter),
-            bytes32("Yearn")
+            bytes32("0:Yearn")
         );
 
         asset.mint(address(secondStrategy), 75e18);
