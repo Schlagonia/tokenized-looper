@@ -8,7 +8,6 @@ import {BaseLooper} from "../BaseLooper.sol";
 import {IPool} from "../interfaces/aave/IPool.sol";
 import {IPoolDataProvider} from "../interfaces/aave/IPoolDataProvider.sol";
 import {IPoolAddressesProvider} from "../interfaces/aave/IPoolAddressesProvider.sol";
-import {IAaveOracle} from "../interfaces/aave/IAaveOracle.sol";
 import {IRewardsController} from "../interfaces/aave/IRewardsController.sol";
 import {IAToken} from "../interfaces/aave/IAToken.sol";
 import {IMerklDistributor} from "../interfaces/IMerkleDistributor.sol";
@@ -25,7 +24,7 @@ import {AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     using SafeERC20 for ERC20;
     using AaveOps for address;
-    using AaveOps for IAaveOracle;
+    using AaveOps for IPoolAddressesProvider;
     using AaveOps for IPoolDataProvider;
     using AaveOps for IRewardsController;
 
@@ -42,8 +41,8 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
     /// @notice Aave V3 Data Provider
     IPoolDataProvider public immutable DATA_PROVIDER;
 
-    /// @notice Aave V3 Oracle
-    IAaveOracle public immutable AAVE_ORACLE;
+    /// @notice Aave V3 Pool Addresses Provider
+    IPoolAddressesProvider public immutable ADDRESSES_PROVIDER;
 
     /// @notice Aave V3 Rewards Controller
     IRewardsController public immutable REWARDS_CONTROLLER;
@@ -80,12 +79,10 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         address _governance
     ) BaseLooper(_asset, _name, _collateralToken, _governance, _exchange) {
         MORPHO = IMorpho(_morpho);
-        POOL = IPoolAddressesProvider(_addressesProvider).getPool();
+        ADDRESSES_PROVIDER = IPoolAddressesProvider(_addressesProvider);
+        POOL = ADDRESSES_PROVIDER.getPool();
         DATA_PROVIDER = IPoolDataProvider(
-            IPoolAddressesProvider(_addressesProvider).getPoolDataProvider()
-        );
-        AAVE_ORACLE = IAaveOracle(
-            IPoolAddressesProvider(_addressesProvider).getPriceOracle()
+            ADDRESSES_PROVIDER.getPoolDataProvider()
         );
 
         // Get aToken address for collateral
@@ -174,7 +171,7 @@ contract AaveLooper is BaseLooper, IMorphoFlashLoanCallback, AuctionSwapper {
         returns (uint256)
     {
         return
-            AAVE_ORACLE.getCollateralPrice(
+            ADDRESSES_PROVIDER.getCollateralPrice(
                 collateralToken,
                 address(asset),
                 ASSET_DECIMALS,

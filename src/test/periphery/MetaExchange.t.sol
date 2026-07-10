@@ -1045,7 +1045,11 @@ contract MetaExchangeTest is Test {
         );
 
         assertEq(sharesOut, 75e18, "!sharesOut");
-        assertEq(syrupVault.balanceOf(address(syrupExchange)), 75e18, "!shares");
+        assertEq(
+            syrupVault.balanceOf(address(syrupExchange)),
+            75e18,
+            "!shares"
+        );
         assertEq(syrupRouter.authorizeAndDepositCalls(), 1, "!authCalls");
         assertEq(syrupRouter.depositCalls(), 0, "!depositCalls");
         assertEq(syrupRouter.lastAmount(), 75e18, "!amount");

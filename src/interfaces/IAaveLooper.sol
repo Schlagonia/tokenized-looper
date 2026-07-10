@@ -3,8 +3,8 @@ pragma solidity ^0.8.18;
 
 import {IBaseLooper} from "./IBaseLooper.sol";
 import {IMorpho} from "./morpho/IMorpho.sol";
+import {IPoolAddressesProvider} from "./aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "./aave/IPoolDataProvider.sol";
-import {IAaveOracle} from "./aave/IAaveOracle.sol";
 import {IRewardsController} from "./aave/IRewardsController.sol";
 
 interface IAaveLooper is IBaseLooper {
@@ -14,7 +14,10 @@ interface IAaveLooper is IBaseLooper {
 
     function DATA_PROVIDER() external view returns (IPoolDataProvider);
 
-    function AAVE_ORACLE() external view returns (IAaveOracle);
+    function ADDRESSES_PROVIDER()
+        external
+        view
+        returns (IPoolAddressesProvider);
 
     function REWARDS_CONTROLLER() external view returns (IRewardsController);
 

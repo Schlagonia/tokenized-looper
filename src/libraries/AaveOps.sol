@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {IPool} from "../interfaces/aave/IPool.sol";
+import {IPoolAddressesProvider} from "../interfaces/aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "../interfaces/aave/IPoolDataProvider.sol";
 import {IAaveOracle} from "../interfaces/aave/IAaveOracle.sol";
 import {IRewardsController} from "../interfaces/aave/IRewardsController.sol";
@@ -15,12 +16,13 @@ library AaveOps {
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
 
     function getCollateralPrice(
-        IAaveOracle oracle,
+        IPoolAddressesProvider addressesProvider,
         address collateralToken,
         address asset,
         uint256 assetDecimals,
         uint256 collateralDecimals
     ) public view returns (uint256) {
+        IAaveOracle oracle = IAaveOracle(addressesProvider.getPriceOracle());
         uint256 collateralPrice = oracle.getAssetPrice(collateralToken);
         uint256 assetPrice = oracle.getAssetPrice(asset);
 
