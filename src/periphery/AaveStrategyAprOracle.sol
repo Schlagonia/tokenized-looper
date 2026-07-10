@@ -6,6 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {IBaseLooper} from "../interfaces/IBaseLooper.sol";
 import {IAaveLooper} from "../interfaces/IAaveLooper.sol";
+import {IAaveOracle} from "../interfaces/aave/IAaveOracle.sol";
 import {IPool} from "../interfaces/aave/IPool.sol";
 import {IPoolDataProvider} from "../interfaces/aave/IPoolDataProvider.sol";
 import {IReserveInterestRateStrategy} from "../interfaces/aave/IReserveInterestRateStrategy.sol";
@@ -285,10 +286,11 @@ contract AaveStrategyAprOracle is AprOracleBase {
         address asset = IBaseLooper(_strategy).asset();
         address collateralToken = IBaseLooper(_strategy).collateralToken();
 
-        uint256 collateralPrice = looper.AAVE_ORACLE().getAssetPrice(
-            collateralToken
+        IAaveOracle oracle = IAaveOracle(
+            looper.ADDRESSES_PROVIDER().getPriceOracle()
         );
-        uint256 assetPrice = looper.AAVE_ORACLE().getAssetPrice(asset);
+        uint256 collateralPrice = oracle.getAssetPrice(collateralToken);
+        uint256 assetPrice = oracle.getAssetPrice(asset);
         if (collateralPrice == 0 || assetPrice == 0) return 0;
 
         uint256 assetDecimals = ERC20(asset).decimals();

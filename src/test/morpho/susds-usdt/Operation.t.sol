@@ -36,7 +36,7 @@ contract SUSDSUSDTOperationTest is SetupSUSDSUSDT, OperationTest {
     }
 
     function test_setSUSDSReferral() public {
-        assertEq(susdsExchange.susdsReferral(), 1007, "!default referral");
+        assertEq(susdsExchange.susdsReferral(), 224, "!default referral");
 
         vm.prank(management);
         susdsExchange.setSUSDSReferral(42);

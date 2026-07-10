@@ -15,7 +15,7 @@ import {BaseExchange} from "./BaseExchange.sol";
 contract SUSDSExchange is BaseExchange {
     using SafeERC20 for ERC20;
 
-    uint16 public susdsReferral = 1007;
+    uint16 public susdsReferral = 224;
 
     constructor(address _governance) BaseExchange(_governance) {}
 
